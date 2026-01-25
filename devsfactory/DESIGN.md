@@ -43,7 +43,7 @@ All state lives in markdown files - the watcher and TUI both read from them, age
 
 ```
 .devsfactory/
-├── 20260125-add-user-auth/
+├── 20260125143022-add-user-auth/
 │   ├── task.md                      # Main task
 │   ├── plan.md                      # Plan (orchestration + subtask order)
 │   ├── 001-create-user-model.md     # Subtask 1
@@ -51,11 +51,11 @@ All state lives in markdown files - the watcher and TUI both read from them, age
 │   ├── 002-add-password-hashing.md  # Subtask 2
 │   └── 003-setup-auth-routes.md     # Subtask 3
 │
-├── 20260125-setup-payments/
+├── 20260125150000-setup-payments/
 │   ├── task.md
 │   └── plan.md
 │
-└── 20260124-fix-login-bug/
+└── 20260124091530-fix-login-bug/
     ├── task.md
     ├── plan.md
     └── 001-fix-validation.md
@@ -71,7 +71,7 @@ created: 2026-01-25T14:30:22Z
 priority: high | medium | low
 tags: [auth, security]
 assignee: null | agent-1
-dependencies: [20260124-setup-database]
+dependencies: [20260124091500-setup-database]
 ---
 
 ## Description
@@ -107,7 +107,7 @@ Any additional context, links, or references...
 ```yaml
 ---
 status: INPROGRESS | BLOCKED | REVIEW
-task: 20260125-add-user-auth
+task: 20260125143022-add-user-auth
 created: 2026-01-25T15:00:00Z
 ---
 
@@ -179,21 +179,21 @@ Each task and subtask gets its own worktree for isolation.
 ```
 main (protected, user review required)
  │
- ├── task/20260125-add-user-auth
+ ├── task/20260125143022-add-user-auth
  │    └── (subtasks auto-merge here)
  │
- └── task/20260125-setup-payments
+ └── task/20260125150000-setup-payments
 ```
 
 ### Worktree Structure (flat)
 
 ```
 .worktrees/
-├── 20260125-add-user-auth/                          # Task worktree
-├── 20260125-add-user-auth-001-create-user-model/    # Subtask worktree
-├── 20260125-add-user-auth-002-add-password-hash/    # Subtask worktree
-├── 20260125-setup-payments/                         # Another task
-└── 20260125-setup-payments-001-add-stripe/          # Its subtask
+├── 20260125143022-add-user-auth/                          # Task worktree
+├── 20260125143022-add-user-auth-001-create-user-model/    # Subtask worktree
+├── 20260125143022-add-user-auth-002-add-password-hash/    # Subtask worktree
+├── 20260125150000-setup-payments/                         # Another task
+└── 20260125150000-setup-payments-001-add-stripe/          # Its subtask
 ```
 
 ### Workflow
@@ -341,15 +341,15 @@ If this is attempt 3+ with unresolved issues: Set status to BLOCKED.
 ┌─ devsfactory ─────────────────────────────────────────────────────┐
 │ Tasks                                                              │
 ├────────────────────────────────────────────────────────────────────┤
-│ ● INPROGRESS  20260125-add-user-auth           high   2/5 ██░░░   │
-│ ○ PENDING     20260125-setup-payments          med    0/0         │
-│ ◉ REVIEW      20260124-fix-login-bug           high   4/4 ████    │
-│ ✓ DONE        20260123-init-project            low    2/2 ████    │
+│ ● INPROGRESS  20260125143022-add-user-auth     high   2/5 ██░░░   │
+│ ○ PENDING     20260125150000-setup-payments    med    0/0         │
+│ ◉ REVIEW      20260124091530-fix-login-bug     high   4/4 ████    │
+│ ✓ DONE        20260123100000-init-project      low    2/2 ████    │
 ├────────────────────────────────────────────────────────────────────┤
 │ Active Agents                                                      │
 ├────────────────────────────────────────────────────────────────────┤
-│ impl   20260125-add-user-auth-002  "Running tests..."              │
-│ review 20260125-add-user-auth-001  "Checking coverage..."          │
+│ impl   20260125143022-add-user-auth-002  "Running tests..."        │
+│ review 20260125143022-add-user-auth-001  "Checking coverage..."    │
 │ ──     (1 slot available)                                          │
 └────────────────────────────────────────────────────────────────────┘
  [↑↓] Navigate  [Enter] Drill down  [b] Back  [l] Logs  [q] Quit
@@ -358,8 +358,8 @@ If this is attempt 3+ with unresolved issues: Set status to BLOCKED.
 ### Task Detail View
 
 ```
-┌─ 20260125-add-user-auth ──────────────────────────────────────────┐
-│ Status: INPROGRESS    Priority: high    Branch: task/20260125-... │
+┌─ 20260125143022-add-user-auth ────────────────────────────────────┐
+│ Status: INPROGRESS    Priority: high    Branch: task/20260125...  │
 ├────────────────────────────────────────────────────────────────────┤
 │ Subtasks                                                           │
 ├────────────────────────────────────────────────────────────────────┤
@@ -402,7 +402,7 @@ Integrates task creation into Claude Code workflow.
 **Skill Behavior:**
 
 1. Parse input - Extract title from command args, or prompt if empty
-2. Generate folder name - `{YYYYMMDD}-{slug}` from title
+2. Generate folder name - `{YYYYMMDDHHmmss}-{slug}` from title
 3. Create folder - `.devsfactory/{folder}/`
 4. Prompt for details:
    - Priority? (high/medium/low)
