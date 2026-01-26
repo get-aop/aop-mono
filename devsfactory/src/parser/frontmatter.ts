@@ -10,20 +10,20 @@ export type SafeParseResult<T> =
   | { success: true; data: ParsedDocument<T> }
   | { success: false; error: ZodError };
 
-export const parseFrontmatter = <T>(
+export const parseFrontmatter = <S extends z.ZodTypeAny>(
   markdown: string,
-  schema: z.ZodType<T>,
-): ParsedDocument<T> => {
+  schema: S,
+): ParsedDocument<z.output<S>> => {
   const { rawFrontmatter, content } = extractFrontmatter(markdown);
   const parsed = parse(rawFrontmatter);
-  const frontmatter = schema.parse(parsed);
+  const frontmatter = schema.parse(parsed) as z.output<S>;
   return { frontmatter, content };
 };
 
-export const safeParseFrontmatter = <T>(
+export const safeParseFrontmatter = <S extends z.ZodTypeAny>(
   markdown: string,
-  schema: z.ZodType<T>,
-): SafeParseResult<T> => {
+  schema: S,
+): SafeParseResult<z.output<S>> => {
   let rawFrontmatter: string;
   let content: string;
 
@@ -46,7 +46,10 @@ export const safeParseFrontmatter = <T>(
   const result = schema.safeParse(parsed);
 
   if (result.success) {
-    return { success: true, data: { frontmatter: result.data, content } };
+    return {
+      success: true,
+      data: { frontmatter: result.data as z.output<S>, content },
+    };
   }
   return { success: false, error: result.error };
 };
@@ -59,10 +62,10 @@ export const serializeFrontmatter = <T extends Record<string, unknown>>(
   return `---\n${yamlContent}\n---\n${doc.content}`;
 };
 
-export const updateFrontmatter = async <T>(
+export const updateFrontmatter = async <S extends z.ZodTypeAny>(
   filePath: string,
-  schema: z.ZodType<T>,
-  updater: (current: T) => T,
+  schema: S,
+  updater: (current: z.output<S>) => z.output<S>,
 ): Promise<void> => {
   const file = Bun.file(filePath);
   const exists = await file.exists();

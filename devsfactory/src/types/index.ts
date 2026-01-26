@@ -111,9 +111,9 @@ export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 export type Priority = z.infer<typeof PrioritySchema>;
 export type AgentType = z.infer<typeof AgentTypeSchema>;
 
-export type TaskFrontmatter = z.infer<typeof TaskFrontmatterSchema>;
-export type PlanFrontmatter = z.infer<typeof PlanFrontmatterSchema>;
-export type SubtaskFrontmatter = z.infer<typeof SubtaskFrontmatterSchema>;
+export type TaskFrontmatter = z.output<typeof TaskFrontmatterSchema>;
+export type PlanFrontmatter = z.output<typeof PlanFrontmatterSchema>;
+export type SubtaskFrontmatter = z.output<typeof SubtaskFrontmatterSchema>;
 
 export type Task = z.infer<typeof TaskSchema>;
 export type Plan = z.infer<typeof PlanSchema>;
