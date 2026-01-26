@@ -1,5 +1,5 @@
-import { PlanFrontmatterSchema } from "../types";
 import type { Plan, PlanStatus, SubtaskReference } from "../types";
+import { PlanFrontmatterSchema } from "../types";
 import {
   parseFrontmatter,
   serializeFrontmatter,

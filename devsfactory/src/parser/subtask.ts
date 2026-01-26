@@ -1,5 +1,5 @@
-import { SubtaskFrontmatterSchema } from "../types";
 import type { Subtask, SubtaskStatus } from "../types";
+import { SubtaskFrontmatterSchema } from "../types";
 import {
   parseFrontmatter,
   serializeFrontmatter,

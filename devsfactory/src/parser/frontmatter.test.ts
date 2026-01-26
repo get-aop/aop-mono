@@ -169,8 +169,12 @@ Content`;
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error).toBeInstanceOf(ZodError);
-      expect(result.error.issues[0]!.code).toBe("invalid_format");
-      expect(result.error.issues[0]!.message).toContain("Invalid frontmatter");
+      const issue = result.error.issues[0]!;
+      expect(issue.code).toBe("custom");
+      expect((issue as { params?: { type?: string } }).params?.type).toBe(
+        "invalid_frontmatter"
+      );
+      expect(issue.message).toContain("Invalid frontmatter");
     }
   });
 
@@ -192,8 +196,12 @@ Content`;
     expect(schemaResult.success).toBe(false);
 
     if (!structureResult.success && !schemaResult.success) {
-      expect(structureResult.error.issues[0]!.code).toBe("invalid_format");
-      expect(schemaResult.error.issues[0]!.code).not.toBe("invalid_format");
+      const structureIssue = structureResult.error.issues[0]!;
+      expect(structureIssue.code).toBe("custom");
+      expect(
+        (structureIssue as { params?: { type?: string } }).params?.type
+      ).toBe("invalid_frontmatter");
+      expect(schemaResult.error.issues[0]!.code).not.toBe("custom");
     }
   });
 });
@@ -402,7 +410,7 @@ Content`;
       const zodError = error as ZodError;
       const firstIssue = zodError.issues[0]!;
       expect(firstIssue.path).toContain("status");
-      expect(firstIssue.code).toBe("invalid_value");
+      expect(firstIssue.code).toBe("invalid_enum_value");
     }
   });
 });

@@ -1,5 +1,5 @@
-import { TaskFrontmatterSchema } from "../types";
 import type { Task, TaskStatus } from "../types";
+import { TaskFrontmatterSchema } from "../types";
 import {
   parseFrontmatter,
   serializeFrontmatter,

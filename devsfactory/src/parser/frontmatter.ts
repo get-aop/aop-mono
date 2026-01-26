@@ -1,5 +1,5 @@
 import { parse, stringify } from "yaml";
-import { ZodError, ZodIssueCode, type z } from "zod";
+import { ZodError, type z } from "zod";
 
 export interface ParsedDocument<T> {
   frontmatter: T;
@@ -37,7 +37,12 @@ export const safeParseFrontmatter = <S extends z.ZodTypeAny>(
     return {
       success: false,
       error: new ZodError([
-        { code: "invalid_format", format: "frontmatter", path: [], message }
+        {
+          code: "custom",
+          params: { type: "invalid_frontmatter" },
+          path: [],
+          message
+        }
       ])
     };
   }

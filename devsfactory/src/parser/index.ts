@@ -1,31 +1,28 @@
 export {
+  type ParsedDocument,
   parseFrontmatter,
+  type SafeParseResult,
   safeParseFrontmatter,
   serializeFrontmatter,
-  updateFrontmatter,
-  type ParsedDocument,
-  type SafeParseResult
+  updateFrontmatter
 } from "./frontmatter";
-
 export {
-  parseTask,
-  createTask,
-  updateTaskStatus,
-  listTaskFolders
-} from "./task";
-
-export {
-  parsePlan,
+  addSubtaskToPlan,
   createPlan,
-  updatePlanStatus,
-  addSubtaskToPlan
+  parsePlan,
+  updatePlanStatus
 } from "./plan";
-
 export {
-  parseSubtask,
+  appendReviewHistory,
   createSubtask,
-  updateSubtaskStatus,
-  listSubtasks,
   getReadySubtasks,
-  appendReviewHistory
+  listSubtasks,
+  parseSubtask,
+  updateSubtaskStatus
 } from "./subtask";
+export {
+  createTask,
+  listTaskFolders,
+  parseTask,
+  updateTaskStatus
+} from "./task";

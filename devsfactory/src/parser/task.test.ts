@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Task, TaskStatus } from "../types";
+import type { Task } from "../types";
 import {
   createTask,
   listTaskFolders,

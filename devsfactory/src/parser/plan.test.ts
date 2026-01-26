@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Plan, PlanStatus, SubtaskReference } from "../types";
+import type { Plan, SubtaskReference } from "../types";
 import {
   addSubtaskToPlan,
   createPlan,
