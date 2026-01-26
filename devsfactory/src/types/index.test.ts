@@ -1,0 +1,493 @@
+import { describe, expect, test } from "bun:test";
+import {
+  TaskStatusSchema,
+  SubtaskStatusSchema,
+  PlanStatusSchema,
+  PrioritySchema,
+  AgentTypeSchema,
+  TaskFrontmatterSchema,
+  PlanFrontmatterSchema,
+  SubtaskFrontmatterSchema,
+  TaskSchema,
+  PlanSchema,
+  SubtaskSchema,
+  SubtaskReferenceSchema,
+  AgentProcessSchema,
+  ConfigSchema,
+  type TaskStatus,
+  type SubtaskStatus,
+  type PlanStatus,
+  type Priority,
+  type AgentType,
+} from "./index.ts";
+
+describe("Status Enums", () => {
+  describe("TaskStatusSchema", () => {
+    test("accepts valid values", () => {
+      const validStatuses: TaskStatus[] = [
+        "DRAFT",
+        "BACKLOG",
+        "PENDING",
+        "INPROGRESS",
+        "BLOCKED",
+        "REVIEW",
+        "DONE",
+      ];
+      for (const status of validStatuses) {
+        expect(TaskStatusSchema.parse(status)).toBe(status);
+      }
+    });
+
+    test("rejects invalid values", () => {
+      expect(() => TaskStatusSchema.parse("INVALID")).toThrow();
+      expect(() => TaskStatusSchema.parse("")).toThrow();
+      expect(() => TaskStatusSchema.parse(123)).toThrow();
+    });
+  });
+
+  describe("SubtaskStatusSchema", () => {
+    test("accepts valid values", () => {
+      const validStatuses: SubtaskStatus[] = [
+        "PENDING",
+        "INPROGRESS",
+        "AGENT_REVIEW",
+        "DONE",
+        "BLOCKED",
+      ];
+      for (const status of validStatuses) {
+        expect(SubtaskStatusSchema.parse(status)).toBe(status);
+      }
+    });
+
+    test("rejects invalid values", () => {
+      expect(() => SubtaskStatusSchema.parse("DRAFT")).toThrow();
+      expect(() => SubtaskStatusSchema.parse("REVIEW")).toThrow();
+    });
+  });
+
+  describe("PlanStatusSchema", () => {
+    test("accepts valid values", () => {
+      const validStatuses: PlanStatus[] = ["INPROGRESS", "BLOCKED", "REVIEW"];
+      for (const status of validStatuses) {
+        expect(PlanStatusSchema.parse(status)).toBe(status);
+      }
+    });
+
+    test("rejects invalid values", () => {
+      expect(() => PlanStatusSchema.parse("PENDING")).toThrow();
+      expect(() => PlanStatusSchema.parse("DONE")).toThrow();
+    });
+  });
+
+  describe("PrioritySchema", () => {
+    test("accepts valid values", () => {
+      const validPriorities: Priority[] = ["high", "medium", "low"];
+      for (const priority of validPriorities) {
+        expect(PrioritySchema.parse(priority)).toBe(priority);
+      }
+    });
+
+    test("rejects invalid values", () => {
+      expect(() => PrioritySchema.parse("urgent")).toThrow();
+      expect(() => PrioritySchema.parse("HIGH")).toThrow();
+    });
+  });
+
+  describe("AgentTypeSchema", () => {
+    test("accepts valid values", () => {
+      const validTypes: AgentType[] = ["planning", "implementation", "review"];
+      for (const type of validTypes) {
+        expect(AgentTypeSchema.parse(type)).toBe(type);
+      }
+    });
+
+    test("rejects invalid values", () => {
+      expect(() => AgentTypeSchema.parse("coding")).toThrow();
+      expect(() => AgentTypeSchema.parse("testing")).toThrow();
+    });
+  });
+});
+
+describe("Frontmatter Schemas", () => {
+  describe("TaskFrontmatterSchema", () => {
+    test("parses with all fields", () => {
+      const input = {
+        title: "Test Task",
+        status: "PENDING",
+        created: "2026-01-25T00:00:00Z",
+        priority: "high",
+        tags: ["tag1", "tag2"],
+        assignee: "developer",
+        dependencies: ["dep1", "dep2"],
+      };
+
+      const result = TaskFrontmatterSchema.parse(input);
+
+      expect(result.title).toBe("Test Task");
+      expect(result.status).toBe("PENDING");
+      expect(result.created).toBeInstanceOf(Date);
+      expect(result.priority).toBe("high");
+      expect(result.tags).toEqual(["tag1", "tag2"]);
+      expect(result.assignee).toBe("developer");
+      expect(result.dependencies).toEqual(["dep1", "dep2"]);
+    });
+
+    test("applies defaults for optional fields", () => {
+      const input = {
+        title: "Minimal Task",
+        status: "DRAFT",
+        created: "2026-01-25T00:00:00Z",
+        priority: "medium",
+      };
+
+      const result = TaskFrontmatterSchema.parse(input);
+
+      expect(result.tags).toEqual([]);
+      expect(result.assignee).toBeNull();
+      expect(result.dependencies).toEqual([]);
+    });
+
+    test("coerces ISO date string to Date object", () => {
+      const input = {
+        title: "Date Test",
+        status: "PENDING",
+        created: "2026-01-25T12:30:00Z",
+        priority: "low",
+      };
+
+      const result = TaskFrontmatterSchema.parse(input);
+
+      expect(result.created).toBeInstanceOf(Date);
+      expect(result.created.toISOString()).toBe("2026-01-25T12:30:00.000Z");
+    });
+
+    test("accepts Date objects directly", () => {
+      const date = new Date("2026-01-25T00:00:00Z");
+      const input = {
+        title: "Date Object Test",
+        status: "PENDING",
+        created: date,
+        priority: "medium",
+      };
+
+      const result = TaskFrontmatterSchema.parse(input);
+
+      expect(result.created).toBeInstanceOf(Date);
+      expect(result.created.getTime()).toBe(date.getTime());
+    });
+
+    test("rejects invalid status", () => {
+      const input = {
+        title: "Bad Task",
+        status: "INVALID_STATUS",
+        created: "2026-01-25T00:00:00Z",
+        priority: "high",
+      };
+
+      expect(() => TaskFrontmatterSchema.parse(input)).toThrow();
+    });
+
+    test("rejects missing required fields", () => {
+      expect(() => TaskFrontmatterSchema.parse({})).toThrow();
+      expect(() =>
+        TaskFrontmatterSchema.parse({
+          title: "Missing fields",
+        })
+      ).toThrow();
+    });
+  });
+
+  describe("PlanFrontmatterSchema", () => {
+    test("parses with all fields", () => {
+      const input = {
+        status: "INPROGRESS",
+        task: "parent-task-folder",
+        created: "2026-01-25T00:00:00Z",
+      };
+
+      const result = PlanFrontmatterSchema.parse(input);
+
+      expect(result.status).toBe("INPROGRESS");
+      expect(result.task).toBe("parent-task-folder");
+      expect(result.created).toBeInstanceOf(Date);
+    });
+
+    test("coerces date from ISO string", () => {
+      const input = {
+        status: "REVIEW",
+        task: "my-task",
+        created: "2026-06-15T10:00:00Z",
+      };
+
+      const result = PlanFrontmatterSchema.parse(input);
+
+      expect(result.created).toBeInstanceOf(Date);
+      expect(result.created.toISOString()).toBe("2026-06-15T10:00:00.000Z");
+    });
+  });
+
+  describe("SubtaskFrontmatterSchema", () => {
+    test("parses with all fields", () => {
+      const input = {
+        title: "Implement feature",
+        status: "PENDING",
+        dependencies: [1, 2, 3],
+      };
+
+      const result = SubtaskFrontmatterSchema.parse(input);
+
+      expect(result.title).toBe("Implement feature");
+      expect(result.status).toBe("PENDING");
+      expect(result.dependencies).toEqual([1, 2, 3]);
+    });
+
+    test("applies default for dependencies", () => {
+      const input = {
+        title: "Independent subtask",
+        status: "INPROGRESS",
+      };
+
+      const result = SubtaskFrontmatterSchema.parse(input);
+
+      expect(result.dependencies).toEqual([]);
+    });
+
+    test("rejects invalid status for subtask", () => {
+      const input = {
+        title: "Bad subtask",
+        status: "DRAFT", // Not valid for subtasks
+      };
+
+      expect(() => SubtaskFrontmatterSchema.parse(input)).toThrow();
+    });
+  });
+});
+
+describe("Entity Schemas", () => {
+  describe("SubtaskReferenceSchema", () => {
+    test("parses subtask reference", () => {
+      const input = {
+        number: 1,
+        slug: "setup-database",
+        title: "Set up database",
+        dependencies: [0],
+      };
+
+      const result = SubtaskReferenceSchema.parse(input);
+
+      expect(result.number).toBe(1);
+      expect(result.slug).toBe("setup-database");
+      expect(result.title).toBe("Set up database");
+      expect(result.dependencies).toEqual([0]);
+    });
+  });
+
+  describe("TaskSchema", () => {
+    test("parses full task", () => {
+      const input = {
+        folder: "20260125180901-my-task",
+        frontmatter: {
+          title: "My Task",
+          status: "PENDING",
+          created: "2026-01-25T00:00:00Z",
+          priority: "high",
+        },
+        description: "Task description here",
+        requirements: "## Requirements\n- Item 1\n- Item 2",
+        acceptanceCriteria: [
+          { text: "Criterion 1", checked: false },
+          { text: "Criterion 2", checked: true },
+        ],
+      };
+
+      const result = TaskSchema.parse(input);
+
+      expect(result.folder).toBe("20260125180901-my-task");
+      expect(result.frontmatter.title).toBe("My Task");
+      expect(result.description).toBe("Task description here");
+      expect(result.acceptanceCriteria).toHaveLength(2);
+      expect(result.notes).toBeUndefined();
+    });
+
+    test("parses task with optional notes", () => {
+      const input = {
+        folder: "task-folder",
+        frontmatter: {
+          title: "Task with notes",
+          status: "DRAFT",
+          created: "2026-01-25T00:00:00Z",
+          priority: "low",
+        },
+        description: "Description",
+        requirements: "Requirements",
+        acceptanceCriteria: [],
+        notes: "Some additional notes",
+      };
+
+      const result = TaskSchema.parse(input);
+
+      expect(result.notes).toBe("Some additional notes");
+    });
+  });
+
+  describe("PlanSchema", () => {
+    test("parses plan with subtasks", () => {
+      const input = {
+        folder: "20260125180901-my-task",
+        frontmatter: {
+          status: "INPROGRESS",
+          task: "my-task",
+          created: "2026-01-25T00:00:00Z",
+        },
+        subtasks: [
+          { number: 1, slug: "first", title: "First", dependencies: [] },
+          { number: 2, slug: "second", title: "Second", dependencies: [1] },
+        ],
+      };
+
+      const result = PlanSchema.parse(input);
+
+      expect(result.folder).toBe("20260125180901-my-task");
+      expect(result.subtasks).toHaveLength(2);
+      expect(result.subtasks[0]?.title).toBe("First");
+    });
+  });
+
+  describe("SubtaskSchema", () => {
+    test("parses subtask with all fields", () => {
+      const input = {
+        filename: "001-setup-database.md",
+        number: 1,
+        slug: "setup-database",
+        frontmatter: {
+          title: "Set up database",
+          status: "PENDING",
+          dependencies: [],
+        },
+        description: "Create the database schema",
+        context: "Use PostgreSQL",
+        result: "Database created successfully",
+        review: "Looks good",
+        blockers: "None",
+      };
+
+      const result = SubtaskSchema.parse(input);
+
+      expect(result.filename).toBe("001-setup-database.md");
+      expect(result.number).toBe(1);
+      expect(result.slug).toBe("setup-database");
+      expect(result.context).toBe("Use PostgreSQL");
+      expect(result.result).toBe("Database created successfully");
+    });
+
+    test("parses subtask with optional fields missing", () => {
+      const input = {
+        filename: "002-implement-api.md",
+        number: 2,
+        slug: "implement-api",
+        frontmatter: {
+          title: "Implement API",
+          status: "INPROGRESS",
+        },
+        description: "Build the REST API",
+      };
+
+      const result = SubtaskSchema.parse(input);
+
+      expect(result.context).toBeUndefined();
+      expect(result.result).toBeUndefined();
+      expect(result.review).toBeUndefined();
+      expect(result.blockers).toBeUndefined();
+    });
+  });
+});
+
+describe("Config Schemas", () => {
+  describe("AgentProcessSchema", () => {
+    test("parses agent process", () => {
+      const input = {
+        id: "agent-123",
+        type: "implementation",
+        taskFolder: "20260125180901-my-task",
+        subtaskFile: "001-setup.md",
+        pid: 12345,
+        startedAt: "2026-01-25T10:00:00Z",
+      };
+
+      const result = AgentProcessSchema.parse(input);
+
+      expect(result.id).toBe("agent-123");
+      expect(result.type).toBe("implementation");
+      expect(result.taskFolder).toBe("20260125180901-my-task");
+      expect(result.subtaskFile).toBe("001-setup.md");
+      expect(result.pid).toBe(12345);
+      expect(result.startedAt).toBeInstanceOf(Date);
+    });
+
+    test("parses agent process without optional subtaskFile", () => {
+      const input = {
+        id: "planner-1",
+        type: "planning",
+        taskFolder: "task-folder",
+        pid: 9999,
+        startedAt: "2026-01-25T00:00:00Z",
+      };
+
+      const result = AgentProcessSchema.parse(input);
+
+      expect(result.subtaskFile).toBeUndefined();
+    });
+  });
+
+  describe("ConfigSchema", () => {
+    test("parses config with all fields", () => {
+      const input = {
+        maxConcurrentAgents: 5,
+        devsfactoryDir: ".factory",
+        worktreesDir: ".trees",
+      };
+
+      const result = ConfigSchema.parse(input);
+
+      expect(result.maxConcurrentAgents).toBe(5);
+      expect(result.devsfactoryDir).toBe(".factory");
+      expect(result.worktreesDir).toBe(".trees");
+    });
+
+    test("applies defaults for missing fields", () => {
+      const result = ConfigSchema.parse({});
+
+      expect(result.maxConcurrentAgents).toBe(3);
+      expect(result.devsfactoryDir).toBe(".devsfactory");
+      expect(result.worktreesDir).toBe(".worktrees");
+    });
+
+    test("partially overrides defaults", () => {
+      const input = {
+        maxConcurrentAgents: 10,
+      };
+
+      const result = ConfigSchema.parse(input);
+
+      expect(result.maxConcurrentAgents).toBe(10);
+      expect(result.devsfactoryDir).toBe(".devsfactory");
+      expect(result.worktreesDir).toBe(".worktrees");
+    });
+  });
+});
+
+describe("Type Exports", () => {
+  test("exported types are correctly inferred", () => {
+    const taskStatus: TaskStatus = "PENDING";
+    const subtaskStatus: SubtaskStatus = "AGENT_REVIEW";
+    const planStatus: PlanStatus = "REVIEW";
+    const priority: Priority = "high";
+    const agentType: AgentType = "implementation";
+
+    expect(taskStatus).toBe("PENDING");
+    expect(subtaskStatus).toBe("AGENT_REVIEW");
+    expect(planStatus).toBe("REVIEW");
+    expect(priority).toBe("high");
+    expect(agentType).toBe("implementation");
+  });
+});
