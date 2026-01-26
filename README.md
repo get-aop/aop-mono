@@ -8,10 +8,14 @@ If you want to leverage this config in your Claude globally for all projects:
 
 ```sh
 ## BACKUP YOUR ~/.claude FIRST !!!
-cp -R ~/.claude .claude-bkp
+cp -R ~/.claude ~/.claude-bkp
+
+# Remove existing targets (symlinks or directories) before linking
+rm -rf ~/.claude/commands ~/.claude/skills ~/.claude/songs
+
 ln -sf $(pwd)/AGENTS.md ~/.claude/CLAUDE.md
-ln -sf $(pwd)/.claude/commands ~/.claude/commands
-ln -sf $(pwd)/.claude/skills ~/.claude/skills
+ln -sfn $(pwd)/.claude/commands ~/.claude/commands
+ln -sfn $(pwd)/.claude/skills ~/.claude/skills
 ln -sf $(pwd)/.claude/settings.json ~/.claude/settings.json
-ln -sf $(pwd)/.claude/songs ~/.claude/songs
+ln -sfn $(pwd)/.claude/songs ~/.claude/songs
 ```
