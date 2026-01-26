@@ -1,0 +1,1 @@
+/brainstorming Use the skill task-planner to brainstorm the task {{taskPath}} and generate proper sub-tasks, while asking me all the necessary questions for defining and walking me through the requirements

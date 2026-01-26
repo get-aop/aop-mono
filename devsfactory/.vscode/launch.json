@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "Debug Current Test File",
+      "program": "${file}",
+      "cwd": "${workspaceFolder}",
+      "stopOnEntry": false,
+      "watchMode": false,
+      "runtime": "bun",
+      "runtimeArgs": ["test"]
+    },
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "Debug All Tests",
+      "program": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}",
+      "stopOnEntry": false,
+      "watchMode": false,
+      "runtime": "bun",
+      "runtimeArgs": ["test"]
+    },
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "Debug Tests (Watch Mode)",
+      "program": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}",
+      "stopOnEntry": false,
+      "watchMode": true,
+      "runtime": "bun",
+      "runtimeArgs": ["test", "--watch"]
+    }
+  ]
+}

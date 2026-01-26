@@ -410,7 +410,7 @@ Content`;
       const zodError = error as ZodError;
       const firstIssue = zodError.issues[0]!;
       expect(firstIssue.path).toContain("status");
-      expect(firstIssue.code).toBe("invalid_enum_value");
+      expect(firstIssue.code).toBe("invalid_value");
     }
   });
 });

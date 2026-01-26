@@ -1,0 +1,6 @@
+{
+  "bun.runtime": "bun",
+  "bun.test.enable": true,
+  "bun.test.filePattern": "**/*.test.ts",
+  "testing.automaticallyOpenPeekView": "never"
+}

@@ -3,24 +3,6 @@
 lets brainstorm the task /home/eng/Workspace/my-agent/devsfactory/.devsfactory/20260125180910-document-parsers/task.md to generate subtasks as instructed  
  in @DESIGN.md
 
-# Implementer
-
-You are implementing subtask: Parser tests
-
-> **REQUIRED SUB-SKILL**: Use test-driven-development to implement this subtask.
-
-Read the subtask at ../../.devsfactory/20260125180901-types-and-frontmatter/004-parser-tests.md
-
-After you are done, use code-simplifier for maintainability.
-
-After implementing the code simplifier changes, if any, you MUST
-a) commit your changes
-b) update the subtask file with the following:
-
-1. Commit your changes and set status to AGENT_REVIEW
-2. Fill the Result with a summary of your progress.
-3. If blocked, set status to BLOCKED and describe the blocker.
-
 ## Lazy Implementer
 
 You are implementing the next available subtask.
@@ -38,28 +20,6 @@ b) update the subtask file with the following:
 1. Commit your changes and set status to DONE
 2. Fill the Result with a summary of your progress.
 3. If blocked, set status to BLOCKED and describe the blocker.
-
-# Reviewer
-
-You are reviewing subtask: /home/eng/Workspace/my-agent/devsfactory/.devsfactory/20260125180901-types-and-frontmatter/004-parser-tests.md
-
-Open the review file at: /home/eng/Workspace/my-agent/devsfactory/.devsfactory/20260125180901-types-and-frontmatter/004-parser-tests-review.md
-
-Use the code-review skill to run this review against this branch commits + any current diffs/staged changes.
-
-If there are still Review Attempts to be filled, do the following:
-
-- Review the implementation changes using code-reviewer.
-- Report your finds in the respective attempt you are working on. (1, 2 or 3)
-- If approved with no relevant issues, you MUST:
-  - merge the worktree back to its base
-  - set the subtask file status to DONE
-
-Else, if there are no review attempts it means this task became moot, the implementer agent can't complete, so:
-
-- Report your final verdict in the Blockers session of the subtask.
-- Propose any solutions if you can to unblock it.
-- Set subtask status to BLOCKED.
 
 # Completing Task Prompt
 
