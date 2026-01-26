@@ -1,0 +1,17 @@
+# Lefthook configuration
+# https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      root: devsfactory/
+      glob: "*.{ts,tsx,js,jsx}"
+      run: bunx @biomejs/biome check --write {staged_files} && git add {staged_files}
+      stage_fixed: true
+    typecheck:
+      root: devsfactory/
+      run: bun run typecheck
+    build:
+      root: devsfactory/
+      run: bun run build

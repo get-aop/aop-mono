@@ -1,6 +1,10 @@
-import { parseFrontmatter, serializeFrontmatter, updateFrontmatter } from "./frontmatter";
 import { PlanFrontmatterSchema } from "../types";
 import type { Plan, PlanStatus, SubtaskReference } from "../types";
+import {
+  parseFrontmatter,
+  serializeFrontmatter,
+  updateFrontmatter
+} from "./frontmatter";
 
 const DEFAULT_DEVSFACTORY_DIR = ".devsfactory";
 
@@ -26,7 +30,7 @@ export const parsePlan = async (
   return {
     folder: taskFolder,
     frontmatter,
-    subtasks,
+    subtasks
   };
 };
 
@@ -40,7 +44,7 @@ export const createPlan = async (
   const body = serializePlanBody(plan.subtasks);
   const markdown = serializeFrontmatter({
     frontmatter: plan.frontmatter as Record<string, unknown>,
-    content: body,
+    content: body
   });
 
   await Bun.write(filePath, markdown);
@@ -55,7 +59,7 @@ export const updatePlanStatus = async (
 
   await updateFrontmatter(filePath, PlanFrontmatterSchema, (current) => ({
     ...current,
-    status,
+    status
   }));
 };
 
@@ -75,7 +79,8 @@ export const addSubtaskToPlan = async (
   await createPlan(taskFolder, plan, devsfactoryDir);
 };
 
-const SUBTASK_REGEX = /^(\d+)\.\s+(\d{3})-([a-z0-9-]+)\s+\(([^)]+)\)(?:\s+→\s+depends on:\s+(.+))?$/;
+const SUBTASK_REGEX =
+  /^(\d+)\.\s+(\d{3})-([a-z0-9-]+)\s+\(([^)]+)\)(?:\s+→\s+depends on:\s+(.+))?$/;
 
 const parseSubtaskList = (body: string): SubtaskReference[] => {
   const subtasksSection = extractSubtasksSection(body);
@@ -88,10 +93,10 @@ const parseSubtaskList = (body: string): SubtaskReference[] => {
     const match = line.trim().match(SUBTASK_REGEX);
     if (match) {
       subtasks.push({
-        number: parseInt(match[2]!, 10),
+        number: Number.parseInt(match[2]!, 10),
         slug: match[3]!,
         title: match[4]!,
-        dependencies: parseDependencies(match[5]),
+        dependencies: parseDependencies(match[5])
       });
     }
   }
@@ -127,7 +132,7 @@ const parseDependencies = (deps: string | undefined): number[] => {
     .split(",")
     .map((d) => d.trim())
     .filter((d) => d.length > 0)
-    .map((d) => parseInt(d, 10));
+    .map((d) => Number.parseInt(d, 10));
 };
 
 const serializeSubtaskLine = (subtask: SubtaskReference): string => {
@@ -172,7 +177,7 @@ const serializePlanBody = (subtasks: SubtaskReference[]): string => {
     "### Blockers",
     "",
     "(filled when agent gets stuck or needs user input)",
-    "",
+    ""
   ];
 
   return sections.join("\n");

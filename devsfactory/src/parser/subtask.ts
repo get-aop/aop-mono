@@ -1,10 +1,10 @@
+import { SubtaskFrontmatterSchema } from "../types";
+import type { Subtask, SubtaskStatus } from "../types";
 import {
   parseFrontmatter,
   serializeFrontmatter,
-  updateFrontmatter,
+  updateFrontmatter
 } from "./frontmatter";
-import { SubtaskFrontmatterSchema } from "../types";
-import type { Subtask, SubtaskStatus } from "../types";
 
 const DEFAULT_DEVSFACTORY_DIR = ".devsfactory";
 const SUBTASK_FILENAME_REGEX = /^(\d{3})-(.+)\.md$/;
@@ -39,7 +39,7 @@ export const parseSubtask = async (
     context: sections.context,
     result: sections.result,
     review: sections.review,
-    blockers: sections.blockers,
+    blockers: sections.blockers
   };
 };
 
@@ -56,7 +56,7 @@ export const createSubtask = async (
   const body = serializeSubtaskBody(subtask);
   const markdown = serializeFrontmatter({
     frontmatter: subtask.frontmatter as Record<string, unknown>,
-    content: body,
+    content: body
   });
 
   await Bun.write(filePath, markdown);
@@ -74,7 +74,7 @@ export const updateSubtaskStatus = async (
 
   await updateFrontmatter(filePath, SubtaskFrontmatterSchema, (current) => ({
     ...current,
-    status,
+    status
   }));
 };
 
@@ -157,8 +157,8 @@ const parseFilename = (filename: string): { number: number; slug: string } => {
   }
 
   return {
-    number: parseInt(match[1]!, 10),
-    slug: match[2]!,
+    number: Number.parseInt(match[1]!, 10),
+    slug: match[2]!
   };
 };
 
@@ -219,11 +219,11 @@ const extractSections = (
     value || undefined;
 
   return {
-    description: sections["description"] || "",
-    context: toOptional(sections["context"]),
-    result: toOptional(sections["result"]),
-    review: toOptional(sections["review"]),
-    blockers: toOptional(sections["blockers"]),
+    description: sections.description || "",
+    context: toOptional(sections.context),
+    result: toOptional(sections.result),
+    review: toOptional(sections.review),
+    blockers: toOptional(sections.blockers)
   };
 };
 

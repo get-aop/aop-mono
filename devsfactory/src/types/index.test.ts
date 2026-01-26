@@ -1,24 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import {
-  TaskStatusSchema,
-  SubtaskStatusSchema,
-  PlanStatusSchema,
-  PrioritySchema,
-  AgentTypeSchema,
-  TaskFrontmatterSchema,
-  PlanFrontmatterSchema,
-  SubtaskFrontmatterSchema,
-  TaskSchema,
-  PlanSchema,
-  SubtaskSchema,
-  SubtaskReferenceSchema,
   AgentProcessSchema,
-  ConfigSchema,
-  type TaskStatus,
-  type SubtaskStatus,
-  type PlanStatus,
-  type Priority,
   type AgentType,
+  AgentTypeSchema,
+  ConfigSchema,
+  PlanFrontmatterSchema,
+  PlanSchema,
+  type PlanStatus,
+  PlanStatusSchema,
+  type Priority,
+  PrioritySchema,
+  SubtaskFrontmatterSchema,
+  SubtaskReferenceSchema,
+  SubtaskSchema,
+  type SubtaskStatus,
+  SubtaskStatusSchema,
+  TaskFrontmatterSchema,
+  TaskSchema,
+  type TaskStatus,
+  TaskStatusSchema
 } from "./index.ts";
 
 describe("Status Enums", () => {
@@ -31,7 +31,7 @@ describe("Status Enums", () => {
         "INPROGRESS",
         "BLOCKED",
         "REVIEW",
-        "DONE",
+        "DONE"
       ];
       for (const status of validStatuses) {
         expect(TaskStatusSchema.parse(status)).toBe(status);
@@ -52,7 +52,7 @@ describe("Status Enums", () => {
         "INPROGRESS",
         "AGENT_REVIEW",
         "DONE",
-        "BLOCKED",
+        "BLOCKED"
       ];
       for (const status of validStatuses) {
         expect(SubtaskStatusSchema.parse(status)).toBe(status);
@@ -118,7 +118,7 @@ describe("Frontmatter Schemas", () => {
         priority: "high",
         tags: ["tag1", "tag2"],
         assignee: "developer",
-        dependencies: ["dep1", "dep2"],
+        dependencies: ["dep1", "dep2"]
       };
 
       const result = TaskFrontmatterSchema.parse(input);
@@ -137,7 +137,7 @@ describe("Frontmatter Schemas", () => {
         title: "Minimal Task",
         status: "DRAFT",
         created: "2026-01-25T00:00:00Z",
-        priority: "medium",
+        priority: "medium"
       };
 
       const result = TaskFrontmatterSchema.parse(input);
@@ -152,7 +152,7 @@ describe("Frontmatter Schemas", () => {
         title: "Date Test",
         status: "PENDING",
         created: "2026-01-25T12:30:00Z",
-        priority: "low",
+        priority: "low"
       };
 
       const result = TaskFrontmatterSchema.parse(input);
@@ -167,7 +167,7 @@ describe("Frontmatter Schemas", () => {
         title: "Date Object Test",
         status: "PENDING",
         created: date,
-        priority: "medium",
+        priority: "medium"
       };
 
       const result = TaskFrontmatterSchema.parse(input);
@@ -181,7 +181,7 @@ describe("Frontmatter Schemas", () => {
         title: "Bad Task",
         status: "INVALID_STATUS",
         created: "2026-01-25T00:00:00Z",
-        priority: "high",
+        priority: "high"
       };
 
       expect(() => TaskFrontmatterSchema.parse(input)).toThrow();
@@ -191,7 +191,7 @@ describe("Frontmatter Schemas", () => {
       expect(() => TaskFrontmatterSchema.parse({})).toThrow();
       expect(() =>
         TaskFrontmatterSchema.parse({
-          title: "Missing fields",
+          title: "Missing fields"
         })
       ).toThrow();
     });
@@ -202,7 +202,7 @@ describe("Frontmatter Schemas", () => {
       const input = {
         status: "INPROGRESS",
         task: "parent-task-folder",
-        created: "2026-01-25T00:00:00Z",
+        created: "2026-01-25T00:00:00Z"
       };
 
       const result = PlanFrontmatterSchema.parse(input);
@@ -216,7 +216,7 @@ describe("Frontmatter Schemas", () => {
       const input = {
         status: "REVIEW",
         task: "my-task",
-        created: "2026-06-15T10:00:00Z",
+        created: "2026-06-15T10:00:00Z"
       };
 
       const result = PlanFrontmatterSchema.parse(input);
@@ -231,7 +231,7 @@ describe("Frontmatter Schemas", () => {
       const input = {
         title: "Implement feature",
         status: "PENDING",
-        dependencies: [1, 2, 3],
+        dependencies: [1, 2, 3]
       };
 
       const result = SubtaskFrontmatterSchema.parse(input);
@@ -244,7 +244,7 @@ describe("Frontmatter Schemas", () => {
     test("applies default for dependencies", () => {
       const input = {
         title: "Independent subtask",
-        status: "INPROGRESS",
+        status: "INPROGRESS"
       };
 
       const result = SubtaskFrontmatterSchema.parse(input);
@@ -255,7 +255,7 @@ describe("Frontmatter Schemas", () => {
     test("rejects invalid status for subtask", () => {
       const input = {
         title: "Bad subtask",
-        status: "DRAFT", // Not valid for subtasks
+        status: "DRAFT" // Not valid for subtasks
       };
 
       expect(() => SubtaskFrontmatterSchema.parse(input)).toThrow();
@@ -270,7 +270,7 @@ describe("Entity Schemas", () => {
         number: 1,
         slug: "setup-database",
         title: "Set up database",
-        dependencies: [0],
+        dependencies: [0]
       };
 
       const result = SubtaskReferenceSchema.parse(input);
@@ -290,14 +290,14 @@ describe("Entity Schemas", () => {
           title: "My Task",
           status: "PENDING",
           created: "2026-01-25T00:00:00Z",
-          priority: "high",
+          priority: "high"
         },
         description: "Task description here",
         requirements: "## Requirements\n- Item 1\n- Item 2",
         acceptanceCriteria: [
           { text: "Criterion 1", checked: false },
-          { text: "Criterion 2", checked: true },
-        ],
+          { text: "Criterion 2", checked: true }
+        ]
       };
 
       const result = TaskSchema.parse(input);
@@ -316,12 +316,12 @@ describe("Entity Schemas", () => {
           title: "Task with notes",
           status: "DRAFT",
           created: "2026-01-25T00:00:00Z",
-          priority: "low",
+          priority: "low"
         },
         description: "Description",
         requirements: "Requirements",
         acceptanceCriteria: [],
-        notes: "Some additional notes",
+        notes: "Some additional notes"
       };
 
       const result = TaskSchema.parse(input);
@@ -337,12 +337,12 @@ describe("Entity Schemas", () => {
         frontmatter: {
           status: "INPROGRESS",
           task: "my-task",
-          created: "2026-01-25T00:00:00Z",
+          created: "2026-01-25T00:00:00Z"
         },
         subtasks: [
           { number: 1, slug: "first", title: "First", dependencies: [] },
-          { number: 2, slug: "second", title: "Second", dependencies: [1] },
-        ],
+          { number: 2, slug: "second", title: "Second", dependencies: [1] }
+        ]
       };
 
       const result = PlanSchema.parse(input);
@@ -362,13 +362,13 @@ describe("Entity Schemas", () => {
         frontmatter: {
           title: "Set up database",
           status: "PENDING",
-          dependencies: [],
+          dependencies: []
         },
         description: "Create the database schema",
         context: "Use PostgreSQL",
         result: "Database created successfully",
         review: "Looks good",
-        blockers: "None",
+        blockers: "None"
       };
 
       const result = SubtaskSchema.parse(input);
@@ -387,9 +387,9 @@ describe("Entity Schemas", () => {
         slug: "implement-api",
         frontmatter: {
           title: "Implement API",
-          status: "INPROGRESS",
+          status: "INPROGRESS"
         },
-        description: "Build the REST API",
+        description: "Build the REST API"
       };
 
       const result = SubtaskSchema.parse(input);
@@ -411,7 +411,7 @@ describe("Config Schemas", () => {
         taskFolder: "20260125180901-my-task",
         subtaskFile: "001-setup.md",
         pid: 12345,
-        startedAt: "2026-01-25T10:00:00Z",
+        startedAt: "2026-01-25T10:00:00Z"
       };
 
       const result = AgentProcessSchema.parse(input);
@@ -430,7 +430,7 @@ describe("Config Schemas", () => {
         type: "planning",
         taskFolder: "task-folder",
         pid: 9999,
-        startedAt: "2026-01-25T00:00:00Z",
+        startedAt: "2026-01-25T00:00:00Z"
       };
 
       const result = AgentProcessSchema.parse(input);
@@ -444,7 +444,7 @@ describe("Config Schemas", () => {
       const input = {
         maxConcurrentAgents: 5,
         devsfactoryDir: ".factory",
-        worktreesDir: ".trees",
+        worktreesDir: ".trees"
       };
 
       const result = ConfigSchema.parse(input);
@@ -464,7 +464,7 @@ describe("Config Schemas", () => {
 
     test("partially overrides defaults", () => {
       const input = {
-        maxConcurrentAgents: 10,
+        maxConcurrentAgents: 10
       };
 
       const result = ConfigSchema.parse(input);

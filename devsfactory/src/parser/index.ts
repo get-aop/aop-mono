@@ -4,21 +4,21 @@ export {
   serializeFrontmatter,
   updateFrontmatter,
   type ParsedDocument,
-  type SafeParseResult,
+  type SafeParseResult
 } from "./frontmatter";
 
 export {
   parseTask,
   createTask,
   updateTaskStatus,
-  listTaskFolders,
+  listTaskFolders
 } from "./task";
 
 export {
   parsePlan,
   createPlan,
   updatePlanStatus,
-  addSubtaskToPlan,
+  addSubtaskToPlan
 } from "./plan";
 
 export {
@@ -27,5 +27,5 @@ export {
   updateSubtaskStatus,
   listSubtasks,
   getReadySubtasks,
-  appendReviewHistory,
+  appendReviewHistory
 } from "./subtask";

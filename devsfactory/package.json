@@ -3,9 +3,19 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "test": "bun test",
+    "build": "bun build ./src/index.ts --outdir ./dist",
+    "lint": "bunx @biomejs/biome check ./src",
+    "lint:fix": "bunx @biomejs/biome check --write ./src",
+    "typecheck": "tsc --noEmit",
+    "prepare": "lefthook install"
+  },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/bun": "latest",
-    "@types/react": "^19.2.9"
+    "@types/react": "^19.2.9",
+    "lefthook": "^1.11.0"
   },
   "peerDependencies": {
     "typescript": "^5"

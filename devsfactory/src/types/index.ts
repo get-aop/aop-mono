@@ -8,7 +8,7 @@ export const TaskStatusSchema = z.enum([
   "INPROGRESS",
   "BLOCKED",
   "REVIEW",
-  "DONE",
+  "DONE"
 ]);
 
 export const SubtaskStatusSchema = z.enum([
@@ -16,7 +16,7 @@ export const SubtaskStatusSchema = z.enum([
   "INPROGRESS",
   "AGENT_REVIEW",
   "DONE",
-  "BLOCKED",
+  "BLOCKED"
 ]);
 
 export const PlanStatusSchema = z.enum(["INPROGRESS", "BLOCKED", "REVIEW"]);
@@ -33,19 +33,19 @@ export const TaskFrontmatterSchema = z.object({
   priority: PrioritySchema,
   tags: z.array(z.string()).default([]),
   assignee: z.string().nullable().default(null),
-  dependencies: z.array(z.string()).default([]),
+  dependencies: z.array(z.string()).default([])
 });
 
 export const PlanFrontmatterSchema = z.object({
   status: PlanStatusSchema,
   task: z.string(),
-  created: z.coerce.date(),
+  created: z.coerce.date()
 });
 
 export const SubtaskFrontmatterSchema = z.object({
   title: z.string(),
   status: SubtaskStatusSchema,
-  dependencies: z.array(z.number()).default([]),
+  dependencies: z.array(z.number()).default([])
 });
 
 // Entity Schemas
@@ -53,7 +53,7 @@ export const SubtaskReferenceSchema = z.object({
   number: z.number(),
   slug: z.string(),
   title: z.string(),
-  dependencies: z.array(z.number()),
+  dependencies: z.array(z.number())
 });
 
 export const TaskSchema = z.object({
@@ -64,16 +64,16 @@ export const TaskSchema = z.object({
   acceptanceCriteria: z.array(
     z.object({
       text: z.string(),
-      checked: z.boolean(),
+      checked: z.boolean()
     })
   ),
-  notes: z.string().optional(),
+  notes: z.string().optional()
 });
 
 export const PlanSchema = z.object({
   folder: z.string(),
   frontmatter: PlanFrontmatterSchema,
-  subtasks: z.array(SubtaskReferenceSchema),
+  subtasks: z.array(SubtaskReferenceSchema)
 });
 
 export const SubtaskSchema = z.object({
@@ -85,7 +85,7 @@ export const SubtaskSchema = z.object({
   context: z.string().optional(),
   result: z.string().optional(),
   review: z.string().optional(),
-  blockers: z.string().optional(),
+  blockers: z.string().optional()
 });
 
 // Config Schemas
@@ -95,13 +95,13 @@ export const AgentProcessSchema = z.object({
   taskFolder: z.string(),
   subtaskFile: z.string().optional(),
   pid: z.number(),
-  startedAt: z.coerce.date(),
+  startedAt: z.coerce.date()
 });
 
 export const ConfigSchema = z.object({
   maxConcurrentAgents: z.number().default(3),
   devsfactoryDir: z.string().default(".devsfactory"),
-  worktreesDir: z.string().default(".worktrees"),
+  worktreesDir: z.string().default(".worktrees")
 });
 
 // Inferred Types
