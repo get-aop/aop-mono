@@ -2,6 +2,15 @@
 
 My claude settings
 
+## DevFactory Setup
+
+Install dependencies:
+
+```sh
+cd devsfactory
+bun install
+```
+
 ## Global setup Instructions
 
 If you want to leverage this config in your Claude globally for all projects:
