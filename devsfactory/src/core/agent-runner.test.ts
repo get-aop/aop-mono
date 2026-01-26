@@ -2,7 +2,25 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CommandOptions, LLMProvider } from "../providers/types";
 import { AgentRunner } from "./agent-runner";
+
+class TestProvider implements LLMProvider {
+  readonly name = "test";
+  private command: string[];
+
+  constructor(command: string[]) {
+    this.command = command;
+  }
+
+  buildCommand(_options: CommandOptions): string[] {
+    return this.command;
+  }
+
+  async isAvailable(): Promise<boolean> {
+    return true;
+  }
+}
 
 describe("AgentRunner", () => {
   let runner: AgentRunner;
@@ -31,7 +49,7 @@ describe("AgentRunner", () => {
         taskFolder: "test-task",
         prompt: "echo hello",
         cwd: tempDir,
-        command: ["echo", "hello"]
+        provider: new TestProvider(["echo", "hello"])
       });
 
       expect(process.id).toBeDefined();
@@ -48,7 +66,7 @@ describe("AgentRunner", () => {
         subtaskFile: "001-subtask.md",
         prompt: "implement this",
         cwd: tempDir,
-        command: ["echo", "implementing"]
+        provider: new TestProvider(["echo", "implementing"])
       });
 
       expect(process.subtaskFile).toBe("001-subtask.md");
@@ -67,7 +85,7 @@ describe("AgentRunner", () => {
         taskFolder: "test-task",
         prompt: "test",
         cwd: tempDir,
-        command: ["echo", "hello world"]
+        provider: new TestProvider(["echo", "hello world"])
       });
 
       // Wait for process to complete
@@ -96,7 +114,7 @@ describe("AgentRunner", () => {
         taskFolder: "test-task",
         prompt: "test",
         cwd: tempDir,
-        command: ["true"]
+        provider: new TestProvider(["true"])
       });
 
       // Wait for completion
@@ -124,7 +142,7 @@ describe("AgentRunner", () => {
         taskFolder: "test-task",
         prompt: "test",
         cwd: tempDir,
-        command: ["false"]
+        provider: new TestProvider(["false"])
       });
 
       // Wait for completion
@@ -145,7 +163,7 @@ describe("AgentRunner", () => {
         taskFolder: "test-task",
         prompt: "test",
         cwd: tempDir,
-        command: ["sleep", "60"]
+        provider: new TestProvider(["sleep", "60"])
       });
 
       expect(runner.getActive().length).toBe(1);
@@ -174,7 +192,7 @@ describe("AgentRunner", () => {
         taskFolder: "task-1",
         prompt: "test",
         cwd: tempDir,
-        command: ["sleep", "60"]
+        provider: new TestProvider(["sleep", "60"])
       });
 
       await runner.spawn({
@@ -182,7 +200,7 @@ describe("AgentRunner", () => {
         taskFolder: "task-2",
         prompt: "test",
         cwd: tempDir,
-        command: ["sleep", "60"]
+        provider: new TestProvider(["sleep", "60"])
       });
 
       const active = runner.getActive();
@@ -195,7 +213,7 @@ describe("AgentRunner", () => {
         taskFolder: "test-task",
         prompt: "test",
         cwd: tempDir,
-        command: ["true"]
+        provider: new TestProvider(["true"])
       });
 
       // Wait for completion
@@ -225,7 +243,7 @@ describe("AgentRunner", () => {
         taskFolder: "task-1",
         prompt: "test",
         cwd: tempDir,
-        command: ["sleep", "60"]
+        provider: new TestProvider(["sleep", "60"])
       });
 
       await runner.spawn({
@@ -233,7 +251,7 @@ describe("AgentRunner", () => {
         taskFolder: "task-2",
         prompt: "test",
         cwd: tempDir,
-        command: ["sleep", "60"]
+        provider: new TestProvider(["sleep", "60"])
       });
 
       await runner.spawn({
@@ -241,7 +259,7 @@ describe("AgentRunner", () => {
         taskFolder: "task-3",
         prompt: "test",
         cwd: tempDir,
-        command: ["sleep", "60"]
+        provider: new TestProvider(["sleep", "60"])
       });
 
       expect(runner.getCountByType("planning")).toBe(1);
@@ -264,7 +282,7 @@ describe("AgentRunner", () => {
           taskFolder: "test-task",
           prompt: "test",
           cwd: "/non/existent/path",
-          command: ["non-existent-command-12345"]
+          provider: new TestProvider(["non-existent-command-12345"])
         });
       } catch {
         // Expected to fail

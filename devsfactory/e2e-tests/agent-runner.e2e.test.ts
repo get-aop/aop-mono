@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { AgentRunner } from "../src/core/agent-runner";
+import { ClaudeProvider } from "../src/providers/claude";
 
 const LOGS_DIR = join(import.meta.dir, "..", ".logs");
 const TIMEOUT = 60_000;
@@ -36,14 +37,10 @@ describe("AgentRunner E2E Tests", () => {
         const process = await runner.spawn({
           type: "implementation",
           taskFolder: "e2e-test",
-          prompt: "Say hello world",
+          prompt:
+            "Tell me a short story about a cat which has the words hello and world in it",
           cwd: tempDir,
-          command: [
-            "claude",
-            "--print",
-            "--dangerously-skip-permissions",
-            "Tell me a short story about a cat which has the words hello and world in it"
-          ],
+          provider: new ClaudeProvider(),
           logsDir: LOGS_DIR
         });
 
@@ -89,9 +86,9 @@ describe("AgentRunner E2E Tests", () => {
         const process = await runner.spawn({
           type: "planning",
           taskFolder: `test-task-${i}`,
-          prompt: "test",
+          prompt: "say ok",
           cwd: tempDir,
-          command: ["echo", "test"]
+          provider: new ClaudeProvider()
         });
         ids.push(process.id);
       }
@@ -108,13 +105,9 @@ describe("AgentRunner E2E Tests", () => {
       const process = await runner.spawn({
         type: "implementation",
         taskFolder: "log-test",
-        prompt: "test logging",
+        prompt: "say line1 then line2 then line3, each on its own line",
         cwd: tempDir,
-        command: [
-          "bash",
-          "-c",
-          "echo 'line1'; sleep 0.1; echo 'line2'; sleep 0.1; echo 'line3'"
-        ],
+        provider: new ClaudeProvider(),
         logsDir: LOGS_DIR
       });
 

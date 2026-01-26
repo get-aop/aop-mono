@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, open } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import KSUID from "ksuid";
+import type { LLMProvider } from "../providers/types";
 import type { AgentProcess, AgentType } from "../types";
 
 export interface SpawnOptions {
@@ -10,7 +11,8 @@ export interface SpawnOptions {
   subtaskFile?: string;
   prompt: string;
   cwd: string;
-  command: string[];
+  provider: LLMProvider;
+  extraArgs?: string[];
   logsDir?: string;
 }
 
@@ -27,7 +29,13 @@ export class AgentRunner extends EventEmitter {
     const id = this.generateId();
     const startedAt = new Date();
 
-    const subprocess = Bun.spawn(options.command, {
+    const command = options.provider.buildCommand({
+      prompt: options.prompt,
+      cwd: options.cwd,
+      extraArgs: options.extraArgs
+    });
+
+    const subprocess = Bun.spawn(command, {
       cwd: options.cwd,
       stdout: "pipe",
       stderr: "pipe"
