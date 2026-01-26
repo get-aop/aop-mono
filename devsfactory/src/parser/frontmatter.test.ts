@@ -1,12 +1,12 @@
-import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { z, ZodError } from "zod";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { ZodError, z } from "zod";
+import { SubtaskFrontmatterSchema, TaskFrontmatterSchema } from "../types";
 import {
   parseFrontmatter,
   safeParseFrontmatter,
   serializeFrontmatter,
   updateFrontmatter,
 } from "./frontmatter";
-import { TaskFrontmatterSchema, SubtaskFrontmatterSchema } from "../types";
 
 const SimpleSchema = z.object({
   title: z.string(),
@@ -162,7 +162,7 @@ Content`;
   });
 
   test("returns error on malformed frontmatter structure", () => {
-    const markdown = `no frontmatter`;
+    const markdown = "no frontmatter";
 
     const result = safeParseFrontmatter(markdown, SimpleSchema);
 
@@ -175,7 +175,7 @@ Content`;
   });
 
   test("allows distinguishing structure errors via custom issue code", () => {
-    const malformedStructure = `no frontmatter`;
+    const malformedStructure = "no frontmatter";
     const invalidSchema = `---
 title: Test
 count: not-a-number
@@ -281,8 +281,7 @@ Original content stays intact.`;
 });
 
 describe("updateFrontmatter", () => {
-  const testFilePath =
-    "/tmp/frontmatter-test-" + Date.now() + "-" + Math.random() + ".md";
+  const testFilePath = `/tmp/frontmatter-test-${Date.now()}-${Math.random()}.md`;
 
   beforeEach(async () => {
     const content = `---
@@ -331,7 +330,7 @@ File content`;
   });
 
   test("throws on non-existent file", async () => {
-    const nonExistentPath = "/tmp/does-not-exist-" + Date.now() + ".md";
+    const nonExistentPath = `/tmp/does-not-exist-${Date.now()}.md`;
 
     await expect(
       updateFrontmatter(nonExistentPath, SimpleSchema, (current) => current),

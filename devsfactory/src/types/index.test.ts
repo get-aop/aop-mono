@@ -1,24 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import {
-  TaskStatusSchema,
-  SubtaskStatusSchema,
-  PlanStatusSchema,
-  PrioritySchema,
-  AgentTypeSchema,
-  TaskFrontmatterSchema,
-  PlanFrontmatterSchema,
-  SubtaskFrontmatterSchema,
-  TaskSchema,
-  PlanSchema,
-  SubtaskSchema,
-  SubtaskReferenceSchema,
   AgentProcessSchema,
-  ConfigSchema,
-  type TaskStatus,
-  type SubtaskStatus,
-  type PlanStatus,
-  type Priority,
   type AgentType,
+  AgentTypeSchema,
+  ConfigSchema,
+  PlanFrontmatterSchema,
+  PlanSchema,
+  type PlanStatus,
+  PlanStatusSchema,
+  type Priority,
+  PrioritySchema,
+  SubtaskFrontmatterSchema,
+  SubtaskReferenceSchema,
+  SubtaskSchema,
+  type SubtaskStatus,
+  SubtaskStatusSchema,
+  TaskFrontmatterSchema,
+  TaskSchema,
+  type TaskStatus,
+  TaskStatusSchema,
 } from "./index.ts";
 
 describe("Status Enums", () => {
@@ -192,7 +192,7 @@ describe("Frontmatter Schemas", () => {
       expect(() =>
         TaskFrontmatterSchema.parse({
           title: "Missing fields",
-        })
+        }),
       ).toThrow();
     });
   });

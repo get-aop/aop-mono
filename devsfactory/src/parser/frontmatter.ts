@@ -1,4 +1,4 @@
-import { stringify, parse } from "yaml";
+import { parse, stringify } from "yaml";
 import { ZodError, ZodIssueCode, type z } from "zod";
 
 export interface ParsedDocument<T> {

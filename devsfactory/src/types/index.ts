@@ -65,7 +65,7 @@ export const TaskSchema = z.object({
     z.object({
       text: z.string(),
       checked: z.boolean(),
-    })
+    }),
   ),
   notes: z.string().optional(),
 });
