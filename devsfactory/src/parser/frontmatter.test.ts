@@ -5,12 +5,12 @@ import {
   parseFrontmatter,
   safeParseFrontmatter,
   serializeFrontmatter,
-  updateFrontmatter,
+  updateFrontmatter
 } from "./frontmatter";
 
 const SimpleSchema = z.object({
   title: z.string(),
-  count: z.number(),
+  count: z.number()
 });
 
 describe("parseFrontmatter", () => {
@@ -71,7 +71,7 @@ count: 42
 # Content`;
 
     expect(() => parseFrontmatter(markdown, SimpleSchema)).toThrow(
-      "Invalid frontmatter",
+      "Invalid frontmatter"
     );
   });
 
@@ -184,7 +184,7 @@ Content`;
 
     const structureResult = safeParseFrontmatter(
       malformedStructure,
-      SimpleSchema,
+      SimpleSchema
     );
     const schemaResult = safeParseFrontmatter(invalidSchema, SimpleSchema);
 
@@ -202,7 +202,7 @@ describe("serializeFrontmatter", () => {
   test("serializes simple frontmatter", () => {
     const doc = {
       frontmatter: { title: "Test", count: 42 },
-      content: "# Content",
+      content: "# Content"
     };
 
     const result = serializeFrontmatter(doc);
@@ -218,7 +218,7 @@ count: 42
     const date = new Date("2026-01-25T10:30:00.000Z");
     const doc = {
       frontmatter: { title: "Test", created: date },
-      content: "Content",
+      content: "Content"
     };
 
     const result = serializeFrontmatter(doc);
@@ -229,7 +229,7 @@ count: 42
   test("serializes arrays correctly", () => {
     const doc = {
       frontmatter: { title: "Test", tags: ["a", "b", "c"] },
-      content: "Content",
+      content: "Content"
     };
 
     const result = serializeFrontmatter(doc);
@@ -243,7 +243,7 @@ count: 42
   test("serializes nested objects", () => {
     const doc = {
       frontmatter: { title: "Test", meta: { author: "John", version: 1 } },
-      content: "Content",
+      content: "Content"
     };
 
     const result = serializeFrontmatter(doc);
@@ -256,7 +256,7 @@ count: 42
   test("handles null values", () => {
     const doc = {
       frontmatter: { title: "Test", assignee: null },
-      content: "Content",
+      content: "Content"
     };
 
     const result = serializeFrontmatter(doc);
@@ -306,7 +306,7 @@ File content`;
   test("updates frontmatter in existing file", async () => {
     await updateFrontmatter(testFilePath, SimpleSchema, (current) => ({
       ...current,
-      count: current.count + 1,
+      count: current.count + 1
     }));
 
     const updated = await Bun.file(testFilePath).text();
@@ -320,7 +320,7 @@ File content`;
   test("replaces frontmatter values", async () => {
     await updateFrontmatter(testFilePath, SimpleSchema, (current) => ({
       ...current,
-      title: "Updated Title",
+      title: "Updated Title"
     }));
 
     const updated = await Bun.file(testFilePath).text();
@@ -333,7 +333,7 @@ File content`;
     const nonExistentPath = `/tmp/does-not-exist-${Date.now()}.md`;
 
     await expect(
-      updateFrontmatter(nonExistentPath, SimpleSchema, (current) => current),
+      updateFrontmatter(nonExistentPath, SimpleSchema, (current) => current)
     ).rejects.toThrow("File not found");
   });
 });
@@ -402,7 +402,7 @@ Content`;
       const zodError = error as ZodError;
       const firstIssue = zodError.issues[0]!;
       expect(firstIssue.path).toContain("status");
-      expect(firstIssue.code).toBe("invalid_enum_value");
+      expect(firstIssue.code).toBe("invalid_value");
     }
   });
 });

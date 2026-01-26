@@ -1,6 +1,10 @@
-import { parseFrontmatter, serializeFrontmatter, updateFrontmatter } from "./frontmatter";
 import { TaskFrontmatterSchema } from "../types";
 import type { Task, TaskStatus } from "../types";
+import {
+  parseFrontmatter,
+  serializeFrontmatter,
+  updateFrontmatter
+} from "./frontmatter";
 
 const DEFAULT_DEVSFACTORY_DIR = ".devsfactory";
 
@@ -29,7 +33,7 @@ export const parseTask = async (
     description: sections.description,
     requirements: sections.requirements,
     acceptanceCriteria: parseAcceptanceCriteria(sections.acceptanceCriteria),
-    notes: sections.notes,
+    notes: sections.notes
   };
 };
 
@@ -46,7 +50,7 @@ export const createTask = async (
   const body = serializeTaskBody(task);
   const markdown = serializeFrontmatter({
     frontmatter: task.frontmatter as Record<string, unknown>,
-    content: body,
+    content: body
   });
 
   await Bun.write(filePath, markdown);
@@ -61,7 +65,7 @@ export const updateTaskStatus = async (
 
   await updateFrontmatter(filePath, TaskFrontmatterSchema, (current) => ({
     ...current,
-    status,
+    status
   }));
 };
 
@@ -108,10 +112,10 @@ const extractSections = (
   }
 
   return {
-    description: sections["description"] || "",
-    requirements: sections["requirements"] || "",
-    acceptanceCriteria: sections["acceptance_criteria"] || "",
-    notes: sections["notes"] || undefined,
+    description: sections.description || "",
+    requirements: sections.requirements || "",
+    acceptanceCriteria: sections.acceptance_criteria || "",
+    notes: sections.notes || undefined
   };
 };
 
@@ -126,7 +130,7 @@ const parseAcceptanceCriteria = (
     .filter((match): match is RegExpMatchArray => match !== null)
     .map((match) => ({
       text: match[2]!.trim(),
-      checked: match[1]!.toLowerCase() === "x",
+      checked: match[1]!.toLowerCase() === "x"
     }));
 
 const serializeTaskBody = (task: Omit<Task, "folder">): string => {

@@ -12,7 +12,7 @@ export type SafeParseResult<T> =
 
 export const parseFrontmatter = <S extends z.ZodTypeAny>(
   markdown: string,
-  schema: S,
+  schema: S
 ): ParsedDocument<z.output<S>> => {
   const { rawFrontmatter, content } = extractFrontmatter(markdown);
   const parsed = parse(rawFrontmatter);
@@ -22,7 +22,7 @@ export const parseFrontmatter = <S extends z.ZodTypeAny>(
 
 export const safeParseFrontmatter = <S extends z.ZodTypeAny>(
   markdown: string,
-  schema: S,
+  schema: S
 ): SafeParseResult<z.output<S>> => {
   let rawFrontmatter: string;
   let content: string;
@@ -37,8 +37,8 @@ export const safeParseFrontmatter = <S extends z.ZodTypeAny>(
     return {
       success: false,
       error: new ZodError([
-        { code: "invalid_format", format: "frontmatter", path: [], message },
-      ]),
+        { code: "invalid_format", format: "frontmatter", path: [], message }
+      ])
     };
   }
 
@@ -48,14 +48,14 @@ export const safeParseFrontmatter = <S extends z.ZodTypeAny>(
   if (result.success) {
     return {
       success: true,
-      data: { frontmatter: result.data as z.output<S>, content },
+      data: { frontmatter: result.data as z.output<S>, content }
     };
   }
   return { success: false, error: result.error };
 };
 
 export const serializeFrontmatter = <T extends Record<string, unknown>>(
-  doc: ParsedDocument<T>,
+  doc: ParsedDocument<T>
 ): string => {
   const prepared = prepareForSerialization(doc.frontmatter);
   const yamlContent = stringify(prepared).trim();
@@ -65,7 +65,7 @@ export const serializeFrontmatter = <T extends Record<string, unknown>>(
 export const updateFrontmatter = async <S extends z.ZodTypeAny>(
   filePath: string,
   schema: S,
-  updater: (current: z.output<S>) => z.output<S>,
+  updater: (current: z.output<S>) => z.output<S>
 ): Promise<void> => {
   const file = Bun.file(filePath);
   const exists = await file.exists();
@@ -79,7 +79,7 @@ export const updateFrontmatter = async <S extends z.ZodTypeAny>(
   const updated = updater(frontmatter);
   const serialized = serializeFrontmatter({
     frontmatter: updated as Record<string, unknown>,
-    content,
+    content
   });
   await Bun.write(filePath, serialized);
 };
@@ -87,7 +87,7 @@ export const updateFrontmatter = async <S extends z.ZodTypeAny>(
 const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 const extractFrontmatter = (
-  markdown: string,
+  markdown: string
 ): { rawFrontmatter: string; content: string } => {
   const match = markdown.match(FRONTMATTER_REGEX);
 
@@ -97,7 +97,7 @@ const extractFrontmatter = (
 
   return {
     rawFrontmatter: match[1]!,
-    content: match[2]!,
+    content: match[2]!
   };
 };
 
@@ -115,8 +115,8 @@ const prepareValue = (value: unknown): unknown => {
 };
 
 const prepareForSerialization = (
-  obj: Record<string, unknown>,
+  obj: Record<string, unknown>
 ): Record<string, unknown> =>
   Object.fromEntries(
-    Object.entries(obj).map(([key, value]) => [key, prepareValue(value)]),
+    Object.entries(obj).map(([key, value]) => [key, prepareValue(value)])
   );

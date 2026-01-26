@@ -1,13 +1,13 @@
-import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import {
-  parseTask,
-  createTask,
-  updateTaskStatus,
-  listTaskFolders,
-} from "./task";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Task, TaskStatus } from "../types";
+import {
+  createTask,
+  listTaskFolders,
+  parseTask,
+  updateTaskStatus
+} from "./task";
 
-const TEST_DIR = "/tmp/devsfactory-task-test-" + Date.now();
+const TEST_DIR = `/tmp/devsfactory-task-test-${Date.now()}`;
 const DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
 
 const sampleTaskMarkdown = `---
@@ -76,7 +76,9 @@ describe("parseTask", () => {
       "Users should be able to sign up and log in"
     );
     expect(task.requirements).toContain("Email must be unique");
-    expect(task.requirements).toContain("Passwords must be minimum 8 characters");
+    expect(task.requirements).toContain(
+      "Passwords must be minimum 8 characters"
+    );
     expect(task.notes).toContain("Any additional context");
   });
 
@@ -89,15 +91,15 @@ describe("parseTask", () => {
     expect(task.acceptanceCriteria).toHaveLength(3);
     expect(task.acceptanceCriteria[0]).toEqual({
       text: "Users can register with email/password",
-      checked: false,
+      checked: false
     });
     expect(task.acceptanceCriteria[1]).toEqual({
       text: "Users can log in and receive a session",
-      checked: true,
+      checked: true
     });
     expect(task.acceptanceCriteria[2]).toEqual({
       text: "Passwords are securely hashed",
-      checked: false,
+      checked: false
     });
   });
 
@@ -159,12 +161,12 @@ describe("createTask", () => {
         priority: "medium",
         tags: ["feature"],
         assignee: null,
-        dependencies: [],
+        dependencies: []
       },
       description: "Build a new feature",
       requirements: "- Must work",
       acceptanceCriteria: [{ text: "Feature works", checked: false }],
-      notes: "Some notes",
+      notes: "Some notes"
     };
 
     await createTask("20260125100000-new-feature", task, DEVSFACTORY_DIR);
@@ -184,15 +186,15 @@ describe("createTask", () => {
         priority: "high",
         tags: ["test", "example"],
         assignee: "agent-1",
-        dependencies: ["dep-1"],
+        dependencies: ["dep-1"]
       },
       description: "This is the description.",
       requirements: "- Requirement 1\n- Requirement 2",
       acceptanceCriteria: [
         { text: "Criterion 1", checked: false },
-        { text: "Criterion 2", checked: true },
+        { text: "Criterion 2", checked: true }
       ],
-      notes: "These are notes.",
+      notes: "These are notes."
     };
 
     await createTask("20260125100000-full-task", task, DEVSFACTORY_DIR);
@@ -221,11 +223,11 @@ describe("createTask", () => {
         priority: "low",
         tags: ["a", "b"],
         assignee: null,
-        dependencies: [],
+        dependencies: []
       },
       description: "Description text",
       requirements: "- Req 1",
-      acceptanceCriteria: [{ text: "AC 1", checked: false }],
+      acceptanceCriteria: [{ text: "AC 1", checked: false }]
     };
 
     await createTask("20260125120000-roundtrip", original, DEVSFACTORY_DIR);
@@ -381,7 +383,7 @@ describe("listTaskFolders", () => {
     expect(folders).toEqual([
       "20260125100000-task-a",
       "20260125110000-task-b",
-      "20260125120000-task-c",
+      "20260125120000-task-c"
     ]);
   });
 

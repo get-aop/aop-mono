@@ -1,15 +1,15 @@
-import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import {
-  parseSubtask,
-  createSubtask,
-  updateSubtaskStatus,
-  listSubtasks,
-  getReadySubtasks,
-  appendReviewHistory,
-} from "./subtask";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Subtask } from "../types";
+import {
+  appendReviewHistory,
+  createSubtask,
+  getReadySubtasks,
+  listSubtasks,
+  parseSubtask,
+  updateSubtaskStatus
+} from "./subtask";
 
-const TEST_DIR = "/tmp/devsfactory-subtask-test-" + Date.now();
+const TEST_DIR = `/tmp/devsfactory-subtask-test-${Date.now()}`;
 const DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
 const TASK_FOLDER = "20260125143022-add-user-auth";
 
@@ -136,16 +136,12 @@ describe("createSubtask", () => {
       frontmatter: {
         title: "First subtask",
         status: "PENDING",
-        dependencies: [],
+        dependencies: []
       },
-      description: "Description of first subtask",
+      description: "Description of first subtask"
     };
 
-    const filename = await createSubtask(
-      TASK_FOLDER,
-      subtask,
-      DEVSFACTORY_DIR
-    );
+    const filename = await createSubtask(TASK_FOLDER, subtask, DEVSFACTORY_DIR);
 
     expect(filename).toBe("001-first-subtask.md");
     const file = Bun.file(`${DEVSFACTORY_DIR}/${TASK_FOLDER}/${filename}`);
@@ -166,16 +162,12 @@ describe("createSubtask", () => {
       frontmatter: {
         title: "Third subtask",
         status: "PENDING",
-        dependencies: [1, 2],
+        dependencies: [1, 2]
       },
-      description: "Description of third subtask",
+      description: "Description of third subtask"
     };
 
-    const filename = await createSubtask(
-      TASK_FOLDER,
-      subtask,
-      DEVSFACTORY_DIR
-    );
+    const filename = await createSubtask(TASK_FOLDER, subtask, DEVSFACTORY_DIR);
 
     expect(filename).toBe("003-third-subtask.md");
   });
@@ -185,16 +177,12 @@ describe("createSubtask", () => {
       frontmatter: {
         title: "Add User Authentication!!! With OAUTH2",
         status: "PENDING",
-        dependencies: [],
+        dependencies: []
       },
-      description: "OAuth implementation",
+      description: "OAuth implementation"
     };
 
-    const filename = await createSubtask(
-      TASK_FOLDER,
-      subtask,
-      DEVSFACTORY_DIR
-    );
+    const filename = await createSubtask(TASK_FOLDER, subtask, DEVSFACTORY_DIR);
 
     expect(filename).toBe("001-add-user-authentication-with-oauth2.md");
   });
@@ -204,20 +192,16 @@ describe("createSubtask", () => {
       frontmatter: {
         title: "Full subtask",
         status: "PENDING",
-        dependencies: [1],
+        dependencies: [1]
       },
       description: "Description content",
       context: "Context content",
       result: "Result content",
       review: "Review content",
-      blockers: "Blockers content",
+      blockers: "Blockers content"
     };
 
-    const filename = await createSubtask(
-      TASK_FOLDER,
-      subtask,
-      DEVSFACTORY_DIR
-    );
+    const filename = await createSubtask(TASK_FOLDER, subtask, DEVSFACTORY_DIR);
 
     const content = await Bun.file(
       `${DEVSFACTORY_DIR}/${TASK_FOLDER}/${filename}`
@@ -240,10 +224,10 @@ describe("createSubtask", () => {
       frontmatter: {
         title: "Roundtrip test",
         status: "INPROGRESS",
-        dependencies: [1, 2],
+        dependencies: [1, 2]
       },
       description: "Description text",
-      context: "Context text",
+      context: "Context text"
     };
 
     const filename = await createSubtask(

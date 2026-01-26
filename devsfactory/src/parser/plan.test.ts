@@ -1,13 +1,13 @@
-import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import {
-  parsePlan,
-  createPlan,
-  updatePlanStatus,
-  addSubtaskToPlan,
-} from "./plan";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Plan, PlanStatus, SubtaskReference } from "../types";
+import {
+  addSubtaskToPlan,
+  createPlan,
+  parsePlan,
+  updatePlanStatus
+} from "./plan";
 
-const TEST_DIR = "/tmp/devsfactory-plan-test-" + Date.now();
+const TEST_DIR = `/tmp/devsfactory-plan-test-${Date.now()}`;
 const DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
 
 const samplePlanMarkdown = `---
@@ -77,21 +77,21 @@ describe("parsePlan", () => {
       number: 1,
       slug: "create-user-model",
       title: "Create user model",
-      dependencies: [],
+      dependencies: []
     });
 
     expect(plan!.subtasks[1]).toEqual({
       number: 2,
       slug: "add-password-hashing",
       title: "Add password hashing",
-      dependencies: [1],
+      dependencies: [1]
     });
 
     expect(plan!.subtasks[2]).toEqual({
       number: 3,
       slug: "setup-auth-routes",
       title: "Setup auth routes",
-      dependencies: [1, 2],
+      dependencies: [1, 2]
     });
   });
 
@@ -192,18 +192,21 @@ describe("createPlan", () => {
       frontmatter: {
         status: "INPROGRESS",
         task: "20260125143022-new-task",
-        created: new Date("2026-01-25T16:00:00Z"),
+        created: new Date("2026-01-25T16:00:00Z")
       },
       subtasks: [
-        { number: 1, slug: "setup-db", title: "Setup database", dependencies: [] },
-      ],
+        {
+          number: 1,
+          slug: "setup-db",
+          title: "Setup database",
+          dependencies: []
+        }
+      ]
     };
 
     await createPlan("20260125143022-new-task", plan, DEVSFACTORY_DIR);
 
-    const file = Bun.file(
-      `${DEVSFACTORY_DIR}/20260125143022-new-task/plan.md`
-    );
+    const file = Bun.file(`${DEVSFACTORY_DIR}/20260125143022-new-task/plan.md`);
     expect(await file.exists()).toBe(true);
 
     const content = await file.text();
@@ -216,13 +219,28 @@ describe("createPlan", () => {
       frontmatter: {
         status: "INPROGRESS",
         task: "20260125143022-new-task",
-        created: new Date("2026-01-25T16:00:00Z"),
+        created: new Date("2026-01-25T16:00:00Z")
       },
       subtasks: [
-        { number: 1, slug: "first-task", title: "First task", dependencies: [] },
-        { number: 2, slug: "second-task", title: "Second task", dependencies: [1] },
-        { number: 3, slug: "third-task", title: "Third task", dependencies: [1, 2] },
-      ],
+        {
+          number: 1,
+          slug: "first-task",
+          title: "First task",
+          dependencies: []
+        },
+        {
+          number: 2,
+          slug: "second-task",
+          title: "Second task",
+          dependencies: [1]
+        },
+        {
+          number: 3,
+          slug: "third-task",
+          title: "Third task",
+          dependencies: [1, 2]
+        }
+      ]
     };
 
     await createPlan("20260125143022-new-task", plan, DEVSFACTORY_DIR);
@@ -233,8 +251,12 @@ describe("createPlan", () => {
 
     expect(content).toContain("## Subtasks");
     expect(content).toContain("1. 001-first-task (First task)");
-    expect(content).toContain("2. 002-second-task (Second task) → depends on: 001");
-    expect(content).toContain("3. 003-third-task (Third task) → depends on: 001, 002");
+    expect(content).toContain(
+      "2. 002-second-task (Second task) → depends on: 001"
+    );
+    expect(content).toContain(
+      "3. 003-third-task (Third task) → depends on: 001, 002"
+    );
   });
 
   test("roundtrip: create -> parse produces same data", async () => {
@@ -242,12 +264,12 @@ describe("createPlan", () => {
       frontmatter: {
         status: "INPROGRESS",
         task: "20260125143022-new-task",
-        created: new Date("2026-01-25T16:00:00Z"),
+        created: new Date("2026-01-25T16:00:00Z")
       },
       subtasks: [
         { number: 1, slug: "subtask-a", title: "Subtask A", dependencies: [] },
-        { number: 2, slug: "subtask-b", title: "Subtask B", dependencies: [1] },
-      ],
+        { number: 2, slug: "subtask-b", title: "Subtask B", dependencies: [1] }
+      ]
     };
 
     await createPlan("20260125143022-new-task", original, DEVSFACTORY_DIR);
@@ -326,7 +348,7 @@ describe("addSubtaskToPlan", () => {
       number: 4,
       slug: "new-subtask",
       title: "New subtask",
-      dependencies: [3],
+      dependencies: [3]
     };
 
     await addSubtaskToPlan(
@@ -348,7 +370,7 @@ describe("addSubtaskToPlan", () => {
       number: 1,
       slug: "first",
       title: "First",
-      dependencies: [],
+      dependencies: []
     };
 
     await expect(
@@ -361,7 +383,7 @@ describe("addSubtaskToPlan", () => {
       number: 4,
       slug: "added-subtask",
       title: "Added subtask",
-      dependencies: [2],
+      dependencies: [2]
     };
 
     await addSubtaskToPlan(
@@ -375,9 +397,15 @@ describe("addSubtaskToPlan", () => {
     ).text();
 
     expect(content).toContain("1. 001-create-user-model (Create user model)");
-    expect(content).toContain("2. 002-add-password-hashing (Add password hashing) → depends on: 001");
-    expect(content).toContain("3. 003-setup-auth-routes (Setup auth routes) → depends on: 001, 002");
-    expect(content).toContain("4. 004-added-subtask (Added subtask) → depends on: 002");
+    expect(content).toContain(
+      "2. 002-add-password-hashing (Add password hashing) → depends on: 001"
+    );
+    expect(content).toContain(
+      "3. 003-setup-auth-routes (Setup auth routes) → depends on: 001, 002"
+    );
+    expect(content).toContain(
+      "4. 004-added-subtask (Added subtask) → depends on: 002"
+    );
     expect(content).toContain("## Result");
   });
 });
