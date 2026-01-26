@@ -134,3 +134,11 @@ Build the interactive terminal UI using OpenTUI with React. The TUI displays tas
 - Use `<text>` elements for text rendering
 - Colors specified as hex strings (e.g., `"#00FF00"`)
 - Test manually in terminal during development
+
+## Implemented PR Description
+(filled by agent after completion)
+
+{PR_TITLE}
+
+{PR_DESCRIPTION}
+

@@ -132,3 +132,11 @@ Implement git worktree management for task/subtask isolation and the agent runne
 - Capture both stdout and stderr from git commands for error handling
 - AgentRunner should handle multiple concurrent agents
 - Prompt templates should be string templates, not files
+
+## Implemented PR Description
+(filled by agent after completion)
+
+{PR_TITLE}
+
+{PR_DESCRIPTION}
+

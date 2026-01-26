@@ -1,6 +1,6 @@
 ---
 title: Types and Frontmatter Parsing
-status: BACKLOG
+status: REVIEW
 created: 2026-01-25T00:00:00Z
 priority: high
 tags: [foundation, types, parser]
@@ -83,18 +83,18 @@ Use Zod to define schemas that provide both runtime validation and TypeScript ty
 
 ## Acceptance Criteria
 
-- [ ] All Zod schemas are defined and exported from `src/types/index.ts`
-- [ ] All TypeScript types are derived from schemas using `z.infer` and exported
-- [ ] Schemas validate correctly and provide helpful error messages
-- [ ] Default values work for optional fields (tags, assignee, dependencies)
-- [ ] Date coercion works (ISO strings → Date objects)
-- [ ] `parseFrontmatter` correctly parses and validates YAML frontmatter from markdown
-- [ ] `safeParseFrontmatter` returns result object without throwing
-- [ ] `serializeFrontmatter` produces valid markdown with YAML frontmatter
-- [ ] Round-trip parsing and serialization preserves data integrity
-- [ ] `updateFrontmatter` reads, modifies, and writes frontmatter atomically
-- [ ] All tests pass: `bun test src/types/ src/parser/frontmatter.test.ts`
-- [ ] No TypeScript errors: `bunx tsc --noEmit`
+- [x] All Zod schemas are defined and exported from `src/types/index.ts`
+- [x] All TypeScript types are derived from schemas using `z.infer` and exported
+- [x] Schemas validate correctly and provide helpful error messages
+- [x] Default values work for optional fields (tags, assignee, dependencies)
+- [x] Date coercion works (ISO strings → Date objects)
+- [x] `parseFrontmatter` correctly parses and validates YAML frontmatter from markdown
+- [x] `safeParseFrontmatter` returns result object without throwing
+- [x] `serializeFrontmatter` produces valid markdown with YAML frontmatter
+- [x] Round-trip parsing and serialization preserves data integrity
+- [x] `updateFrontmatter` reads, modifies, and writes frontmatter atomically
+- [x] All tests pass: `bun test src/types/ src/parser/frontmatter.test.ts`
+- [x] No TypeScript errors: `bunx tsc --noEmit`
 
 ## Notes
 
@@ -103,3 +103,20 @@ Use Zod to define schemas that provide both runtime validation and TypeScript ty
 - Dependencies: `zod` (latest 3.x), `yaml` (version 2.x for ESM compatibility)
 - Use `z.coerce.date()` for date fields to handle ISO string conversion
 - Export both schemas (for runtime validation) and types (for TypeScript)
+
+## Implemented PR Description
+
+**Title**: feat: add Zod schemas and YAML frontmatter parsing utilities
+
+**Body**:
+## Summary
+- Add 14 Zod schemas for task management types with runtime validation (`src/types/index.ts`)
+- Implement YAML frontmatter parsing utilities with parse, safeParse, serialize, and update functions (`src/parser/frontmatter.ts`)
+- Add comprehensive test coverage with 56 tests and 160 assertions
+
+## Test plan
+- [x] Run `bun test src/types/ src/parser/frontmatter.test.ts` - all 56 tests pass
+- [x] Run `bunx tsc --noEmit` - no TypeScript errors
+- [x] Verify date coercion works (ISO strings → Date objects)
+- [x] Verify roundtrip parsing/serialization preserves data integrity
+- [x] Verify default values applied for optional fields

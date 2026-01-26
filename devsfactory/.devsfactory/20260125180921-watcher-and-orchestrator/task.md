@@ -121,3 +121,11 @@ Implement the reactive loop that monitors `.devsfactory/` for state changes and 
 - Use dependency injection for testability (AgentRunner can be mocked)
 - File watcher should not trigger on `.devsfactory/.git/` changes
 - Consider using a state machine pattern for clarity
+
+## Implemented PR Description
+(filled by agent after completion)
+
+{PR_TITLE}
+
+{PR_DESCRIPTION}
+

@@ -1,6 +1,6 @@
 ---
 title: Document Parsers for Task, Plan, and Subtask Files
-status: BACKLOG
+status: PENDING
 created: 2026-01-25T00:00:00Z
 priority: high
 tags: [parser, core]
@@ -103,16 +103,16 @@ Each parser passes the appropriate schema (e.g., `TaskFrontmatterSchema`) to `pa
 
 ## Acceptance Criteria
 
-- [ ] `parseTask` correctly parses task.md files matching DESIGN.md format
-- [ ] `createTask` creates properly formatted task.md with all sections
-- [ ] `parsePlan` correctly parses plan.md including subtask references
-- [ ] `parseSubtask` extracts number, slug, and all sections from subtask files
-- [ ] `createSubtask` auto-increments subtask numbers correctly
-- [ ] `getReadySubtasks` correctly identifies subtasks with satisfied dependencies
-- [ ] `listTaskFolders` returns all valid task directories
-- [ ] Review history files are properly created and appended
-- [ ] All tests pass: `bun test src/parser/`
-- [ ] No TypeScript errors: `bunx tsc --noEmit`
+- [x] `parseTask` correctly parses task.md files matching DESIGN.md format
+- [x] `createTask` creates properly formatted task.md with all sections
+- [x] `parsePlan` correctly parses plan.md including subtask references
+- [x] `parseSubtask` extracts number, slug, and all sections from subtask files
+- [x] `createSubtask` auto-increments subtask numbers correctly
+- [x] `getReadySubtasks` correctly identifies subtasks with satisfied dependencies
+- [x] `listTaskFolders` returns all valid task directories
+- [x] Review history files are properly created and appended
+- [x] All tests pass: `bun test src/parser/`
+- [x] No TypeScript errors: `bunx tsc --noEmit`
 
 ## Notes
 
@@ -123,3 +123,10 @@ Each parser passes the appropriate schema (e.g., `TaskFrontmatterSchema`) to `pa
 - Import schemas from `src/types/index.ts` (e.g., `TaskFrontmatterSchema`)
 - Zod validation happens automatically in `parseFrontmatter()` - no separate validation needed
 - If validation fails, `parseFrontmatter()` throws `ZodError` with detailed message
+
+## Implemented PR Description
+(filled by agent after completion)
+
+{PR_TITLE}
+
+{PR_DESCRIPTION}

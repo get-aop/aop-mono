@@ -149,3 +149,11 @@ dependencies: [{ dependencies }]
 - The skill file goes in `skills/new-task/skill.md`
 - Skill should be compatible with Claude Code skill format
 - Test the full workflow manually after integration
+
+## Implemented PR Description
+(filled by agent after completion)
+
+{PR_TITLE}
+
+{PR_DESCRIPTION}
+

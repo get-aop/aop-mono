@@ -91,6 +91,13 @@ Users should be able to sign up and log in using email and password.
 
 ## Notes
 Any additional context, links, or references...
+
+### Implemented PR Description
+(filled by agent after completion)
+
+{PR_TITLE}
+
+{PR_DESCRIPTION}
 ```
 
 **Task Statuses:**
