@@ -2,53 +2,40 @@ import { describe, expect, test } from "bun:test";
 import { getImplementationPrompt } from "./implementation";
 
 describe("getImplementationPrompt", () => {
-  test("returns prompt with subtask title and path substituted", async () => {
-    const subtaskTitle = "Create user model";
+  test("returns prompt with subtask path and task dir substituted", async () => {
     const subtaskPath =
       "/home/user/.devsfactory/20260125143022-add-user-auth/001-create-user-model.md";
-    const prompt = await getImplementationPrompt(subtaskTitle, subtaskPath);
+    const prompt = await getImplementationPrompt(subtaskPath);
 
-    expect(prompt).toContain(subtaskTitle);
     expect(prompt).toContain(subtaskPath);
+    expect(prompt).toContain(
+      "/home/user/.devsfactory/20260125143022-add-user-auth"
+    );
   });
 
-  test("includes test-driven-development requirement", async () => {
-    const prompt = await getImplementationPrompt(
-      "Test subtask",
-      "/path/to/subtask.md"
-    );
+  test("includes test-driven-development skill", async () => {
+    const prompt = await getImplementationPrompt("/path/to/task/subtask.md");
 
     expect(prompt).toContain("test-driven-development");
-    expect(prompt).toContain("REQUIRED SUB-SKILL");
   });
 
-  test("includes code-simplifier instruction", async () => {
-    const prompt = await getImplementationPrompt(
-      "Test subtask",
-      "/path/to/subtask.md"
-    );
+  test("includes code-simplifier skill", async () => {
+    const prompt = await getImplementationPrompt("/path/to/task/subtask.md");
 
     expect(prompt).toContain("code-simplifier");
   });
 
-  test("includes instructions for completion", async () => {
-    const prompt = await getImplementationPrompt(
-      "Test subtask",
-      "/path/to/subtask.md"
-    );
+  test("includes success criteria", async () => {
+    const prompt = await getImplementationPrompt("/path/to/task/subtask.md");
 
+    expect(prompt).toContain("success_criteria");
     expect(prompt).toContain("AGENT_REVIEW");
-    expect(prompt).toContain("Result");
-    expect(prompt).toContain("commit");
   });
 
-  test("includes instructions for blocked state", async () => {
-    const prompt = await getImplementationPrompt(
-      "Test subtask",
-      "/path/to/subtask.md"
-    );
+  test("includes decision boundaries", async () => {
+    const prompt = await getImplementationPrompt("/path/to/task/subtask.md");
 
+    expect(prompt).toContain("decision_boundaries");
     expect(prompt).toContain("BLOCKED");
-    expect(prompt).toContain("blocker");
   });
 });

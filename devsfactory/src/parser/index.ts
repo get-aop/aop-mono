@@ -8,6 +8,7 @@ export {
 } from "./frontmatter";
 export {
   addSubtaskToPlan,
+  appendPlanBlockers,
   createPlan,
   parsePlan,
   updatePlanStatus

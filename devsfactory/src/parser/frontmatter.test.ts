@@ -289,9 +289,13 @@ Original content stays intact.`;
 });
 
 describe("updateFrontmatter", () => {
-  const testFilePath = `/tmp/frontmatter-test-${Date.now()}-${Math.random()}.md`;
+  let testFilePath: string;
+  let testDir: string;
 
   beforeEach(async () => {
+    const { createTestDir } = await import("../test-helpers");
+    testDir = await createTestDir("frontmatter");
+    testFilePath = `${testDir}/test.md`;
     const content = `---
 title: Original
 count: 1
@@ -301,14 +305,8 @@ File content`;
   });
 
   afterEach(async () => {
-    try {
-      const file = Bun.file(testFilePath);
-      if (await file.exists()) {
-        await Bun.$`rm ${testFilePath}`;
-      }
-    } catch {
-      // ignore cleanup errors
-    }
+    const { cleanupTestDir } = await import("../test-helpers");
+    await cleanupTestDir(testDir);
   });
 
   test("updates frontmatter in existing file", async () => {
@@ -338,7 +336,7 @@ File content`;
   });
 
   test("throws on non-existent file", async () => {
-    const nonExistentPath = `/tmp/does-not-exist-${Date.now()}.md`;
+    const nonExistentPath = `${testDir}/does-not-exist.md`;
 
     await expect(
       updateFrontmatter(nonExistentPath, SimpleSchema, (current) => current)

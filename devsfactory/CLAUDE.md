@@ -1,4 +1,3 @@
-
 Default to using Bun instead of Node.js.
 
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`
@@ -19,17 +18,13 @@ Default to using Bun instead of Node.js.
 - Prefer `Bun.file` over `node:fs`'s readFile/writeFile
 - Bun.$`ls` instead of execa.
 
+## Code Organization
+
+Avoid mixing languages in files. Inline content (markdown, SQL, JSON, YAML, etc.) should be extracted to separate files and imported. For example: inline markdown in tests → imported `.md` fixture file, inline SQL → imported `.sql` file.
+
 ## Testing
 
-Use `bun test` to run tests.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
+- Use `bun test` to run tests and `bun test:e2e` to run e2e tests.
 
 ## Frontend
 

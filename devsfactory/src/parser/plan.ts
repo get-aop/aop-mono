@@ -79,6 +79,51 @@ export const addSubtaskToPlan = async (
   await createPlan(taskFolder, plan, devsfactoryDir);
 };
 
+export const appendPlanBlockers = async (
+  taskFolder: string,
+  blockerMessage: string,
+  devsfactoryDir = DEFAULT_DEVSFACTORY_DIR
+): Promise<void> => {
+  const filePath = `${devsfactoryDir}/${taskFolder}/plan.md`;
+  const file = Bun.file(filePath);
+
+  if (!(await file.exists())) {
+    throw new Error(`Plan not found: ${taskFolder}`);
+  }
+
+  const content = await file.text();
+  const blockerEntry = formatBlockerEntry(blockerMessage);
+  const newContent = insertBlockerEntry(content, blockerEntry);
+
+  await Bun.write(filePath, newContent);
+};
+
+const formatBlockerEntry = (message: string): string => {
+  const timestamp = new Date().toISOString();
+  return `- [${timestamp}] ${message}`;
+};
+
+const BLOCKERS_HEADER = "### Blockers";
+const BLOCKERS_PLACEHOLDER =
+  "(filled when agent gets stuck or needs user input)";
+
+const insertBlockerEntry = (content: string, blockerEntry: string): string => {
+  const headerIndex = content.indexOf(BLOCKERS_HEADER);
+
+  if (headerIndex === -1) {
+    return `${content}\n${BLOCKERS_HEADER}\n\n${blockerEntry}\n`;
+  }
+
+  const beforeBlockers = content.slice(0, headerIndex + BLOCKERS_HEADER.length);
+  const afterBlockers = content
+    .slice(headerIndex + BLOCKERS_HEADER.length)
+    .replace(BLOCKERS_PLACEHOLDER, "")
+    .trim();
+
+  const suffix = afterBlockers ? `\n${afterBlockers}` : "";
+  return `${beforeBlockers}\n\n${blockerEntry}${suffix}\n`;
+};
+
 const SUBTASK_REGEX =
   /^(\d+)\.\s+(\d{3})-([a-z0-9-]+)\s+\(([^)]+)\)(?:\s+→\s+depends on:\s+(.+))?$/;
 

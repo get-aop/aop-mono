@@ -4,6 +4,7 @@ import {
   type AgentType,
   AgentTypeSchema,
   ConfigSchema,
+  OrchestratorStateSchema,
   PlanFrontmatterSchema,
   PlanSchema,
   type PlanStatus,
@@ -18,7 +19,8 @@ import {
   TaskFrontmatterSchema,
   TaskSchema,
   type TaskStatus,
-  TaskStatusSchema
+  TaskStatusSchema,
+  WatcherEventSchema
 } from "./index.ts";
 
 describe("Status Enums", () => {
@@ -51,6 +53,8 @@ describe("Status Enums", () => {
         "PENDING",
         "INPROGRESS",
         "AGENT_REVIEW",
+        "PENDING_MERGE",
+        "MERGE_CONFLICT",
         "DONE",
         "BLOCKED"
       ];
@@ -473,6 +477,162 @@ describe("Config Schemas", () => {
       expect(result.devsfactoryDir).toBe(".devsfactory");
       expect(result.worktreesDir).toBe(".worktrees");
     });
+
+    test("parses new orchestrator config fields with defaults", () => {
+      const result = ConfigSchema.parse({});
+
+      expect(result.debounceMs).toBe(100);
+      expect(result.retryBackoff).toEqual({
+        initialMs: 2000,
+        maxMs: 300000,
+        maxAttempts: 5
+      });
+      expect(result.ignorePatterns).toEqual([
+        ".git",
+        "*.swp",
+        "*.tmp",
+        "*~",
+        ".DS_Store"
+      ]);
+    });
+
+    test("accepts custom orchestrator config values", () => {
+      const input = {
+        debounceMs: 200,
+        retryBackoff: {
+          initialMs: 5000,
+          maxMs: 600000
+        },
+        ignorePatterns: [".git", "node_modules"]
+      };
+
+      const result = ConfigSchema.parse(input);
+
+      expect(result.debounceMs).toBe(200);
+      expect(result.retryBackoff.initialMs).toBe(5000);
+      expect(result.retryBackoff.maxMs).toBe(600000);
+      expect(result.ignorePatterns).toEqual([".git", "node_modules"]);
+    });
+
+    test("applies partial defaults for retryBackoff", () => {
+      const input = {
+        retryBackoff: {
+          initialMs: 3000
+        }
+      };
+
+      const result = ConfigSchema.parse(input);
+
+      expect(result.retryBackoff.initialMs).toBe(3000);
+      expect(result.retryBackoff.maxMs).toBe(300000);
+    });
+  });
+
+  describe("OrchestratorStateSchema", () => {
+    test("parses orchestrator state", () => {
+      const input = {
+        tasks: [
+          {
+            folder: "task-1",
+            frontmatter: {
+              title: "Task 1",
+              status: "PENDING",
+              created: new Date(),
+              priority: "high"
+            },
+            description: "Desc",
+            requirements: "Req",
+            acceptanceCriteria: []
+          }
+        ],
+        plans: {
+          "task-1": {
+            folder: "task-1",
+            frontmatter: {
+              status: "INPROGRESS",
+              task: "task-1",
+              created: new Date()
+            },
+            subtasks: []
+          }
+        },
+        subtasks: {
+          "task-1": [
+            {
+              filename: "001-sub.md",
+              number: 1,
+              slug: "sub",
+              frontmatter: { title: "Sub", status: "PENDING" },
+              description: "Desc"
+            }
+          ]
+        }
+      };
+
+      const result = OrchestratorStateSchema.parse(input);
+
+      expect(result.tasks).toHaveLength(1);
+      expect(result.plans["task-1"]).toBeDefined();
+      expect(result.subtasks["task-1"]).toHaveLength(1);
+    });
+  });
+
+  describe("WatcherEventSchema", () => {
+    test("parses taskChanged event", () => {
+      const input = {
+        type: "taskChanged",
+        taskFolder: "20260125180901-my-task"
+      };
+
+      const result = WatcherEventSchema.parse(input);
+
+      expect(result.type).toBe("taskChanged");
+      expect(result.taskFolder).toBe("20260125180901-my-task");
+    });
+
+    test("parses planChanged event", () => {
+      const input = {
+        type: "planChanged",
+        taskFolder: "task-folder"
+      };
+
+      const result = WatcherEventSchema.parse(input);
+
+      expect(result.type).toBe("planChanged");
+    });
+
+    test("parses subtaskChanged event with filename", () => {
+      const input = {
+        type: "subtaskChanged",
+        taskFolder: "task-folder",
+        filename: "001-setup.md"
+      };
+
+      const result = WatcherEventSchema.parse(input);
+
+      expect(result.type).toBe("subtaskChanged");
+      expect(result.filename).toBe("001-setup.md");
+    });
+
+    test("parses reviewChanged event", () => {
+      const input = {
+        type: "reviewChanged",
+        taskFolder: "task-folder"
+      };
+
+      const result = WatcherEventSchema.parse(input);
+
+      expect(result.type).toBe("reviewChanged");
+    });
+
+    test("rejects invalid event type", () => {
+      const input = {
+        type: "invalidEvent",
+        taskFolder: "task-folder"
+      };
+
+      expect(() => WatcherEventSchema.parse(input)).toThrow();
+    });
   });
 });
 
@@ -489,5 +649,25 @@ describe("Type Exports", () => {
     expect(planStatus).toBe("REVIEW");
     expect(priority).toBe("high");
     expect(agentType).toBe("implementation");
+  });
+});
+
+describe("Extended AgentTypeSchema", () => {
+  test("accepts new agent types for orchestrator", () => {
+    const newTypes: AgentType[] = [
+      "completing-task",
+      "completion-review",
+      "conflict-solver"
+    ];
+    for (const type of newTypes) {
+      expect(AgentTypeSchema.parse(type)).toBe(type);
+    }
+  });
+
+  test("still accepts existing agent types", () => {
+    const existingTypes: AgentType[] = ["planning", "implementation", "review"];
+    for (const type of existingTypes) {
+      expect(AgentTypeSchema.parse(type)).toBe(type);
+    }
   });
 });

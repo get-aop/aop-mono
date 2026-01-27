@@ -28,18 +28,17 @@ describe("getReviewPrompt", () => {
       "/path/to/review.md"
     );
 
-    expect(prompt).toContain("Review Attempts");
-    expect(prompt).toContain("1, 2 or 3");
+    expect(prompt).toContain("remaining attempts");
+    expect(prompt).toContain("1, 2, or 3");
   });
 
-  test("includes approval instructions with worktree merge", async () => {
+  test("includes approval instructions with PENDING_MERGE status", async () => {
     const prompt = await getReviewPrompt(
       "/path/to/subtask.md",
       "/path/to/review.md"
     );
 
-    expect(prompt).toContain("DONE");
-    expect(prompt).toContain("merge the worktree");
+    expect(prompt).toContain("PENDING_MERGE");
   });
 
   test("includes blocked state instructions", async () => {

@@ -1,15 +1,29 @@
+import { realpath } from "node:fs/promises";
 import { join } from "node:path";
+import { getLogger } from "../infra/logger";
+
+const log = getLogger("git");
+
+interface ShellError extends Error {
+  stderr?: Buffer;
+  stdout?: Buffer;
+  exitCode?: number;
+}
 
 export interface MergeResult {
   success: boolean;
   commitSha?: string;
   error?: string;
+  hasConflict?: boolean;
 }
 
 export const isGitRepo = async (cwd: string): Promise<boolean> => {
   try {
-    await Bun.$`git -C ${cwd} rev-parse --git-dir`.quiet();
-    return true;
+    const result = await Bun.$`git -C ${cwd} rev-parse --show-toplevel`.quiet();
+    const topLevel = result.text().trim();
+    const normalizedCwd = await realpath(cwd);
+    const normalizedTopLevel = await realpath(topLevel);
+    return normalizedCwd === normalizedTopLevel;
   } catch {
     return false;
   }
@@ -51,6 +65,19 @@ export const createTaskWorktree = async (
 ): Promise<string> => {
   const branchName = `task/${taskFolder}`;
   const worktreePath = join(cwd, ".worktrees", taskFolder);
+
+  const worktrees = await listWorktrees(cwd);
+  if (worktrees.includes(worktreePath)) {
+    return worktreePath;
+  }
+
+  const branchConflict = await findBranchWorktreeConflict(cwd, branchName);
+  if (branchConflict) {
+    throw new Error(
+      `Branch '${branchName}' is already checked out in worktree '${branchConflict}'. ` +
+        `Remove that worktree first with: git worktree remove ${branchConflict}`
+    );
+  }
 
   // Check if branch already exists
   let branchExists = false;
@@ -101,7 +128,16 @@ export const mergeSubtaskIntoTask = async (
   const taskWorktreePath = join(cwd, ".worktrees", taskFolder);
   const subtaskBranch = `task/${taskFolder}--${subtaskSlug}`;
 
+  log.info`mergeSubtaskIntoTask ${{
+    cwd,
+    taskFolder,
+    subtaskSlug,
+    taskWorktreePath,
+    subtaskBranch
+  }}`;
+
   try {
+    log.debug`Running: git -C ${taskWorktreePath} merge ${subtaskBranch} --no-edit`;
     await Bun.$`git -C ${taskWorktreePath} merge ${subtaskBranch} --no-edit`.quiet();
 
     // Get the commit SHA
@@ -109,18 +145,30 @@ export const mergeSubtaskIntoTask = async (
       await Bun.$`git -C ${taskWorktreePath} rev-parse --short HEAD`.quiet();
     const commitSha = result.text().trim();
 
+    log.info`Merge successful ${{ commitSha }}`;
     return { success: true, commitSha };
   } catch (error) {
-    // Abort the merge to clean up
-    try {
-      await Bun.$`git -C ${taskWorktreePath} merge --abort`.quiet();
-    } catch {
-      // Ignore abort errors
+    const shellError = error as ShellError;
+    const errorMessage = shellError.message ?? String(error);
+    const stderrOutput = shellError.stderr?.toString() ?? "";
+    const stdoutOutput = shellError.stdout?.toString() ?? "";
+    const fullOutput = `${errorMessage}\n${stderrOutput}\n${stdoutOutput}`;
+    const hasConflict = /CONFLICT|Automatic merge failed|Merge conflict/i.test(
+      fullOutput
+    );
+
+    log.error`Merge failed ${{ error: fullOutput.trim(), hasConflict }}`;
+
+    // Don't abort if there's a conflict - we need the conflict markers for the solver
+    if (!hasConflict) {
+      try {
+        await Bun.$`git -C ${taskWorktreePath} merge --abort`.quiet();
+      } catch {
+        // Ignore abort errors
+      }
     }
 
-    const message =
-      error instanceof Error ? error.message : "Unknown merge error";
-    return { success: false, error: message };
+    return { success: false, error: fullOutput.trim(), hasConflict };
   }
 };
 
@@ -128,10 +176,14 @@ export const deleteWorktree = async (
   cwd: string,
   worktreePath: string
 ): Promise<void> => {
+  log.info`deleteWorktree ${{ cwd, worktreePath }}`;
   try {
     await Bun.$`git -C ${cwd} worktree remove ${worktreePath} --force`.quiet();
-  } catch {
-    // Worktree might not exist, that's okay
+    log.info`Worktree deleted successfully`;
+  } catch (error) {
+    log.warn`Worktree deletion failed (may not exist) ${{
+      error: error instanceof Error ? error.message : String(error)
+    }}`;
   }
 };
 
@@ -155,4 +207,31 @@ export const getCurrentBranch = async (
   const result =
     await Bun.$`git -C ${worktreePath} branch --show-current`.quiet();
   return result.text().trim();
+};
+
+const findBranchWorktreeConflict = async (
+  cwd: string,
+  branchName: string
+): Promise<string | null> => {
+  try {
+    const result = await Bun.$`git -C ${cwd} worktree list --porcelain`.quiet();
+    const output = result.text();
+    if (!output.includes(`branch refs/heads/${branchName}`)) {
+      return null;
+    }
+
+    const lines = output.split("\n");
+    let currentWorktreePath = "";
+    for (const line of lines) {
+      if (line.startsWith("worktree ")) {
+        currentWorktreePath = line.substring("worktree ".length);
+      }
+      if (line === `branch refs/heads/${branchName}`) {
+        return currentWorktreePath;
+      }
+    }
+  } catch {
+    // Git command failed, no conflict detected
+  }
+  return null;
 };

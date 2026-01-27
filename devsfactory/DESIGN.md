@@ -46,8 +46,9 @@ All state lives in markdown files - the watcher and TUI both read from them, age
 ├── 20260125143022-add-user-auth/
 │   ├── task.md                      # Main task
 │   ├── plan.md                      # Plan (orchestration + subtask order)
+│   ├── review.md                    # Task-level review attempts (3 max)
 │   ├── 001-create-user-model.md     # Subtask 1
-│   ├── 001-create-user-model-review.md  # Review history
+│   ├── 001-create-user-model-review.md  # Subtask review history
 │   ├── 002-add-password-hashing.md  # Subtask 2
 │   └── 003-setup-auth-routes.md     # Subtask 3
 │
@@ -113,7 +114,7 @@ Any additional context, links, or references...
 
 ```yaml
 ---
-status: INPROGRESS | BLOCKED | REVIEW
+status: INPROGRESS | AGENT_REVIEW | BLOCKED | REVIEW
 task: 20260125143022-add-user-auth
 created: 2026-01-25T15:00:00Z
 ---
@@ -122,6 +123,36 @@ created: 2026-01-25T15:00:00Z
 1. 001-create-user-model (Create user model)
 2. 002-add-password-hashing (Add password hashing) → depends on: 001
 3. 003-setup-auth-routes (Setup auth routes) → depends on: 001, 002
+
+## Blockers
+(filled by completion reviewer if task becomes blocked)
+```
+
+**Plan Statuses:**
+- `INPROGRESS` - Subtasks are being worked on
+- `AGENT_REVIEW` - All subtasks DONE, completion reviewer checking acceptance criteria
+- `BLOCKED` - Review failed after 3 attempts, needs human intervention
+- `REVIEW` - Ready for user to open PR
+
+### Task-Level Review File: `review.md`
+
+```yaml
+---
+task: 20260125143022-add-user-auth
+created: 2026-01-25T17:00:00Z
+---
+
+## Review Attempt 1
+(filled by Completion Review agent)
+
+## Review Attempt 2
+(filled by Completion Review agent)
+
+## Review Attempt 3
+(filled by Completion Review agent)
+
+## Review Blocked
+(filled if all three attempts consumed)
 ```
 
 ### Subtask File: `{NNN}-{slug}.md`
@@ -214,68 +245,135 @@ main (protected, user review required)
 
 ## Watcher & Orchestration
 
+### File Watcher
+
+The watcher monitors `.devsfactory/` using `fs.watch()` with `{ recursive: true }` and emits events:
+
+| File Pattern | Event | Payload |
+|--------------|-------|---------|
+| `{taskFolder}/task.md` | `taskChanged` | `{ taskFolder }` |
+| `{taskFolder}/plan.md` | `planChanged` | `{ taskFolder }` |
+| `{taskFolder}/NNN-*.md` | `subtaskChanged` | `{ taskFolder, filename }` |
+| `{taskFolder}/review.md` | `reviewChanged` | `{ taskFolder }` |
+
+**Filtering:** Ignores `.git/`, `*.swp`, `*.tmp`, `*~`, `.DS_Store`
+**Debouncing:** 100ms per file path to avoid duplicate events
+
+### Orchestration Loop
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Watcher Loop                              │
+│                     Orchestration Loop                           │
+│              (Priority order - finishing > starting)             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  1. Scan all task folders                                        │
-│     └─▶ Parse task.md frontmatter                               │
+│  1. Find PENDING tasks (dependencies satisfied)                  │
+│     └─▶ Set task to INPROGRESS                                  │
+│     └─▶ Create task worktree                                    │
+│     (Note: Plan already exists from task-planner brainstorm)    │
 │                                                                  │
-│  2. Find PENDING tasks (dependencies satisfied)                  │
-│     └─▶ Spawn planning agent                                    │
-│     └─▶ Set task to INPROGRESS, create plan.md                  │
+│  2. Find plans in AGENT_REVIEW                                   │
+│     └─▶ Spawn Completion Review agent                           │
+│     (Priority: finish task-level reviews first)                 │
 │                                                                  │
-│  3. Find INPROGRESS plans with available subtasks               │
-│     └─▶ For each unblocked subtask (deps satisfied, PENDING):   │
-│         └─▶ Spawn implementation agent (up to max parallelism)  │
-│         └─▶ Set subtask to INPROGRESS                           │
+│  3. Find tasks where ALL subtasks DONE, plan INPROGRESS         │
+│     └─▶ Spawn Completing Task agent                             │
+│     (Checks acceptance criteria)                                │
 │                                                                  │
 │  4. Find subtasks in AGENT_REVIEW                                │
-│     └─▶ Spawn review agent                                      │
+│     └─▶ Spawn Subtask Review agent                              │
+│     (Priority: finish subtask reviews before new work)          │
 │                                                                  │
-│  5. Check for completed plans                                    │
-│     └─▶ All subtasks DONE? → Set plan + task to REVIEW          │
+│  5. Find PENDING subtasks (task INPROGRESS, deps satisfied)     │
+│     └─▶ Create subtask worktree                                 │
+│     └─▶ Spawn Implementation agent                              │
+│     └─▶ Set subtask to INPROGRESS                               │
 │                                                                  │
 │  6. Sleep / wait for file changes, repeat                        │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Parallelism Rules:**
+### Task Planning Flow
+
+Planning is **human-driven** via the `task-planner` skill (not an autonomous agent):
+
+```
+Task BACKLOG
+    │
+    ▼
+User runs task-planner skill
+    │ (brainstorming session)
+    ▼
+Creates plan.md + subtasks (all PENDING)
+    │
+    ▼
+Skill prompts: "Move task to PENDING?"
+    │
+    ▼
+Task PENDING (deps satisfied) → INPROGRESS
+    │
+    ▼
+Orchestrator picks up subtasks
+```
+
+### Parallelism Rules
+
+- **Global limit:** `maxConcurrentAgents` applies across ALL agent types (default: 2)
 - Multiple tasks can run in parallel (different folders)
-- Multiple subtasks within a task can run in parallel (if no dependencies between them)
-- Configurable max concurrent agents (default: 2)
+- Multiple subtasks within a task can run in parallel (if no dependencies)
+- **Priority when at capacity:**
+  1. Completion Review (task-level reviews)
+  2. Subtask Review (subtask-level reviews)
+  3. Completing Task (check if task done)
+  4. Implementation (new work)
+
+### Configuration
+
+Environment variables (auto-loaded from `.env` by Bun):
+
+```bash
+DEVSFACTORY_DIR=.devsfactory     # Task definitions directory
+WORKTREES_DIR=.worktrees         # Git worktrees directory
+MAX_CONCURRENT_AGENTS=2          # Global agent limit
+DEBOUNCE_MS=100                  # File watcher debounce
+RETRY_INITIAL_MS=2000            # Initial retry delay
+RETRY_MAX_MS=300000              # Max retry delay (5 min)
+```
+
+### Restart Recovery
+
+On orchestrator startup:
+
+| Scenario | Condition | Action |
+|----------|-----------|--------|
+| Task INPROGRESS, no plan.md | Planning interrupted | Reset to PENDING |
+| Subtask INPROGRESS, no agent | Implementation interrupted | Respawn implementation agent |
+| Subtask AGENT_REVIEW, no agent | Review interrupted | Respawn review agent |
+| Orphaned worktree | Worktree exists but no INPROGRESS item | Set task BLOCKED + diagnostic |
+
+### Error Handling
+
+On agent failure (non-zero exit):
+- Retry with exponential backoff: 2s → 4s → 8s → ... capped at 5 minutes
+- Retry indefinitely (no max attempts)
+- Retry state is in-memory only (resets on restart)
 
 ## Agent Types
 
-### 1. Planning Agent
+There are **5 agent types** managed by the orchestrator:
 
-Triggered when: Task goes PENDING → INPROGRESS
+| Agent Type | Trigger | Working Directory | Output |
+|------------|---------|-------------------|--------|
+| Implementation | Subtask PENDING (task INPROGRESS, deps satisfied) | Subtask worktree | Code changes, sets subtask to AGENT_REVIEW |
+| Subtask Review | Subtask AGENT_REVIEW | Subtask worktree | DONE or back to INPROGRESS |
+| Completing Task | All subtasks DONE, plan INPROGRESS | Task worktree | Sets plan to AGENT_REVIEW or creates more subtasks |
+| Completion Review | Plan AGENT_REVIEW | Task worktree | Sets plan+task to REVIEW or BLOCKED |
+| Conflict Solver | Merge conflict during subtask merge | Task worktree | Resolves conflict or fails |
 
-```bash
-claude --print "
-You are planning task: {task-folder}
+### 1. Implementation Agent
 
-Read the task file at .devsfactory/{task-folder}/task.md
-
-Break this task into small, implementable subtasks. For each subtask create a file:
-.devsfactory/{task-folder}/{NNN}-{slug}.md
-
-Each subtask should have:
-- Clear title and description
-- Context with file references
-- Dependencies on other subtasks (by number)
-
-Then update plan.md with the subtask list and order.
-
-Keep subtasks small - each should be completable in a single coding session.
-" --cwd .worktrees/{task-folder}
-```
-
-### 2. Implementation Agent
-
-Triggered when: Subtask is PENDING with deps satisfied
+Triggered when: Subtask is PENDING, parent task is INPROGRESS, dependencies satisfied
 
 ```bash
 claude --print "
@@ -293,7 +391,7 @@ If blocked, set status to BLOCKED and describe the blocker.
 " --cwd .worktrees/{task-folder}-{subtask-slug}
 ```
 
-### 3. Review Agent
+### 2. Subtask Review Agent
 
 Triggered when: Subtask is in AGENT_REVIEW
 
@@ -316,7 +414,78 @@ If this is attempt 3+ with unresolved issues: Set status to BLOCKED.
 " --cwd .worktrees/{task-folder}-{subtask-slug}
 ```
 
-### Review Loop
+### 3. Completing Task Agent
+
+Triggered when: All subtasks are DONE, plan status is INPROGRESS
+
+```bash
+claude --print "
+You are reviewing the task .devsfactory/{task-folder}/task.md
+with the subtasks planned at .devsfactory/{task-folder}/plan.md.
+
+We've implemented the whole task and subtasks. It's implemented in this
+current working directory, on this current branch.
+
+Check against the task acceptance criteria. Mark all items that are done.
+
+If it's fully complete, mark the plan status to AGENT_REVIEW and save the file.
+
+Else, if you found items that are still missing, please break them into new
+subtasks following the existing subtask format and add them to the plan.
+" --cwd .worktrees/{task-folder}
+```
+
+### 4. Completion Review Agent
+
+Triggered when: Plan status is AGENT_REVIEW
+
+```bash
+claude --print "
+You are reviewing task: .devsfactory/{task-folder}/task.md
+with the subtasks planned at .devsfactory/{task-folder}/plan.md.
+
+Use the code-review skill to run this review against this worktree branch.
+
+If there are still Review Attempts to be filled at .devsfactory/{task-folder}/review.md:
+- Review the implementation changes using code-reviewer.
+- Report your findings in the respective attempt (1, 2 or 3).
+- If approved with no relevant issues:
+  - Set the plan status and task status to REVIEW
+  - Prepare a PR title and body and add it to the task file
+
+Else, if there are no review attempts remaining:
+- Report your final verdict in the Blockers section of the plan file.
+- Propose any solutions if you can to unblock it.
+- Set task and plan status to BLOCKED.
+" --cwd .worktrees/{task-folder}
+```
+
+### 5. Conflict Solver Agent
+
+Triggered when: Merge conflict occurs when merging subtask branch into task branch
+
+```bash
+claude --print "
+You are resolving a merge conflict for subtask {subtask-file} in task {task-folder}.
+
+The subtask branch failed to merge into the task branch due to conflicts.
+
+Your job:
+1. Identify the conflicting files (look for conflict markers)
+2. Resolve the conflicts by keeping the intended changes from both sides
+3. Stage the resolved files
+4. Complete the merge commit
+
+If you cannot resolve the conflict automatically (e.g., requires human decision):
+- Abort the merge
+- Exit with non-zero code
+
+Do NOT make arbitrary decisions about conflicting logic - only resolve obvious
+formatting or import conflicts.
+" --cwd .worktrees/{task-folder}
+```
+
+### Subtask Lifecycle
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -335,7 +504,36 @@ If this is attempt 3+ with unresolved issues: Set status to BLOCKED.
 │     │ (review passes)             │ (attempt >= 3)               │
 │     ▼                             ▼                              │
 │   DONE                         BLOCKED                           │
-│  (commit)                   (needs human)                        │
+│  (merge to task)            (needs human)                        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Task-Level Review Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Task Review Lifecycle                         │
+│              (After all subtasks are DONE)                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  All subtasks DONE, plan INPROGRESS                              │
+│     │                                                            │
+│     ▼                                                            │
+│  Completing Task Agent                                           │
+│     │                                                            │
+│     ├─▶ Missing items? → Create new subtasks → back to work     │
+│     │                                                            │
+│     ▼                                                            │
+│  Plan AGENT_REVIEW ◄─────────────┐                              │
+│     │                             │                              │
+│     ▼                             │ (issues, attempt < 3)        │
+│  Completion Review Agent ─────────┤                              │
+│     │                             │                              │
+│     │ (approved)                  │ (attempt >= 3)               │
+│     ▼                             ▼                              │
+│  Plan + Task REVIEW           BLOCKED                            │
+│  (ready for PR)            (needs human)                         │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -430,7 +628,8 @@ devsfactory/
 │   │   ├── watcher.ts           # File system watcher for .devsfactory/
 │   │   ├── orchestrator.ts      # Decides which agents to spawn
 │   │   ├── agent-runner.ts      # Spawns/manages claude CLI processes
-│   │   └── git.ts               # Worktree management, branch ops
+│   │   ├── git.ts               # Worktree management, branch ops
+│   │   └── config.ts            # Configuration loader from env vars
 │   │
 │   ├── parser/
 │   │   ├── frontmatter.ts       # YAML frontmatter parsing
@@ -439,9 +638,11 @@ devsfactory/
 │   │   └── subtask.ts           # Subtask file parsing/writing
 │   │
 │   ├── prompts/
-│   │   ├── planning.ts          # Planning agent prompt template
 │   │   ├── implementation.ts    # Implementation agent prompt
-│   │   └── review.ts            # Review agent prompt
+│   │   ├── review.ts            # Subtask review agent prompt
+│   │   ├── completing-task.ts   # Completing task agent prompt
+│   │   ├── completion-review.ts # Completion review agent prompt
+│   │   └── conflict-solver.ts   # Conflict solver agent prompt
 │   │
 │   ├── tui/
 │   │   ├── app.tsx              # Root OpenTUI component
@@ -457,11 +658,18 @@ devsfactory/
 │   └── types/
 │       └── index.ts             # Shared TypeScript types
 │
+│   └── templates/
+│       ├── review.md            # Task-level review template
+│       └── ...
+│
 ├── skills/
-│   └── new-task/                # Claude skill for /new-task
-│       └── skill.md
+│   ├── new-task/                # Claude skill for /new-task
+│   │   └── skill.md
+│   └── task-planner/            # Claude skill for brainstorming tasks
+│       └── SKILL.md
 │
 ├── .devsfactory/                # Created on init
+├── .env.example                 # Configuration template
 ├── package.json
 ├── tsconfig.json
 └── README.md

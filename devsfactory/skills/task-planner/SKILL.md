@@ -14,6 +14,7 @@ Break a task into small, implementable subtasks for parallel agent execution.
 3. Design subtasks that are small, focused, and independently testable
 4. Create subtask files using the template format
 5. Create/update plan.md with subtask ordering and dependencies
+6. Prompt user to move task from BACKLOG to PENDING (if applicable)
 
 ## Step 1: Read and Analyze Task
 
@@ -67,6 +68,34 @@ Use the template at `./templates/subtask.md`:
 Create/update `.devsfactory/{task-folder}/plan.md`
 
 Use the template at `./templates/plan.md`
+
+## Step 6: Prompt to Move Task to PENDING
+
+After creating the plan.md and all subtask files, if the task is currently in BACKLOG status:
+
+1. **Summarize what was created:**
+   - Number of subtasks
+   - Dependency structure (which subtasks can run in parallel, which are sequential)
+   - Key files that will be modified
+
+2. **Use the AskUserQuestion tool to prompt:**
+
+   ```
+   "The plan is ready! Would you like to move the task to PENDING status to start implementation?"
+
+   Options:
+   - "Yes, move to PENDING now"
+   - "No, I'll review the plan first and move it manually later"
+   ```
+
+3. **If user selects yes:**
+   - Update the task.md frontmatter: `status: PENDING`
+   - Confirm: "Task moved to PENDING. The orchestrator will pick it up when dependencies are satisfied."
+
+4. **If user selects no:**
+   - Confirm: "The plan is ready for your review. You can move the task to PENDING at any time by editing the task.md frontmatter."
+
+**Note:** Skip this step if the task is already in PENDING status or later (INPROGRESS, DONE, etc.).
 
 ## Guidelines
 

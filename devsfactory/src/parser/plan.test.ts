@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { cleanupTestDir, createTestDir } from "../test-helpers";
 import type { Plan, SubtaskReference } from "../types";
 import {
   addSubtaskToPlan,
+  appendPlanBlockers,
   createPlan,
   parsePlan,
   updatePlanStatus
 } from "./plan";
 
-const TEST_DIR = `/tmp/devsfactory-plan-test-${Date.now()}`;
-const DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
+let TEST_DIR: string;
+let DEVSFACTORY_DIR: string;
 
 const samplePlanMarkdown = `---
 status: INPROGRESS
@@ -34,6 +36,8 @@ created: 2026-01-25T15:00:00Z
 
 describe("parsePlan", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("plan");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/20260125143022-add-user-auth`;
     await Bun.write(
       `${DEVSFACTORY_DIR}/20260125143022-add-user-auth/plan.md`,
@@ -42,7 +46,7 @@ describe("parsePlan", () => {
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("parses plan.md matching DESIGN.md format", async () => {
@@ -180,11 +184,13 @@ created: 2026-01-25T15:00:00Z
 
 describe("createPlan", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("plan-create");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/20260125143022-new-task`;
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("creates valid file with correct format", async () => {
@@ -284,6 +290,8 @@ describe("createPlan", () => {
 
 describe("updatePlanStatus", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("plan-status");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/20260125143022-status-test`;
     await Bun.write(
       `${DEVSFACTORY_DIR}/20260125143022-status-test/plan.md`,
@@ -292,7 +300,7 @@ describe("updatePlanStatus", () => {
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("changes only status field", async () => {
@@ -326,6 +334,8 @@ describe("updatePlanStatus", () => {
 
 describe("addSubtaskToPlan", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("plan-add-subtask");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/20260125143022-add-subtask`;
     await Bun.write(
       `${DEVSFACTORY_DIR}/20260125143022-add-subtask/plan.md`,
@@ -334,7 +344,7 @@ describe("addSubtaskToPlan", () => {
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("appends to existing list", async () => {
@@ -407,5 +417,169 @@ describe("addSubtaskToPlan", () => {
       "4. 004-added-subtask (Added subtask) → depends on: 002"
     );
     expect(content).toContain("## Result");
+  });
+});
+
+describe("appendPlanBlockers", () => {
+  beforeEach(async () => {
+    TEST_DIR = await createTestDir("plan-blockers");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
+    await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/20260125143022-blockers-test`;
+  });
+
+  afterEach(async () => {
+    await cleanupTestDir(TEST_DIR);
+  });
+
+  test("appends blocker message to existing Blockers section", async () => {
+    const planWithBlockers = `---
+status: INPROGRESS
+task: 20260125143022-blockers-test
+created: 2026-01-25T15:00:00Z
+---
+
+## Subtasks
+
+1. 001-first-task (First task)
+
+### Blockers
+
+(filled when agent gets stuck or needs user input)
+`;
+    await Bun.write(
+      `${DEVSFACTORY_DIR}/20260125143022-blockers-test/plan.md`,
+      planWithBlockers
+    );
+
+    await appendPlanBlockers(
+      "20260125143022-blockers-test",
+      "Merge conflict in 001-first-task.md could not be resolved",
+      DEVSFACTORY_DIR
+    );
+
+    const content = await Bun.file(
+      `${DEVSFACTORY_DIR}/20260125143022-blockers-test/plan.md`
+    ).text();
+
+    expect(content).toContain("### Blockers");
+    expect(content).toContain(
+      "Merge conflict in 001-first-task.md could not be resolved"
+    );
+    expect(content).not.toContain(
+      "(filled when agent gets stuck or needs user input)"
+    );
+  });
+
+  test("adds timestamp to blocker entry", async () => {
+    const planWithBlockers = `---
+status: INPROGRESS
+task: 20260125143022-blockers-test
+created: 2026-01-25T15:00:00Z
+---
+
+## Subtasks
+
+1. 001-first-task (First task)
+
+### Blockers
+
+(filled when agent gets stuck or needs user input)
+`;
+    await Bun.write(
+      `${DEVSFACTORY_DIR}/20260125143022-blockers-test/plan.md`,
+      planWithBlockers
+    );
+
+    await appendPlanBlockers(
+      "20260125143022-blockers-test",
+      "Test blocker message",
+      DEVSFACTORY_DIR
+    );
+
+    const content = await Bun.file(
+      `${DEVSFACTORY_DIR}/20260125143022-blockers-test/plan.md`
+    ).text();
+
+    expect(content).toMatch(/- \[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+
+  test("throws when plan does not exist", async () => {
+    await expect(
+      appendPlanBlockers("non-existent-plan", "Some blocker", DEVSFACTORY_DIR)
+    ).rejects.toThrow("Plan not found");
+  });
+
+  test("creates Blockers section if it does not exist", async () => {
+    const planWithoutBlockers = `---
+status: INPROGRESS
+task: 20260125143022-blockers-test
+created: 2026-01-25T15:00:00Z
+---
+
+## Subtasks
+
+1. 001-first-task (First task)
+
+## Result
+
+(filled after all subtasks complete)
+`;
+    await Bun.write(
+      `${DEVSFACTORY_DIR}/20260125143022-blockers-test/plan.md`,
+      planWithoutBlockers
+    );
+
+    await appendPlanBlockers(
+      "20260125143022-blockers-test",
+      "New blocker added",
+      DEVSFACTORY_DIR
+    );
+
+    const content = await Bun.file(
+      `${DEVSFACTORY_DIR}/20260125143022-blockers-test/plan.md`
+    ).text();
+
+    expect(content).toContain("### Blockers");
+    expect(content).toContain("New blocker added");
+  });
+
+  test("appends multiple blockers", async () => {
+    const planWithBlockers = `---
+status: INPROGRESS
+task: 20260125143022-blockers-test
+created: 2026-01-25T15:00:00Z
+---
+
+## Subtasks
+
+1. 001-first-task (First task)
+
+### Blockers
+
+(filled when agent gets stuck or needs user input)
+`;
+    await Bun.write(
+      `${DEVSFACTORY_DIR}/20260125143022-blockers-test/plan.md`,
+      planWithBlockers
+    );
+
+    await appendPlanBlockers(
+      "20260125143022-blockers-test",
+      "First blocker",
+      DEVSFACTORY_DIR
+    );
+
+    await appendPlanBlockers(
+      "20260125143022-blockers-test",
+      "Second blocker",
+      DEVSFACTORY_DIR
+    );
+
+    const content = await Bun.file(
+      `${DEVSFACTORY_DIR}/20260125143022-blockers-test/plan.md`
+    ).text();
+
+    expect(content).toContain("First blocker");
+    expect(content).toContain("Second blocker");
   });
 });

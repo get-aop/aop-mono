@@ -15,15 +15,29 @@ export const SubtaskStatusSchema = z.enum([
   "PENDING",
   "INPROGRESS",
   "AGENT_REVIEW",
+  "PENDING_MERGE",
+  "MERGE_CONFLICT",
   "DONE",
   "BLOCKED"
 ]);
 
-export const PlanStatusSchema = z.enum(["INPROGRESS", "BLOCKED", "REVIEW"]);
+export const PlanStatusSchema = z.enum([
+  "INPROGRESS",
+  "AGENT_REVIEW",
+  "BLOCKED",
+  "REVIEW"
+]);
 
 export const PrioritySchema = z.enum(["high", "medium", "low"]);
 
-export const AgentTypeSchema = z.enum(["planning", "implementation", "review"]);
+export const AgentTypeSchema = z.enum([
+  "planning",
+  "implementation",
+  "review",
+  "completing-task",
+  "completion-review",
+  "conflict-solver"
+]);
 
 // Frontmatter Schemas
 export const TaskFrontmatterSchema = z.object({
@@ -98,10 +112,44 @@ export const AgentProcessSchema = z.object({
   startedAt: z.coerce.date()
 });
 
+export const RetryBackoffSchema = z.object({
+  initialMs: z.number().default(2000),
+  maxMs: z.number().default(300000),
+  maxAttempts: z.number().default(5)
+});
+
 export const ConfigSchema = z.object({
   maxConcurrentAgents: z.number().default(3),
   devsfactoryDir: z.string().default(".devsfactory"),
-  worktreesDir: z.string().default(".worktrees")
+  worktreesDir: z.string().default(".worktrees"),
+  debounceMs: z.number().default(100),
+  retryBackoff: RetryBackoffSchema.default({
+    initialMs: 2000,
+    maxMs: 300000,
+    maxAttempts: 5
+  }),
+  ignorePatterns: z
+    .array(z.string())
+    .default([".git", "*.swp", "*.tmp", "*~", ".DS_Store"])
+});
+
+export const OrchestratorStateSchema = z.object({
+  tasks: z.array(TaskSchema),
+  plans: z.record(z.string(), PlanSchema),
+  subtasks: z.record(z.string(), z.array(SubtaskSchema))
+});
+
+export const WatcherEventTypeSchema = z.enum([
+  "taskChanged",
+  "planChanged",
+  "subtaskChanged",
+  "reviewChanged"
+]);
+
+export const WatcherEventSchema = z.object({
+  type: WatcherEventTypeSchema,
+  taskFolder: z.string(),
+  filename: z.string().optional()
 });
 
 // Inferred Types
@@ -122,3 +170,7 @@ export type SubtaskReference = z.infer<typeof SubtaskReferenceSchema>;
 
 export type AgentProcess = z.infer<typeof AgentProcessSchema>;
 export type Config = z.infer<typeof ConfigSchema>;
+export type RetryBackoff = z.infer<typeof RetryBackoffSchema>;
+export type OrchestratorState = z.infer<typeof OrchestratorStateSchema>;
+export type WatcherEventType = z.infer<typeof WatcherEventTypeSchema>;
+export type WatcherEvent = z.infer<typeof WatcherEventSchema>;

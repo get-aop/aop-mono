@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { CommandOptions, LLMProvider } from "../providers/types";
+import { cleanupTestDir, createTestDir } from "../test-helpers";
 import { AgentRunner } from "./agent-runner";
 
 class TestProvider implements LLMProvider {
@@ -28,15 +26,14 @@ describe("AgentRunner", () => {
 
   beforeEach(async () => {
     runner = new AgentRunner();
-    tempDir = await mkdtemp(join(tmpdir(), "agent-test-"));
+    tempDir = await createTestDir("agent-runner");
   });
 
   afterEach(async () => {
-    // Kill any remaining processes
     for (const agent of runner.getActive()) {
       await runner.kill(agent.id);
     }
-    await rm(tempDir, { recursive: true, force: true });
+    await cleanupTestDir(tempDir);
   });
 
   describe("spawn", () => {

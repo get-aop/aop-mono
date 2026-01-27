@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { cleanupTestDir, createTestDir } from "../test-helpers";
 import type { Subtask } from "../types";
 import {
   appendReviewHistory,
@@ -9,8 +10,8 @@ import {
   updateSubtaskStatus
 } from "./subtask";
 
-const TEST_DIR = `/tmp/devsfactory-subtask-test-${Date.now()}`;
-const DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
+let TEST_DIR: string;
+let DEVSFACTORY_DIR: string;
 const TASK_FOLDER = "20260125143022-add-user-auth";
 
 const sampleSubtaskMarkdown = `---
@@ -40,6 +41,8 @@ Create a User model with email and hashed password fields using bun:sqlite.
 
 describe("parseSubtask", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("subtask-parse");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/${TASK_FOLDER}`;
     await Bun.write(
       `${DEVSFACTORY_DIR}/${TASK_FOLDER}/002-create-user-model.md`,
@@ -48,7 +51,7 @@ describe("parseSubtask", () => {
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("extracts number and slug from filename", async () => {
@@ -124,11 +127,13 @@ Just a description.
 
 describe("createSubtask", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("subtask-create");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/${TASK_FOLDER}`;
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("generates correct numbering (first subtask = 001)", async () => {
@@ -249,6 +254,8 @@ describe("createSubtask", () => {
 
 describe("updateSubtaskStatus", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("subtask-status");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/${TASK_FOLDER}`;
     await Bun.write(
       `${DEVSFACTORY_DIR}/${TASK_FOLDER}/001-test-subtask.md`,
@@ -257,7 +264,7 @@ describe("updateSubtaskStatus", () => {
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("changes only status", async () => {
@@ -303,11 +310,13 @@ describe("updateSubtaskStatus", () => {
 
 describe("listSubtasks", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("subtask-list");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/${TASK_FOLDER}`;
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("finds all subtask files", async () => {
@@ -402,11 +411,13 @@ describe("listSubtasks", () => {
 
 describe("getReadySubtasks", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("subtask-ready");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/${TASK_FOLDER}`;
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("returns only PENDING with satisfied deps", async () => {
@@ -556,6 +567,8 @@ Already in progress
 
 describe("appendReviewHistory", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("subtask-review");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/${TASK_FOLDER}`;
     await Bun.write(
       `${DEVSFACTORY_DIR}/${TASK_FOLDER}/001-subtask.md`,
@@ -564,7 +577,7 @@ describe("appendReviewHistory", () => {
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("creates new review file", async () => {

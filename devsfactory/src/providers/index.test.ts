@@ -18,12 +18,14 @@ describe("ClaudeProvider", () => {
     expect(provider.name).toBe("claude");
   });
 
-  test("builds command with --print and --dangerously-skip-permissions flags", () => {
+  test("builds command with --output-format stream-json and --verbose flags", () => {
     const provider = new ClaudeProvider();
     const command = provider.buildCommand(testOptions);
     expect(command).toEqual([
       "claude",
-      "--print",
+      "--output-format",
+      "stream-json",
+      "--verbose",
       "--dangerously-skip-permissions",
       "test prompt"
     ]);
@@ -33,13 +35,16 @@ describe("ClaudeProvider", () => {
     const provider = new ClaudeProvider();
     const command = provider.buildCommand({
       ...testOptions,
-      extraArgs: ["--verbose"]
+      extraArgs: ["--model", "opus"]
     });
     expect(command).toEqual([
       "claude",
-      "--print",
-      "--dangerously-skip-permissions",
+      "--output-format",
+      "stream-json",
       "--verbose",
+      "--dangerously-skip-permissions",
+      "--model",
+      "opus",
       "test prompt"
     ]);
   });

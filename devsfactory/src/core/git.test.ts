@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { cleanupTestDir, createTestDir } from "../test-helpers";
 import {
   createSubtaskWorktree,
   createTaskWorktree,
@@ -20,7 +19,7 @@ describe("Git Worktree Manager", () => {
 
   beforeAll(async () => {
     // Create temp directories for testing
-    tempDir = await mkdtemp(join(tmpdir(), "git-test-"));
+    tempDir = await createTestDir("git");
     gitRepoDir = join(tempDir, "git-repo");
     nonGitDir = join(tempDir, "non-git");
 
@@ -40,8 +39,7 @@ describe("Git Worktree Manager", () => {
   });
 
   afterAll(async () => {
-    // Cleanup temp directories
-    await rm(tempDir, { recursive: true, force: true });
+    await cleanupTestDir(tempDir);
   });
 
   describe("isGitRepo", () => {
@@ -97,6 +95,27 @@ describe("Git Worktree Manager", () => {
       // Should handle existing branch gracefully
       const path = await createTaskWorktree(gitRepoDir, taskFolder);
       expect(path).toBe(join(gitRepoDir, ".worktrees", taskFolder));
+    });
+
+    test("throws error when branch is checked out in another worktree", async () => {
+      const taskFolder = "20260125143029-branch-conflict";
+      const branchName = `task/${taskFolder}`;
+      const otherWorktreePath = join(
+        gitRepoDir,
+        ".worktrees",
+        "other-worktree"
+      );
+
+      // Create the branch and a worktree at a different path
+      await Bun.$`git -C ${gitRepoDir} worktree add -b ${branchName} ${otherWorktreePath}`.quiet();
+
+      // Trying to create a task worktree should fail because the branch is already checked out
+      await expect(createTaskWorktree(gitRepoDir, taskFolder)).rejects.toThrow(
+        /Branch 'task\/20260125143029-branch-conflict' is already checked out in worktree/
+      );
+
+      // Cleanup
+      await deleteWorktree(gitRepoDir, otherWorktreePath);
     });
 
     test("fetches remote changes when branch exists and was updated remotely", async () => {

@@ -7,8 +7,7 @@ import {
   expect,
   test
 } from "bun:test";
-import { cp, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { cp } from "node:fs/promises";
 import { join } from "node:path";
 import {
   createSubtaskWorktree,
@@ -19,6 +18,7 @@ import {
   mergeSubtaskIntoTask
 } from "../src/core/git";
 import { getReadySubtasks, listSubtasks } from "../src/parser/subtask";
+import { createTestDir } from "../src/test-helpers";
 
 const FIXTURES_DIR = join(import.meta.dir, "fixtures");
 
@@ -28,7 +28,7 @@ interface TestRepo {
 }
 
 const createTestRepo = async (): Promise<TestRepo> => {
-  const tempDir = await mkdtemp(join(tmpdir(), "e2e-git-worktree-"));
+  const tempDir = await createTestDir("e2e-git-worktree");
 
   await Bun.$`git init -b main ${tempDir}`.quiet();
   await Bun.$`git -C ${tempDir} config user.email "test@test.com"`.quiet();
@@ -51,7 +51,6 @@ const cleanupTestRepo = async (repo: TestRepo): Promise<void> => {
       await deleteWorktree(repo.path, wt);
     }
   }
-  await rm(repo.path, { recursive: true, force: true });
 };
 
 const copyFixture = async (

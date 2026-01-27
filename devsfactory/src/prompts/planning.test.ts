@@ -22,9 +22,9 @@ describe("getPlanningPrompt", () => {
     expect(prompt).toContain("task-planner");
   });
 
-  test("mentions sub-tasks", async () => {
+  test("mentions subtasks", async () => {
     const prompt = await getPlanningPrompt("/path/to/task.md");
 
-    expect(prompt).toContain("sub-tasks");
+    expect(prompt).toContain("subtasks");
   });
 });

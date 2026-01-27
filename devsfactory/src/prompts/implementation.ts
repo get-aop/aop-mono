@@ -1,8 +1,9 @@
+import { dirname } from "node:path";
 import { getTemplate } from "../templates";
 
 export const getImplementationPrompt = async (
-  subtaskTitle: string,
   subtaskPath: string
 ): Promise<string> => {
-  return getTemplate("implementation", { subtaskTitle, subtaskPath });
+  const taskDir = dirname(subtaskPath);
+  return getTemplate("implementation", { subtaskPath, taskDir });
 };

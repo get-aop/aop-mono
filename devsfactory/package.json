@@ -1,10 +1,18 @@
 {
-  "name": "devsfactory",
+  "name": "aop",
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "bin": {
+    "aop": "./src/cli.ts"
+  },
   "scripts": {
+    "start": "bun run ./src/cli.ts",
     "test": "bun test",
+    "test:e2e": "bun test ./e2e-tests",
+    "test:e2e:orchestrator": "bun test ./e2e-tests/orchestrator.e2e.test.ts",
+    "test:e2e:agentrunner": "bun test ./e2e-tests/agent-runner.e2e.test.ts",
+    "test:e2e:git-worktree": "bun test ./e2e-tests/git-worktree.e2e.test.ts",
     "build": "bun build ./src/index.ts --outdir ./dist",
     "lint": "bunx @biomejs/biome check ./src",
     "lint:fix": "bunx @biomejs/biome check --write ./src",
@@ -21,6 +29,8 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@logtape/logtape": "^2.0.2",
+    "@logtape/pretty": "^2.0.2",
     "@opentui/core": "^0.1.75",
     "@opentui/react": "^0.1.75",
     "ksuid": "^3.0.0",

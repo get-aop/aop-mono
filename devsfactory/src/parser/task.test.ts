@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { cleanupTestDir, createTestDir } from "../test-helpers";
 import type { Task } from "../types";
 import {
   createTask,
@@ -7,8 +8,8 @@ import {
   updateTaskStatus
 } from "./task";
 
-const TEST_DIR = `/tmp/devsfactory-task-test-${Date.now()}`;
-const DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
+let TEST_DIR: string;
+let DEVSFACTORY_DIR: string;
 
 const sampleTaskMarkdown = `---
 title: Add user authentication
@@ -42,6 +43,8 @@ Any additional context, links, or references...
 
 describe("parseTask", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("task-parse");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/20260125143022-add-user-auth`;
     await Bun.write(
       `${DEVSFACTORY_DIR}/20260125143022-add-user-auth/task.md`,
@@ -50,7 +53,7 @@ describe("parseTask", () => {
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("parses task.md matching DESIGN.md format", async () => {
@@ -145,11 +148,13 @@ A simple description.
 
 describe("createTask", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("task-create");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}`;
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("creates valid file structure", async () => {
@@ -243,6 +248,8 @@ describe("createTask", () => {
 
 describe("updateTaskStatus", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("task-status");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/20260125143022-status-test`;
     await Bun.write(
       `${DEVSFACTORY_DIR}/20260125143022-status-test/task.md`,
@@ -251,7 +258,7 @@ describe("updateTaskStatus", () => {
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("changes only status field", async () => {
@@ -305,11 +312,13 @@ describe("updateTaskStatus", () => {
 
 describe("listTaskFolders", () => {
   beforeEach(async () => {
+    TEST_DIR = await createTestDir("task-list");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
     await Bun.$`mkdir -p ${DEVSFACTORY_DIR}`;
   });
 
   afterEach(async () => {
-    await Bun.$`rm -rf ${TEST_DIR}`.quiet();
+    await cleanupTestDir(TEST_DIR);
   });
 
   test("finds all task directories", async () => {
@@ -394,7 +403,7 @@ describe("listTaskFolders", () => {
   });
 
   test("returns empty array for non-existent directory", async () => {
-    const folders = await listTaskFolders("/tmp/non-existent-dir-12345");
+    const folders = await listTaskFolders(`${TEST_DIR}/non-existent-dir`);
 
     expect(folders).toEqual([]);
   });

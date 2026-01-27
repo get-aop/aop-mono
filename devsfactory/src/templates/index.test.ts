@@ -9,8 +9,8 @@ describe("loadTemplate", () => {
 
   test("loads implementation template", async () => {
     const template = await loadTemplate("implementation");
-    expect(template).toContain("{{subtaskTitle}}");
     expect(template).toContain("{{subtaskPath}}");
+    expect(template).toContain("{{taskDir}}");
   });
 
   test("loads review template", async () => {
