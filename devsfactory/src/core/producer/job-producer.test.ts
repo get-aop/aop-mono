@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { OrchestratorState } from "../../types";
 import { MemoryQueue } from "../local/memory-queue";
 import { MemoryAgentRegistry } from "../local/memory-registry";
+import { JOB_PRIORITY } from "../types/job";
 import { JobProducer } from "./job-producer";
 
 const createEmptyState = (): OrchestratorState => ({
@@ -949,6 +950,346 @@ describe("JobProducer", () => {
       await producer.produceFromState(state);
 
       expect(await queue.size()).toBe(0);
+    });
+  });
+
+  describe("job priority", () => {
+    test("implementation jobs have priority 10", async () => {
+      const queue = new MemoryQueue();
+      const registry = new MemoryAgentRegistry();
+      const producer = new JobProducer(queue, registry);
+
+      const state: OrchestratorState = {
+        ...createEmptyState(),
+        tasks: [
+          {
+            folder: "my-task",
+            frontmatter: {
+              title: "My Task",
+              status: "INPROGRESS",
+              created: new Date(),
+              priority: "medium",
+              tags: [],
+              assignee: null,
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
+            },
+            description: "",
+            requirements: "",
+            acceptanceCriteria: []
+          }
+        ],
+        subtasks: {
+          "my-task": [
+            {
+              filename: "001-first.md",
+              number: 1,
+              slug: "first",
+              frontmatter: {
+                title: "First Subtask",
+                status: "PENDING",
+                dependencies: []
+              },
+              description: ""
+            }
+          ]
+        }
+      };
+
+      await producer.produceFromState(state);
+
+      const job = await queue.peek();
+      expect(job?.type).toBe("implementation");
+      expect(job?.priority).toBe(JOB_PRIORITY["implementation"]);
+      expect(job?.priority).toBe(10);
+    });
+
+    test("review jobs have priority 20", async () => {
+      const queue = new MemoryQueue();
+      const registry = new MemoryAgentRegistry();
+      const producer = new JobProducer(queue, registry);
+
+      const state: OrchestratorState = {
+        ...createEmptyState(),
+        tasks: [
+          {
+            folder: "my-task",
+            frontmatter: {
+              title: "My Task",
+              status: "INPROGRESS",
+              created: new Date(),
+              priority: "medium",
+              tags: [],
+              assignee: null,
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
+            },
+            description: "",
+            requirements: "",
+            acceptanceCriteria: []
+          }
+        ],
+        subtasks: {
+          "my-task": [
+            {
+              filename: "001-first.md",
+              number: 1,
+              slug: "first",
+              frontmatter: {
+                title: "First Subtask",
+                status: "AGENT_REVIEW",
+                dependencies: []
+              },
+              description: ""
+            }
+          ]
+        }
+      };
+
+      await producer.produceFromState(state);
+
+      const job = await queue.peek();
+      expect(job?.type).toBe("review");
+      expect(job?.priority).toBe(JOB_PRIORITY["review"]);
+      expect(job?.priority).toBe(20);
+    });
+
+    test("merge jobs have priority 30", async () => {
+      const queue = new MemoryQueue();
+      const registry = new MemoryAgentRegistry();
+      const producer = new JobProducer(queue, registry);
+
+      const state: OrchestratorState = {
+        ...createEmptyState(),
+        tasks: [
+          {
+            folder: "my-task",
+            frontmatter: {
+              title: "My Task",
+              status: "INPROGRESS",
+              created: new Date(),
+              priority: "medium",
+              tags: [],
+              assignee: null,
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
+            },
+            description: "",
+            requirements: "",
+            acceptanceCriteria: []
+          }
+        ],
+        subtasks: {
+          "my-task": [
+            {
+              filename: "001-first.md",
+              number: 1,
+              slug: "first",
+              frontmatter: {
+                title: "First Subtask",
+                status: "PENDING_MERGE",
+                dependencies: []
+              },
+              description: ""
+            }
+          ]
+        }
+      };
+
+      await producer.produceFromState(state);
+
+      const job = await queue.peek();
+      expect(job?.type).toBe("merge");
+      expect(job?.priority).toBe(JOB_PRIORITY["merge"]);
+      expect(job?.priority).toBe(30);
+    });
+
+    test("conflict-solver jobs have priority 40", async () => {
+      const queue = new MemoryQueue();
+      const registry = new MemoryAgentRegistry();
+      const producer = new JobProducer(queue, registry);
+
+      const state: OrchestratorState = {
+        ...createEmptyState(),
+        tasks: [
+          {
+            folder: "my-task",
+            frontmatter: {
+              title: "My Task",
+              status: "INPROGRESS",
+              created: new Date(),
+              priority: "medium",
+              tags: [],
+              assignee: null,
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
+            },
+            description: "",
+            requirements: "",
+            acceptanceCriteria: []
+          }
+        ],
+        subtasks: {
+          "my-task": [
+            {
+              filename: "001-first.md",
+              number: 1,
+              slug: "first",
+              frontmatter: {
+                title: "First Subtask",
+                status: "MERGE_CONFLICT",
+                dependencies: []
+              },
+              description: ""
+            }
+          ]
+        }
+      };
+
+      await producer.produceFromState(state);
+
+      const job = await queue.peek();
+      expect(job?.type).toBe("conflict-solver");
+      expect(job?.priority).toBe(JOB_PRIORITY["conflict-solver"]);
+      expect(job?.priority).toBe(40);
+    });
+
+    test("completing-task jobs have priority 15", async () => {
+      const queue = new MemoryQueue();
+      const registry = new MemoryAgentRegistry();
+      const producer = new JobProducer(queue, registry);
+
+      const state: OrchestratorState = {
+        ...createEmptyState(),
+        tasks: [
+          {
+            folder: "my-task",
+            frontmatter: {
+              title: "My Task",
+              status: "INPROGRESS",
+              created: new Date(),
+              priority: "medium",
+              tags: [],
+              assignee: null,
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
+            },
+            description: "",
+            requirements: "",
+            acceptanceCriteria: []
+          }
+        ],
+        plans: {
+          "my-task": {
+            folder: "my-task",
+            frontmatter: {
+              status: "INPROGRESS",
+              task: "my-task",
+              created: new Date()
+            },
+            subtasks: [
+              { number: 1, slug: "first", title: "First", dependencies: [] }
+            ]
+          }
+        },
+        subtasks: {
+          "my-task": [
+            {
+              filename: "001-first.md",
+              number: 1,
+              slug: "first",
+              frontmatter: {
+                title: "First Subtask",
+                status: "DONE",
+                dependencies: []
+              },
+              description: ""
+            }
+          ]
+        }
+      };
+
+      await producer.produceFromState(state);
+
+      const job = await queue.dequeue();
+      expect(job?.type).toBe("completing-task");
+      expect(job?.priority).toBe(JOB_PRIORITY["completing-task"]);
+      expect(job?.priority).toBe(15);
+    });
+
+    test("completion-review jobs have priority 25", async () => {
+      const queue = new MemoryQueue();
+      const registry = new MemoryAgentRegistry();
+      const producer = new JobProducer(queue, registry);
+
+      const state: OrchestratorState = {
+        ...createEmptyState(),
+        tasks: [
+          {
+            folder: "my-task",
+            frontmatter: {
+              title: "My Task",
+              status: "INPROGRESS",
+              created: new Date(),
+              priority: "medium",
+              tags: [],
+              assignee: null,
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
+            },
+            description: "",
+            requirements: "",
+            acceptanceCriteria: []
+          }
+        ],
+        plans: {
+          "my-task": {
+            folder: "my-task",
+            frontmatter: {
+              status: "AGENT_REVIEW",
+              task: "my-task",
+              created: new Date()
+            },
+            subtasks: [
+              { number: 1, slug: "first", title: "First", dependencies: [] }
+            ]
+          }
+        },
+        subtasks: {
+          "my-task": [
+            {
+              filename: "001-first.md",
+              number: 1,
+              slug: "first",
+              frontmatter: {
+                title: "First Subtask",
+                status: "DONE",
+                dependencies: []
+              },
+              description: ""
+            }
+          ]
+        }
+      };
+
+      await producer.produceFromState(state);
+
+      const job = await queue.dequeue();
+      expect(job?.type).toBe("completion-review");
+      expect(job?.priority).toBe(JOB_PRIORITY["completion-review"]);
+      expect(job?.priority).toBe(25);
     });
   });
 });

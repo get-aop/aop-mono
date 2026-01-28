@@ -2,7 +2,7 @@ import type { OrchestratorState, Subtask } from "../../types";
 import type { AgentRegistry } from "../interfaces/agent-registry";
 import type { JobQueue } from "../interfaces/job-queue";
 import type { Job, JobType } from "../types/job";
-import { getJobKey } from "../types/job";
+import { getJobKey, JOB_PRIORITY } from "../types/job";
 
 export class JobProducer {
   constructor(
@@ -95,7 +95,7 @@ export class JobProducer {
       taskFolder,
       subtaskFile,
       status: "pending",
-      priority: 0,
+      priority: JOB_PRIORITY[type],
       createdAt: new Date()
     });
   }
@@ -109,7 +109,7 @@ export class JobProducer {
       type,
       taskFolder,
       status: "pending",
-      priority: 0,
+      priority: JOB_PRIORITY[type],
       createdAt: new Date()
     });
   }

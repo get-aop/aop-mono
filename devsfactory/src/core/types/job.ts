@@ -38,6 +38,15 @@ export type JobStatus = z.infer<typeof JobStatusSchema>;
 export type Job = z.infer<typeof JobSchema>;
 export type JobResult = z.infer<typeof JobResultSchema>;
 
+export const JOB_PRIORITY: Record<JobType, number> = {
+  "conflict-solver": 40,
+  merge: 30,
+  "completion-review": 25,
+  review: 20,
+  "completing-task": 15,
+  implementation: 10
+} as const;
+
 export const getJobKey = (job: Job): string => {
   const base = `${job.type}:${job.taskFolder}`;
   return job.subtaskFile ? `${base}:${job.subtaskFile}` : base;

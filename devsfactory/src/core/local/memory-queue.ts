@@ -37,11 +37,13 @@ export class MemoryQueue extends EventEmitter implements JobQueue {
   }
 
   async dequeue(): Promise<Job | undefined> {
-    const job = this.pending.shift();
-    if (!job) {
+    const index = this.findHighestPriorityIndex();
+    if (index === -1) {
       return undefined;
     }
 
+    const job = this.pending[index]!;
+    this.pending.splice(index, 1);
     const runningJob = { ...job, status: "running" as const };
     this.processing.set(job.id, runningJob);
     return runningJob;
@@ -88,7 +90,8 @@ export class MemoryQueue extends EventEmitter implements JobQueue {
   }
 
   async peek(): Promise<Job | undefined> {
-    return this.pending[0];
+    const index = this.findHighestPriorityIndex();
+    return index === -1 ? undefined : this.pending[index];
   }
 
   async size(): Promise<number> {
@@ -104,5 +107,24 @@ export class MemoryQueue extends EventEmitter implements JobQueue {
       clearTimeout(timer);
     }
     this.delayedTimers.clear();
+  }
+
+  private findHighestPriorityIndex(): number {
+    if (this.pending.length === 0) {
+      return -1;
+    }
+
+    let highestIndex = 0;
+    let highestPriority = this.pending[0]!.priority;
+
+    for (let i = 1; i < this.pending.length; i++) {
+      const job = this.pending[i]!;
+      if (job.priority > highestPriority) {
+        highestPriority = job.priority;
+        highestIndex = i;
+      }
+    }
+
+    return highestIndex;
   }
 }

@@ -1,5 +1,6 @@
 export {
   getJobKey,
+  JOB_PRIORITY,
   type Job,
   type JobResult,
   JobResultSchema,

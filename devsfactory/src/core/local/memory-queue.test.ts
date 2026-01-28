@@ -25,9 +25,17 @@ describe("MemoryQueue", () => {
   });
 
   describe("enqueue/dequeue", () => {
-    test("enqueue adds job and dequeue retrieves in FIFO order", async () => {
-      const job1 = createJob({ id: "job-1", taskFolder: "task-1" });
-      const job2 = createJob({ id: "job-2", taskFolder: "task-2" });
+    test("enqueue adds job and dequeue retrieves in FIFO order for same priority", async () => {
+      const job1 = createJob({
+        id: "job-1",
+        taskFolder: "task-1",
+        priority: 10
+      });
+      const job2 = createJob({
+        id: "job-2",
+        taskFolder: "task-2",
+        priority: 10
+      });
 
       await queue.enqueue(job1);
       await queue.enqueue(job2);
@@ -50,6 +58,114 @@ describe("MemoryQueue", () => {
 
       const dequeued = await queue.dequeue();
       expect(dequeued?.status).toBe("running");
+    });
+
+    test("dequeue returns highest priority job first", async () => {
+      const lowPriority = createJob({
+        id: "low",
+        taskFolder: "task-1",
+        priority: 10
+      });
+      const highPriority = createJob({
+        id: "high",
+        taskFolder: "task-2",
+        priority: 30
+      });
+      const medPriority = createJob({
+        id: "med",
+        taskFolder: "task-3",
+        priority: 20
+      });
+
+      await queue.enqueue(lowPriority);
+      await queue.enqueue(highPriority);
+      await queue.enqueue(medPriority);
+
+      const first = await queue.dequeue();
+      const second = await queue.dequeue();
+      const third = await queue.dequeue();
+
+      expect(first?.id).toBe("high");
+      expect(second?.id).toBe("med");
+      expect(third?.id).toBe("low");
+    });
+
+    test("dequeue preserves FIFO order for same priority jobs", async () => {
+      const job1 = createJob({
+        id: "first",
+        taskFolder: "task-1",
+        priority: 20
+      });
+      const job2 = createJob({
+        id: "second",
+        taskFolder: "task-2",
+        priority: 20
+      });
+      const job3 = createJob({
+        id: "third",
+        taskFolder: "task-3",
+        priority: 20
+      });
+
+      await queue.enqueue(job1);
+      await queue.enqueue(job2);
+      await queue.enqueue(job3);
+
+      const first = await queue.dequeue();
+      const second = await queue.dequeue();
+      const third = await queue.dequeue();
+
+      expect(first?.id).toBe("first");
+      expect(second?.id).toBe("second");
+      expect(third?.id).toBe("third");
+    });
+
+    test("dequeue respects priority with mixed priority levels", async () => {
+      const impl1 = createJob({
+        id: "impl-1",
+        taskFolder: "task-1",
+        priority: 10
+      });
+      const review1 = createJob({
+        id: "review-1",
+        taskFolder: "task-2",
+        priority: 20
+      });
+      const impl2 = createJob({
+        id: "impl-2",
+        taskFolder: "task-3",
+        priority: 10
+      });
+      const merge1 = createJob({
+        id: "merge-1",
+        taskFolder: "task-4",
+        priority: 30
+      });
+      const review2 = createJob({
+        id: "review-2",
+        taskFolder: "task-5",
+        priority: 20
+      });
+
+      await queue.enqueue(impl1);
+      await queue.enqueue(review1);
+      await queue.enqueue(impl2);
+      await queue.enqueue(merge1);
+      await queue.enqueue(review2);
+
+      const results: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const job = await queue.dequeue();
+        results.push(job!.id);
+      }
+
+      expect(results).toEqual([
+        "merge-1",
+        "review-1",
+        "review-2",
+        "impl-1",
+        "impl-2"
+      ]);
     });
   });
 
@@ -165,6 +281,45 @@ describe("MemoryQueue", () => {
     test("peek returns undefined when empty", async () => {
       const result = await queue.peek();
       expect(result).toBeUndefined();
+    });
+
+    test("peek returns highest priority job", async () => {
+      const lowPriority = createJob({
+        id: "low",
+        taskFolder: "task-1",
+        priority: 10
+      });
+      const highPriority = createJob({
+        id: "high",
+        taskFolder: "task-2",
+        priority: 30
+      });
+
+      await queue.enqueue(lowPriority);
+      await queue.enqueue(highPriority);
+
+      const peeked = await queue.peek();
+      expect(peeked?.id).toBe("high");
+      expect(await queue.size()).toBe(2);
+    });
+
+    test("peek returns first job when priorities are equal", async () => {
+      const first = createJob({
+        id: "first",
+        taskFolder: "task-1",
+        priority: 20
+      });
+      const second = createJob({
+        id: "second",
+        taskFolder: "task-2",
+        priority: 20
+      });
+
+      await queue.enqueue(first);
+      await queue.enqueue(second);
+
+      const peeked = await queue.peek();
+      expect(peeked?.id).toBe("first");
     });
   });
 

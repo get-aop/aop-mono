@@ -19,6 +19,13 @@ describe("getImplementationPrompt", () => {
     expect(prompt).toContain("test-driven-development");
   });
 
+  test("includes git diff review step", async () => {
+    const prompt = await getImplementationPrompt("/path/to/task/subtask.md");
+
+    expect(prompt).toContain("git diff");
+    expect(prompt).toContain("AI slop");
+  });
+
   test("includes success criteria", async () => {
     const prompt = await getImplementationPrompt("/path/to/task/subtask.md");
 
