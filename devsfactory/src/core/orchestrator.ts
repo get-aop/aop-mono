@@ -59,6 +59,7 @@ export class Orchestrator extends EventEmitter {
   private reconciling = false;
   private reconcileQueued = false;
   private reconcileTimer: ReturnType<typeof setInterval> | null = null;
+  private subtaskStartTimes = new Map<string, number>();
 
   constructor(
     config: Config,
@@ -222,13 +223,13 @@ export class Orchestrator extends EventEmitter {
         durationMs
       }: {
         jobId: string;
-        job?: { type: string; taskFolder: string; subtaskFile?: string };
-        durationMs?: number;
+        job: { type: string; taskFolder: string; subtaskFile?: string };
+        durationMs: number;
       }) => {
         this.scheduleReconcile();
-        this.emit("workerJobCompleted", { jobId });
+        this.emit("workerJobCompleted", { jobId, job, durationMs });
 
-        if (job?.subtaskFile && durationMs !== undefined) {
+        if (job.subtaskFile) {
           const phase = this.mapJobTypeToPhase(job.type);
           if (phase) {
             recordPhaseDuration(
@@ -238,6 +239,10 @@ export class Orchestrator extends EventEmitter {
               durationMs,
               this.config.devsfactoryDir
             ).catch(() => {});
+          }
+
+          if (job.type === "merge" || job.type === "conflict-solver") {
+            this.emitSubtaskCompleted(job.taskFolder, job.subtaskFile);
           }
         }
       }
@@ -272,6 +277,29 @@ export class Orchestrator extends EventEmitter {
         this.emit("workerJobRetrying", { jobId, attempt, nextRetryMs });
       }
     );
+  }
+
+  private getSubtaskKey(taskFolder: string, subtaskFile: string): string {
+    return `${taskFolder}:${subtaskFile}`;
+  }
+
+  private emitSubtaskCompleted(taskFolder: string, subtaskFile: string): void {
+    const subtasks = this.state.subtasks[taskFolder] ?? [];
+    const subtask = subtasks.find((s) => s.filename === subtaskFile);
+    if (!subtask) return;
+
+    const subtaskKey = this.getSubtaskKey(taskFolder, subtaskFile);
+    const startTime = this.subtaskStartTimes.get(subtaskKey);
+    const durationMs = startTime ? Date.now() - startTime : 0;
+    this.subtaskStartTimes.delete(subtaskKey);
+
+    this.emit("subtaskCompleted", {
+      taskFolder,
+      subtaskNumber: subtask.number,
+      subtaskTotal: subtasks.length,
+      subtaskTitle: subtask.frontmatter.title,
+      durationMs
+    });
   }
 
   private async refreshState(): Promise<void> {
@@ -420,6 +448,18 @@ export class Orchestrator extends EventEmitter {
           task.folder,
           subtask.slug
         );
+
+        this.subtaskStartTimes.set(
+          this.getSubtaskKey(task.folder, subtask.filename),
+          Date.now()
+        );
+
+        this.emit("subtaskStarted", {
+          taskFolder: task.folder,
+          subtaskNumber: subtask.number,
+          subtaskTotal: subtasks.length,
+          subtaskTitle: subtask.frontmatter.title
+        });
       }
     }
   }
