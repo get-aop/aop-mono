@@ -102,6 +102,49 @@ describe("detectBottleneck", () => {
     const result = detectBottleneck(phases);
     expect(result).toEqual({ phase: "implementation", percent: 80 });
   });
+
+  test("handles single phase with data", () => {
+    const phases: PhaseTimings = {
+      implementation: 10000,
+      review: null,
+      merge: null,
+      conflictSolver: null
+    };
+    const result = detectBottleneck(phases);
+    expect(result).toEqual({ phase: "implementation", percent: 100 });
+  });
+
+  test("returns null when all values are zero", () => {
+    const phases: PhaseTimings = {
+      implementation: 0,
+      review: 0,
+      merge: 0,
+      conflictSolver: 0
+    };
+    expect(detectBottleneck(phases)).toBeNull();
+  });
+
+  test("handles threshold of 1.0 (100%)", () => {
+    const phases: PhaseTimings = {
+      implementation: 10000,
+      review: null,
+      merge: null,
+      conflictSolver: null
+    };
+    expect(detectBottleneck(phases, 1.0)).toEqual({ phase: "implementation", percent: 100 });
+  });
+
+  test("handles threshold of 0 (any phase is bottleneck)", () => {
+    const phases: PhaseTimings = {
+      implementation: 1000,
+      review: 1000,
+      merge: 1000,
+      conflictSolver: 1000
+    };
+    const result = detectBottleneck(phases, 0);
+    expect(result).not.toBeNull();
+    expect(result?.percent).toBe(25);
+  });
 });
 
 describe("generateTaskSummary", () => {
@@ -289,5 +332,140 @@ describe("generateTaskSummary", () => {
     const summary = generateTaskSummary(task, subtasks);
 
     expect(summary.bottleneck).toEqual({ phase: "implementation", percent: 75 });
+  });
+
+  test("handles subtasks with all null phase timings", () => {
+    const task = createTask();
+    const subtasks = [
+      createSubtask({
+        frontmatter: {
+          title: "No Phases Subtask",
+          status: "DONE",
+          dependencies: [],
+          timing: {
+            startedAt: new Date(),
+            completedAt: new Date(),
+            durationMs: 5000,
+            phases: {
+              implementation: null,
+              review: null,
+              merge: null,
+              conflictSolver: null
+            }
+          }
+        }
+      })
+    ];
+
+    const summary = generateTaskSummary(task, subtasks);
+
+    expect(summary.subtaskCount).toBe(1);
+    expect(summary.bottleneck).toBeNull();
+  });
+
+  test("handles single subtask", () => {
+    const task = createTask();
+    const subtasks = [createSubtask()];
+
+    const summary = generateTaskSummary(task, subtasks);
+
+    expect(summary.subtaskCount).toBe(1);
+    expect(summary.averageDurationMs).toBe(1800000);
+    expect(summary.subtaskTimings).toHaveLength(1);
+  });
+
+  test("handles mixed subtasks with and without timing", () => {
+    const task = createTask();
+    const subtasks = [
+      createSubtask({
+        frontmatter: {
+          title: "With Timing",
+          status: "DONE",
+          dependencies: [],
+          timing: {
+            startedAt: new Date(),
+            completedAt: new Date(),
+            durationMs: 10000,
+            phases: {
+              implementation: 8000,
+              review: 2000,
+              merge: null,
+              conflictSolver: null
+            }
+          }
+        }
+      }),
+      createSubtask({
+        number: 2,
+        filename: "002-subtask.md",
+        frontmatter: {
+          title: "Without Timing",
+          status: "PENDING",
+          dependencies: [],
+          timing: undefined
+        }
+      })
+    ];
+
+    const summary = generateTaskSummary(task, subtasks);
+
+    expect(summary.subtaskCount).toBe(2);
+    expect(summary.subtaskTimings[0].durationMs).toBe(10000);
+    expect(summary.subtaskTimings[1].durationMs).toBe(0);
+    expect(summary.averageDurationMs).toBe(5000);
+  });
+
+  test("calculates correct average with varying durations", () => {
+    const task = createTask();
+    const subtasks = [
+      createSubtask({
+        frontmatter: {
+          title: "Subtask 1",
+          status: "DONE",
+          dependencies: [],
+          timing: {
+            startedAt: new Date(),
+            completedAt: new Date(),
+            durationMs: 1000,
+            phases: { implementation: 1000, review: null, merge: null, conflictSolver: null }
+          }
+        }
+      }),
+      createSubtask({
+        number: 2,
+        filename: "002-subtask.md",
+        frontmatter: {
+          title: "Subtask 2",
+          status: "DONE",
+          dependencies: [],
+          timing: {
+            startedAt: new Date(),
+            completedAt: new Date(),
+            durationMs: 2000,
+            phases: { implementation: 2000, review: null, merge: null, conflictSolver: null }
+          }
+        }
+      }),
+      createSubtask({
+        number: 3,
+        filename: "003-subtask.md",
+        frontmatter: {
+          title: "Subtask 3",
+          status: "DONE",
+          dependencies: [],
+          timing: {
+            startedAt: new Date(),
+            completedAt: new Date(),
+            durationMs: 3000,
+            phases: { implementation: 3000, review: null, merge: null, conflictSolver: null }
+          }
+        }
+      })
+    ];
+
+    const summary = generateTaskSummary(task, subtasks);
+
+    expect(summary.subtaskCount).toBe(3);
+    expect(summary.averageDurationMs).toBe(2000);
   });
 });
