@@ -2,9 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { cleanupTestDir, createTestDir } from "../test-helpers";
 import {
+  checkBranchExists,
+  checkWorktreeExists,
   createSubtaskWorktree,
   createTaskWorktree,
   deleteWorktree,
+  ensureWorktree,
   getCurrentBranch,
   getMainBranch,
   isGitRepo,
@@ -339,6 +342,157 @@ describe("Git Worktree Manager", () => {
     test("returns current branch name", async () => {
       const branch = await getCurrentBranch(gitRepoDir);
       expect(branch).toBe("main");
+    });
+  });
+
+  describe("checkWorktreeExists", () => {
+    test("returns true when worktree exists", async () => {
+      const taskFolder = "20260127-check-worktree-exists";
+      const worktreePath = await createTaskWorktree(gitRepoDir, taskFolder);
+
+      const exists = await checkWorktreeExists(gitRepoDir, worktreePath);
+      expect(exists).toBe(true);
+    });
+
+    test("returns false when worktree does not exist", async () => {
+      const nonExistentPath = join(
+        gitRepoDir,
+        ".worktrees",
+        "non-existent-worktree"
+      );
+      const exists = await checkWorktreeExists(gitRepoDir, nonExistentPath);
+      expect(exists).toBe(false);
+    });
+  });
+
+  describe("checkBranchExists", () => {
+    test("returns true when branch exists", async () => {
+      const branchName = "test-branch-exists";
+      await Bun.$`git -C ${gitRepoDir} branch ${branchName}`.quiet();
+
+      const exists = await checkBranchExists(gitRepoDir, branchName);
+      expect(exists).toBe(true);
+
+      await Bun.$`git -C ${gitRepoDir} branch -d ${branchName}`.quiet();
+    });
+
+    test("returns false when branch does not exist", async () => {
+      const exists = await checkBranchExists(gitRepoDir, "non-existent-branch");
+      expect(exists).toBe(false);
+    });
+  });
+
+  describe("ensureWorktree", () => {
+    test("creates fresh worktree when neither exists", async () => {
+      const branchName = "test-ensure-fresh";
+      const worktreePath = join(gitRepoDir, ".worktrees", "ensure-fresh");
+
+      const result = await ensureWorktree({
+        cwd: gitRepoDir,
+        worktreePath,
+        branchName,
+        sourceBranch: "main"
+      });
+
+      expect(result).toBe(worktreePath);
+
+      const worktreeExists = await checkWorktreeExists(
+        gitRepoDir,
+        worktreePath
+      );
+      expect(worktreeExists).toBe(true);
+
+      const branchExists = await checkBranchExists(gitRepoDir, branchName);
+      expect(branchExists).toBe(true);
+
+      await deleteWorktree(gitRepoDir, worktreePath);
+    });
+
+    test("reuses existing when both worktree and branch exist", async () => {
+      const branchName = "test-ensure-reuse";
+      const worktreePath = join(gitRepoDir, ".worktrees", "ensure-reuse");
+
+      await ensureWorktree({
+        cwd: gitRepoDir,
+        worktreePath,
+        branchName,
+        sourceBranch: "main"
+      });
+
+      const result = await ensureWorktree({
+        cwd: gitRepoDir,
+        worktreePath,
+        branchName,
+        sourceBranch: "main"
+      });
+
+      expect(result).toBe(worktreePath);
+
+      await deleteWorktree(gitRepoDir, worktreePath);
+    });
+
+    test("throws error when branch exists but worktree is missing", async () => {
+      const branchName = "test-ensure-branch-only";
+      await Bun.$`git -C ${gitRepoDir} branch ${branchName}`.quiet();
+
+      const worktreePath = join(gitRepoDir, ".worktrees", "ensure-branch-only");
+
+      await expect(
+        ensureWorktree({
+          cwd: gitRepoDir,
+          worktreePath,
+          branchName,
+          sourceBranch: "main"
+        })
+      ).rejects.toThrow(/Branch.*exists but worktree is missing/);
+
+      await Bun.$`git -C ${gitRepoDir} branch -d ${branchName}`.quiet();
+    });
+
+    test("throws error when worktree exists but branch is missing", async () => {
+      const branchName = "test-ensure-worktree-only";
+      const worktreePath = join(
+        gitRepoDir,
+        ".worktrees",
+        "ensure-worktree-only"
+      );
+
+      await Bun.$`git -C ${gitRepoDir} worktree add -b ${branchName} ${worktreePath}`.quiet();
+      await Bun.$`git -C ${worktreePath} checkout --detach`.quiet();
+      await Bun.$`git -C ${gitRepoDir} branch -d ${branchName}`.quiet();
+
+      await expect(
+        ensureWorktree({
+          cwd: gitRepoDir,
+          worktreePath,
+          branchName,
+          sourceBranch: "main"
+        })
+      ).rejects.toThrow(/Worktree exists.*but branch.*is missing/);
+
+      await Bun.$`git -C ${gitRepoDir} worktree remove ${worktreePath} --force`.quiet();
+    });
+  });
+
+  describe("createSubtaskWorktree idempotency", () => {
+    test("returns same path when called twice (idempotent)", async () => {
+      const taskFolder = "20260127-idempotent-subtask";
+      const subtaskSlug = "001-idempotent-test";
+
+      await createTaskWorktree(gitRepoDir, taskFolder);
+
+      const firstPath = await createSubtaskWorktree(
+        gitRepoDir,
+        taskFolder,
+        subtaskSlug
+      );
+      const secondPath = await createSubtaskWorktree(
+        gitRepoDir,
+        taskFolder,
+        subtaskSlug
+      );
+
+      expect(firstPath).toBe(secondPath);
     });
   });
 });

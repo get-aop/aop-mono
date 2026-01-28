@@ -111,13 +111,15 @@ export const createSubtaskWorktree = async (
   subtaskSlug: string
 ): Promise<string> => {
   const taskBranch = `task/${taskFolder}`;
-  // Use -- separator to avoid git ref conflicts (can't have task/foo and task/foo/bar)
   const subtaskBranch = `task/${taskFolder}--${subtaskSlug}`;
   const worktreePath = join(cwd, ".worktrees", `${taskFolder}--${subtaskSlug}`);
 
-  await Bun.$`git -C ${cwd} worktree add -b ${subtaskBranch} ${worktreePath} ${taskBranch}`.quiet();
-
-  return worktreePath;
+  return ensureWorktree({
+    cwd,
+    worktreePath,
+    branchName: subtaskBranch,
+    sourceBranch: taskBranch
+  });
 };
 
 export const mergeSubtaskIntoTask = async (
@@ -199,6 +201,57 @@ export const listWorktrees = async (cwd: string): Promise<string[]> => {
   }
 
   return paths;
+};
+
+export const checkWorktreeExists = async (
+  cwd: string,
+  worktreePath: string
+): Promise<boolean> => {
+  const worktrees = await listWorktrees(cwd);
+  return worktrees.includes(worktreePath);
+};
+
+export const checkBranchExists = async (
+  cwd: string,
+  branchName: string
+): Promise<boolean> => {
+  const result = await Bun.$`git -C ${cwd} branch --list ${branchName}`.quiet();
+  return result.text().trim().length > 0;
+};
+
+export interface EnsureWorktreeOptions {
+  cwd: string;
+  worktreePath: string;
+  branchName: string;
+  sourceBranch: string;
+}
+
+export const ensureWorktree = async (
+  options: EnsureWorktreeOptions
+): Promise<string> => {
+  const { cwd, worktreePath, branchName, sourceBranch } = options;
+
+  const worktreeExists = await checkWorktreeExists(cwd, worktreePath);
+  const branchExists = await checkBranchExists(cwd, branchName);
+
+  if (worktreeExists && branchExists) {
+    return worktreePath;
+  }
+
+  if (!worktreeExists && !branchExists) {
+    await Bun.$`git -C ${cwd} worktree add -b ${branchName} ${worktreePath} ${sourceBranch}`.quiet();
+    return worktreePath;
+  }
+
+  if (branchExists && !worktreeExists) {
+    throw new Error(
+      `Branch '${branchName}' exists but worktree is missing. Manual cleanup required.`
+    );
+  }
+
+  throw new Error(
+    `Worktree exists at '${worktreePath}' but branch '${branchName}' is missing. Manual cleanup required.`
+  );
 };
 
 export const getCurrentBranch = async (
