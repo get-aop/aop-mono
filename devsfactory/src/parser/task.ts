@@ -69,6 +69,23 @@ export const updateTaskStatus = async (
   }));
 };
 
+export const updateTaskTiming = async (
+  taskFolder: string,
+  timingUpdate: { startedAt?: Date; completedAt?: Date; durationMs?: number },
+  devsfactoryDir = DEFAULT_DEVSFACTORY_DIR
+): Promise<void> => {
+  const filePath = `${devsfactoryDir}/${taskFolder}/task.md`;
+
+  const definedUpdates = Object.fromEntries(
+    Object.entries(timingUpdate).filter(([, v]) => v !== undefined)
+  );
+
+  await updateFrontmatter(filePath, TaskFrontmatterSchema, (current) => ({
+    ...current,
+    ...definedUpdates
+  }));
+};
+
 export const listTaskFolders = async (
   devsfactoryDir = DEFAULT_DEVSFACTORY_DIR
 ): Promise<string[]> => {
