@@ -19,12 +19,6 @@ describe("getImplementationPrompt", () => {
     expect(prompt).toContain("test-driven-development");
   });
 
-  test("includes code-simplifier skill", async () => {
-    const prompt = await getImplementationPrompt("/path/to/task/subtask.md");
-
-    expect(prompt).toContain("code-simplifier");
-  });
-
   test("includes success criteria", async () => {
     const prompt = await getImplementationPrompt("/path/to/task/subtask.md");
 

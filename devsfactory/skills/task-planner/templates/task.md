@@ -2,7 +2,7 @@
 title: {{title}}
 status: {{status}}
 created: {{timestamp}}
-priority: {{priority}}
+priority: {{priority: high | medium | low}}
 tags: [{{tags}}]
 assignee: null
 dependencies: [{{dependencies}}]

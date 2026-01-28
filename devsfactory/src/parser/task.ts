@@ -1,4 +1,6 @@
-import type { Task, TaskStatus } from "../types";
+import { ZodError } from "zod";
+import { ParseError } from "../errors";
+import type { Task, TaskFrontmatter, TaskStatus } from "../types";
 import { TaskFrontmatterSchema } from "../types";
 import {
   parseFrontmatter,
@@ -20,10 +22,19 @@ export const parseTask = async (
   }
 
   const content = await file.text();
-  const { frontmatter, content: body } = parseFrontmatter(
-    content,
-    TaskFrontmatterSchema
-  );
+
+  let frontmatter: TaskFrontmatter;
+  let body: string;
+  try {
+    const parsed = parseFrontmatter(content, TaskFrontmatterSchema);
+    frontmatter = parsed.frontmatter;
+    body = parsed.content;
+  } catch (error) {
+    if (error instanceof ZodError) {
+      throw new ParseError(filePath, error);
+    }
+    throw error;
+  }
 
   const sections = extractSections(body);
 

@@ -66,5 +66,5 @@ State "Proceeding to step N" after each step.
   </decision_boundaries>
 
 <important>
-Execute all steps. Do not stop after code-simplifier. Workflow is complete only after updating subtask status.
+Execute all steps. Workflow is complete only after updating subtask status.
 </important>

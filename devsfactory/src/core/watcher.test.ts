@@ -246,7 +246,10 @@ describe.skipIf(isCI)("DevsfactoryWatcher (with watching)", () => {
       watcher.on("taskChanged", (e) => events.push(e));
       watcher.start(devsfactoryDir);
 
-      await sleep(50);
+      // Wait longer than debounce time to flush any startup events
+      await sleep(100);
+      events.length = 0; // Clear any events from watcher startup
+
       await writeFile(join(taskDir, "task.md"), "change1");
       await writeFile(join(taskDir, "task.md"), "change2");
       await writeFile(join(taskDir, "task.md"), "change3");

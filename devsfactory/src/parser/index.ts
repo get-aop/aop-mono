@@ -6,13 +6,7 @@ export {
   serializeFrontmatter,
   updateFrontmatter
 } from "./frontmatter";
-export {
-  addSubtaskToPlan,
-  appendPlanBlockers,
-  createPlan,
-  parsePlan,
-  updatePlanStatus
-} from "./plan";
+export { parsePlan } from "./plan";
 export {
   appendReviewHistory,
   createSubtask,

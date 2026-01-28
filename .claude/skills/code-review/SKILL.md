@@ -40,7 +40,8 @@ gh pr view <number> --json files,additions,deletions
 - [ ] No dead code or commented-out blocks
 - [ ] Consistent style with existing codebase
 
-### Test Coverage (T)
+### Test Coverage (T) 
+**Important**: If the code relates to a test-suite already, you don't need to add tests (eg writing helper functions for tests, e2e playwright etc).
 - [ ] New code has corresponding tests
 - [ ] Edge cases covered
 - [ ] Tests actually assert behavior (not just run)
