@@ -8,6 +8,7 @@ import {
   formatSubtaskCompletedMessage,
   formatSubtaskStartMessage
 } from "./cli-log-formatter";
+import { parseStatsArgs, runStatsCommand } from "./commands/stats";
 import { renderSummaryTable } from "./core/summary-table";
 import { generateTaskSummary } from "./core/timing";
 import { configureLogger, getLogger } from "./infra/logger";
@@ -48,6 +49,9 @@ SETUP
   3. Optionally create a .env file with configuration
   4. Run 'aop' from your project root
 
+COMMANDS
+  stats <task-folder>   Export timing statistics as JSON
+
 EXAMPLES
   # Start orchestrator with defaults
   aop
@@ -59,25 +63,51 @@ EXAMPLES
   echo "MAX_CONCURRENT_AGENTS=4" > .env
   aop
 
+  # Export timing stats for a task
+  aop stats my-task-folder
+
 DOCUMENTATION
   https://github.com/anthropics/devsfactory
 `;
 
-const parseArgs = (
-  args: string[]
-): { help: boolean; version: boolean; error?: string } => {
-  for (const arg of args) {
+interface ParsedArgs {
+  help: boolean;
+  version: boolean;
+  command?: string;
+  commandArgs: string[];
+  error?: string;
+}
+
+const parseArgs = (args: string[]): ParsedArgs => {
+  const result: ParsedArgs = {
+    help: false,
+    version: false,
+    commandArgs: []
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+
     if (arg === "-h" || arg === "--help") {
-      return { help: true, version: false };
+      result.help = true;
+      return result;
     }
     if (arg === "-v" || arg === "--version") {
-      return { help: false, version: true };
+      result.version = true;
+      return result;
+    }
+    if (arg === "stats") {
+      result.command = "stats";
+      result.commandArgs = args.slice(i + 1);
+      return result;
     }
     if (arg.startsWith("-")) {
-      return { help: false, version: false, error: `Unknown option: ${arg}` };
+      result.error = `Unknown option: ${arg}`;
+      return result;
     }
   }
-  return { help: false, version: false };
+
+  return result;
 };
 
 const parseEnvConfig = (): Config => {
@@ -152,9 +182,32 @@ const showError = (message: string) => {
   console.error("Run 'aop --help' for usage information.");
 };
 
+const handleStatsCommand = async (commandArgs: string[]) => {
+  const cwd = process.cwd();
+  const devsfactoryDir = join(
+    cwd,
+    process.env.DEVSFACTORY_DIR ?? ".devsfactory"
+  );
+
+  const statsArgs = parseStatsArgs(commandArgs);
+  if (statsArgs.error) {
+    showError(statsArgs.error);
+    process.exit(1);
+  }
+
+  const result = await runStatsCommand(statsArgs.taskFolder!, devsfactoryDir);
+  if (result.success) {
+    console.log(result.output);
+    process.exit(0);
+  } else {
+    showError(result.error!);
+    process.exit(1);
+  }
+};
+
 const main = async () => {
   const args = process.argv.slice(2);
-  const { help, version, error } = parseArgs(args);
+  const { help, version, command, commandArgs, error } = parseArgs(args);
 
   if (error) {
     showError(error);
@@ -169,6 +222,11 @@ const main = async () => {
   if (version) {
     showVersion();
     process.exit(0);
+  }
+
+  if (command === "stats") {
+    await handleStatsCommand(commandArgs);
+    return;
   }
 
   const config = parseEnvConfig();
