@@ -3,6 +3,11 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { AgentRunner } from "./core/agent-runner";
 import { Orchestrator } from "./core/orchestrator";
+import {
+  formatJobCompletedMessage,
+  formatSubtaskCompletedMessage,
+  formatSubtaskStartMessage
+} from "./cli-log-formatter";
 import { configureLogger, getLogger } from "./infra/logger";
 import { parseStreamJson } from "./providers/claude";
 import type { AgentProcess, Config } from "./types";
@@ -258,9 +263,60 @@ const main = async () => {
     log.warn("Recovery action", data);
   });
 
-  orchestrator.on("workerJobCompleted", (data) => {
-    log.info("Job completed", data);
-  });
+  orchestrator.on(
+    "subtaskStarted",
+    (data: {
+      taskFolder: string;
+      subtaskNumber: number;
+      subtaskTotal: number;
+      subtaskTitle: string;
+    }) => {
+      log.info(
+        formatSubtaskStartMessage(
+          data.subtaskNumber,
+          data.subtaskTotal,
+          data.subtaskTitle
+        ),
+        { taskFolder: data.taskFolder }
+      );
+    }
+  );
+
+  orchestrator.on(
+    "subtaskCompleted",
+    (data: {
+      taskFolder: string;
+      subtaskNumber: number;
+      subtaskTotal: number;
+      subtaskTitle: string;
+      durationMs: number;
+    }) => {
+      log.info(
+        formatSubtaskCompletedMessage(
+          data.subtaskNumber,
+          data.subtaskTotal,
+          data.subtaskTitle,
+          data.durationMs
+        ),
+        { taskFolder: data.taskFolder, durationMs: data.durationMs }
+      );
+    }
+  );
+
+  orchestrator.on(
+    "workerJobCompleted",
+    (data: {
+      jobId: string;
+      job: { type: string; taskFolder: string; subtaskFile?: string };
+      durationMs: number;
+    }) => {
+      log.info(formatJobCompletedMessage(data.job.type, data.durationMs), {
+        jobId: data.jobId,
+        taskFolder: data.job.taskFolder,
+        subtask: data.job.subtaskFile
+      });
+    }
+  );
 
   orchestrator.on("workerJobFailed", (data) => {
     log.error(`Job failed: ${data.error}`, data);

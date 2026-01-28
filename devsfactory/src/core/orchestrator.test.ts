@@ -336,6 +336,94 @@ describe("Orchestrator", () => {
       expect(events[0]!.jobId).toBe("test-job-1");
       expect(events[0]!.error).toBe("Agent exited with non-zero code");
     });
+
+    test("emits workerJobCompleted with durationMs when worker completes job", async () => {
+      const config = createConfig({ devsfactoryDir: devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+      const events: Array<{
+        jobId: string;
+        job: { type: string; taskFolder: string; subtaskFile?: string };
+        durationMs: number;
+      }> = [];
+
+      orchestrator.on("workerJobCompleted", (data) => events.push(data));
+      await orchestrator.start();
+
+      const worker = (
+        orchestrator as unknown as {
+          worker: EventEmitter | undefined;
+        }
+      ).worker;
+      worker!.emit("jobCompleted", {
+        jobId: "test-job-1",
+        job: {
+          type: "implementation",
+          taskFolder: "my-task",
+          subtaskFile: "001-test.md"
+        },
+        durationMs: 272000
+      });
+
+      await orchestrator.stop();
+
+      expect(events.length).toBe(1);
+      expect(events[0]!.jobId).toBe("test-job-1");
+      expect(events[0]!.job.type).toBe("implementation");
+      expect(events[0]!.durationMs).toBe(272000);
+    });
+
+    test("emits subtaskCompleted with durationMs when merge job completes", async () => {
+      await copyFixture(
+        devsfactoryDir,
+        "inprogress-with-subtask-pending-merge",
+        "my-task"
+      );
+
+      const config = createConfig({ devsfactoryDir: devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+      const events: Array<{
+        taskFolder: string;
+        subtaskNumber: number;
+        subtaskTotal: number;
+        subtaskTitle: string;
+        durationMs: number;
+      }> = [];
+
+      orchestrator.on("subtaskCompleted", (data) => events.push(data));
+      await orchestrator.start();
+
+      const worker = (
+        orchestrator as unknown as {
+          worker: EventEmitter | undefined;
+        }
+      ).worker;
+      worker!.emit("jobCompleted", {
+        jobId: "merge-job-1",
+        job: {
+          type: "merge",
+          taskFolder: "my-task",
+          subtaskFile: "001-first-subtask.md"
+        },
+        durationMs: 5000
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+      await orchestrator.stop();
+
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      const mergeEvent = events.find((e) => e.taskFolder === "my-task");
+      expect(mergeEvent).toBeDefined();
+      expect(mergeEvent!.subtaskNumber).toBe(1);
+      expect(mergeEvent!.durationMs).toBeGreaterThanOrEqual(0);
+    });
   });
 
   describe("processState()", () => {
@@ -662,6 +750,44 @@ describe("Orchestrator", () => {
           devsfactoryDir
         );
         expect(subtask.frontmatter.status).toBe("INPROGRESS");
+      });
+
+      test("emits subtaskStarted event when subtask transitions to INPROGRESS", async () => {
+        await copyFixture(devsfactoryDir, "simple-task-with-plan", "my-task");
+        const taskMd = await Bun.file(
+          join(devsfactoryDir, "my-task/task.md")
+        ).text();
+        await writeFile(
+          join(devsfactoryDir, "my-task/task.md"),
+          taskMd.replace("status: PENDING", "status: INPROGRESS")
+        );
+
+        const config = createConfig({
+          devsfactoryDir: devsfactoryDir,
+          worktreesDir: worktreesDir
+        });
+        const mockRunner = createMockAgentRunner();
+        const orchestrator = new Orchestrator(
+          config,
+          mockRunner as unknown as AgentRunner
+        );
+        const events: Array<{
+          taskFolder: string;
+          subtaskNumber: number;
+          subtaskTotal: number;
+          subtaskTitle: string;
+        }> = [];
+
+        orchestrator.on("subtaskStarted", (data) => events.push(data));
+        await orchestrator.start();
+        await new Promise((r) => setTimeout(r, 50));
+        await orchestrator.stop();
+
+        expect(events.length).toBeGreaterThanOrEqual(1);
+        expect(events[0]!.taskFolder).toBe("my-task");
+        expect(events[0]!.subtaskNumber).toBe(1);
+        expect(events[0]!.subtaskTotal).toBeGreaterThanOrEqual(1);
+        expect(events[0]!.subtaskTitle).toBeDefined();
       });
 
       test("calls createSubtaskWorktree before spawning implementation agent", async () => {
@@ -1551,7 +1677,11 @@ Test
             worker: EventEmitter | undefined;
           }
         ).worker;
-        worker!.emit("jobCompleted", { jobId: "test-job" });
+        worker!.emit("jobCompleted", {
+          jobId: "test-job",
+          job: { type: "implementation", taskFolder: "test-task" },
+          durationMs: 1000
+        });
 
         await new Promise((r) => setTimeout(r, 50));
         await orchestrator.stop();
