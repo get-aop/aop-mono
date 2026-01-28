@@ -2,9 +2,13 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import {
+  recordPhaseDuration,
   updateSubtaskStatus as parserUpdateSubtaskStatus,
-  updateTaskStatus
+  updateSubtaskTiming,
+  updateTaskStatus,
+  updateTaskTiming
 } from "../parser";
+import type { PhaseTimings } from "../types";
 import {
   getCompletingTaskPrompt,
   getCompletionReviewPrompt,
@@ -210,10 +214,34 @@ export class Orchestrator extends EventEmitter {
   }
 
   private subscribeToWorkerEvents(): void {
-    this.worker.on("jobCompleted", ({ jobId }: { jobId: string }) => {
-      this.scheduleReconcile();
-      this.emit("workerJobCompleted", { jobId });
-    });
+    this.worker.on(
+      "jobCompleted",
+      ({
+        jobId,
+        job,
+        durationMs
+      }: {
+        jobId: string;
+        job?: { type: string; taskFolder: string; subtaskFile?: string };
+        durationMs?: number;
+      }) => {
+        this.scheduleReconcile();
+        this.emit("workerJobCompleted", { jobId });
+
+        if (job?.subtaskFile && durationMs !== undefined) {
+          const phase = this.mapJobTypeToPhase(job.type);
+          if (phase) {
+            recordPhaseDuration(
+              job.taskFolder,
+              job.subtaskFile,
+              phase,
+              durationMs,
+              this.config.devsfactoryDir
+            ).catch(() => {});
+          }
+        }
+      }
+    );
 
     this.worker.on(
       "jobFailed",
@@ -355,6 +383,11 @@ export class Orchestrator extends EventEmitter {
         "INPROGRESS",
         this.config.devsfactoryDir
       );
+      await updateTaskTiming(
+        task.folder,
+        { startedAt: new Date() },
+        this.config.devsfactoryDir
+      );
       task.frontmatter.status = "INPROGRESS";
       await createTaskWorktree(this.getRepoRoot(), task.folder);
     }
@@ -373,6 +406,12 @@ export class Orchestrator extends EventEmitter {
           task.folder,
           subtask.filename,
           "INPROGRESS",
+          this.config.devsfactoryDir
+        );
+        await updateSubtaskTiming(
+          task.folder,
+          subtask.filename,
+          { startedAt: new Date() },
           this.config.devsfactoryDir
         );
         subtask.frontmatter.status = "INPROGRESS";
@@ -459,5 +498,15 @@ export class Orchestrator extends EventEmitter {
       };
       this.agentRunner.on("completed", handler);
     });
+  }
+
+  private mapJobTypeToPhase(jobType: string): keyof PhaseTimings | null {
+    const mapping: Record<string, keyof PhaseTimings> = {
+      implementation: "implementation",
+      review: "review",
+      merge: "merge",
+      "conflict-solver": "conflictSolver"
+    };
+    return mapping[jobType] ?? null;
   }
 }
