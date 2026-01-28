@@ -36,4 +36,10 @@ describe("getCompletingTaskPrompt", () => {
     expect(prompt).toContain("subtask");
     expect(prompt).toContain("plan");
   });
+
+  test("includes scope restrictions prohibiting code changes", async () => {
+    const prompt = await getCompletingTaskPrompt("my-task", ".devsfactory");
+
+    expect(prompt).toContain("READ-ONLY");
+  });
 });

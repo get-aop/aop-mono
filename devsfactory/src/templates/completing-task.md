@@ -23,7 +23,7 @@ Verify the task is complete against acceptance criteria, or create additional su
 <instructions>
 1. Read task.md acceptance criteria
 2. Read plan.md to understand what was implemented
-3. Check implementation against each acceptance criterion
+3. Check implementation against each acceptance criterion (READ-ONLY verification)
 4. Mark completed criteria in task.md
 
 If fully complete:
@@ -43,6 +43,23 @@ If items missing:
 - Acceptance criteria not fully met
 - Missing functionality discovered
 </decision_boundaries>
+
+<scope_restrictions>
+**This agent is READ-ONLY for code files.**
+
+You MUST NOT:
+- Modify any source code files (.ts, .js, .tsx, .jsx, .css, .html, etc.)
+- Fix bugs, typos, or issues in implementation code
+- Refactor or improve existing code
+- Add missing imports, exports, or dependencies
+
+You MAY ONLY modify:
+- task.md (to mark criteria as complete)
+- plan.md (to update status)
+- Create new subtask .md files (if items are missing)
+
+If you discover code issues during verification, create a subtask describing the fix needed - do NOT fix it yourself.
+</scope_restrictions>
 
 <important>
 Be thorough. Check each criterion individually. Do not mark complete if any criterion is unmet.
