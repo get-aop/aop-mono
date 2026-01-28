@@ -16,7 +16,10 @@ export interface SubtaskDetailPanelProps {
 const SubtaskStatusBadge = ({
   status,
   active
-}: { status: SubtaskStatus; active?: boolean }) => {
+}: {
+  status: SubtaskStatus;
+  active?: boolean;
+}) => {
   const statusClass = `status-${status.toLowerCase().replace("_", "-")}`;
   const pulsingClass = active ? "pulsing" : "";
 

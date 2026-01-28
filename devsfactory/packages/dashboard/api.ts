@@ -1,4 +1,14 @@
-import type { OrchestratorState, SubtaskStatus, TaskStatus } from "./types";
+import type {
+  BrainstormDraft,
+  OrchestratorState,
+  SubtaskPreview,
+  SubtaskStatus,
+  TaskStatus
+} from "./types";
+
+export interface ApproveOptions {
+  subtasks: SubtaskPreview[];
+}
 
 export interface ApiClient {
   baseUrl: string;
@@ -12,6 +22,23 @@ export interface ApiClient {
   createPullRequest(folder: string): Promise<{ prUrl: string }>;
   fetchDiff(folder: string): Promise<{ diff: string }>;
   getSubtaskLogs(folder: string, file: string): Promise<{ logs: string[] }>;
+
+  startBrainstorm(
+    initialMessage?: string
+  ): Promise<{ sessionId: string; agentId: string }>;
+  sendBrainstormMessage(sessionId: string, content: string): Promise<void>;
+  endBrainstorm(sessionId: string): Promise<{ draftId?: string }>;
+  confirmBrainstorm(sessionId: string): Promise<void>;
+  approveBrainstorm(
+    sessionId: string,
+    options: ApproveOptions
+  ): Promise<{ taskFolder: string }>;
+
+  listDrafts(): Promise<{ drafts: BrainstormDraft[] }>;
+  resumeDraft(
+    sessionId: string
+  ): Promise<{ sessionId: string; agentId: string }>;
+  deleteDraft(sessionId: string): Promise<void>;
 }
 
 export const createApiClient = (
@@ -58,6 +85,54 @@ export const createApiClient = (
       request<{ diff: string }>(`/api/tasks/${folder}/diff`),
 
     getSubtaskLogs: (folder, file) =>
-      request<{ logs: string[] }>(`/api/tasks/${folder}/subtasks/${file}/logs`)
+      request<{ logs: string[] }>(`/api/tasks/${folder}/subtasks/${file}/logs`),
+
+    startBrainstorm: (initialMessage) =>
+      request<{ sessionId: string; agentId: string }>("/api/brainstorm/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initialMessage })
+      }),
+
+    sendBrainstormMessage: async (sessionId, content) => {
+      await request(`/api/brainstorm/${sessionId}/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content })
+      });
+    },
+
+    endBrainstorm: (sessionId) =>
+      request<{ draftId?: string }>(`/api/brainstorm/${sessionId}/end`, {
+        method: "POST"
+      }),
+
+    confirmBrainstorm: async (sessionId) => {
+      await request(`/api/brainstorm/${sessionId}/confirm`, {
+        method: "POST"
+      });
+    },
+
+    approveBrainstorm: (sessionId, options) =>
+      request<{ taskFolder: string }>(`/api/brainstorm/${sessionId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options)
+      }),
+
+    listDrafts: () =>
+      request<{ drafts: BrainstormDraft[] }>("/api/brainstorm/drafts"),
+
+    resumeDraft: (sessionId) =>
+      request<{ sessionId: string; agentId: string }>(
+        `/api/brainstorm/drafts/${sessionId}/resume`,
+        { method: "POST" }
+      ),
+
+    deleteDraft: async (sessionId) => {
+      await request(`/api/brainstorm/drafts/${sessionId}`, {
+        method: "DELETE"
+      });
+    }
   };
 };

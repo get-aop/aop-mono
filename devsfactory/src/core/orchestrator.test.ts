@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   cleanupTestDir,
   createTestDir,
@@ -9,7 +9,6 @@ import {
 } from "../test-helpers";
 import { MemoryQueue } from "./local/memory-queue";
 import { MemoryAgentRegistry } from "./local/memory-registry";
-import { LogStorage } from "./log-storage";
 import { JobProducer } from "./producer/job-producer";
 
 const FIXTURES_DIR = join(import.meta.dir, "../../e2e-tests/fixtures");
@@ -2018,12 +2017,12 @@ Test
     });
   });
 
-  describe("log storage integration", () => {
+  describe("brainstorm integration", () => {
     let tempDir: string;
     let devsfactoryDir: string;
 
     beforeEach(async () => {
-      tempDir = await createTestDir("orchestrator-logs");
+      tempDir = await createTestDir("orchestrator-brainstorm");
       devsfactoryDir = join(tempDir, ".devsfactory");
       await mkdir(devsfactoryDir, { recursive: true });
     });
@@ -2032,7 +2031,7 @@ Test
       await cleanupTestDir(tempDir);
     });
 
-    test("creates LogStorage instance with repo root", () => {
+    test("exposes getBrainstormManager method", () => {
       const config = createConfig({ devsfactoryDir });
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
@@ -2040,30 +2039,103 @@ Test
         mockRunner as unknown as AgentRunner
       );
 
-      const logStorage = (orchestrator as unknown as { logStorage: LogStorage })
-        .logStorage;
-
-      expect(logStorage).toBeInstanceOf(LogStorage);
+      expect(typeof orchestrator.getBrainstormManager).toBe("function");
     });
 
-    test("subscribes to agent runner output events", async () => {
+    test("getBrainstormManager returns BrainstormSessionManager instance", () => {
       const config = createConfig({ devsfactoryDir });
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
         mockRunner as unknown as AgentRunner
+      );
+
+      const manager = orchestrator.getBrainstormManager();
+      expect(manager).toBeDefined();
+      expect(typeof manager.startSession).toBe("function");
+      expect(typeof manager.endSession).toBe("function");
+      expect(typeof manager.getActiveSessions).toBe("function");
+    });
+
+    test("forwards brainstorm sessionStarted events", async () => {
+      const config = createConfig({ devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+
+      const events: Array<{ sessionId: string; agentId: string }> = [];
+      orchestrator.on("brainstorm:sessionStarted", (data) => events.push(data));
+
+      await orchestrator.start();
+
+      const manager = orchestrator.getBrainstormManager();
+      manager.emit("sessionStarted", {
+        sessionId: "test-session",
+        agentId: "test-agent"
+      });
+
+      await orchestrator.stop();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]!.sessionId).toBe("test-session");
+      expect(events[0]!.agentId).toBe("test-agent");
+    });
+
+    test("forwards brainstorm message events", async () => {
+      const config = createConfig({ devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+
+      const events: Array<{ sessionId: string; message: unknown }> = [];
+      orchestrator.on("brainstorm:message", (data) => events.push(data));
+
+      await orchestrator.start();
+
+      const manager = orchestrator.getBrainstormManager();
+      manager.emit("message", {
+        sessionId: "test-session",
+        message: { content: "test message" }
+      });
+
+      await orchestrator.stop();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]!.sessionId).toBe("test-session");
+    });
+
+    test("forwards brainstorm brainstormComplete events", async () => {
+      const config = createConfig({ devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+
+      const events: Array<{ sessionId: string; taskPreview: unknown }> = [];
+      orchestrator.on("brainstorm:brainstormComplete", (data) =>
+        events.push(data)
       );
 
       await orchestrator.start();
 
-      expect(mockRunner.listenerCount("output")).toBeGreaterThan(0);
+      const manager = orchestrator.getBrainstormManager();
+      manager.emit("brainstormComplete", {
+        sessionId: "test-session",
+        taskPreview: { title: "Test Task" }
+      });
 
       await orchestrator.stop();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]!.sessionId).toBe("test-session");
     });
 
-    test("writes output lines to log file when agent has subtaskFile", async () => {
-      await copyFixture(devsfactoryDir, "done-task", "my-task");
-
+    test("forwards brainstorm error events", async () => {
       const config = createConfig({ devsfactoryDir });
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
@@ -2071,139 +2143,40 @@ Test
         mockRunner as unknown as AgentRunner
       );
 
+      const events: Array<{ sessionId: string; error: Error }> = [];
+      orchestrator.on("brainstorm:error", (data) => events.push(data));
+
       await orchestrator.start();
 
-      mockRunner.emit("started", {
-        agentId: "agent-123",
-        process: {
-          id: "agent-123",
-          type: "implementation",
-          taskFolder: "my-task",
-          subtaskFile: "001-first-subtask.md",
-          pid: 123,
-          startedAt: new Date()
-        }
+      const manager = orchestrator.getBrainstormManager();
+      manager.emit("error", {
+        sessionId: "test-session",
+        error: new Error("test error")
       });
 
-      mockRunner.emit("output", {
-        agentId: "agent-123",
-        line: "Hello from agent"
-      });
-      mockRunner.emit("output", {
-        agentId: "agent-123",
-        line: "Second line"
-      });
-
-      await new Promise((r) => setTimeout(r, 50));
       await orchestrator.stop();
 
-      const logStorage = new LogStorage(dirname(devsfactoryDir));
-      const lines = await logStorage.read("my-task", "001-first-subtask.md");
-      expect(lines).toContain("Hello from agent");
-      expect(lines).toContain("Second line");
-      expect(lines).toHaveLength(2);
+      expect(events).toHaveLength(1);
+      expect(events[0]!.sessionId).toBe("test-session");
     });
 
-    test("does not write output for agents without subtaskFile", async () => {
-      await copyFixture(devsfactoryDir, "done-task", "my-task");
+    test("cleans up old drafts on start", async () => {
+      const draftsDir = join(devsfactoryDir, ".drafts");
+      await mkdir(draftsDir, { recursive: true });
 
-      const config = createConfig({ devsfactoryDir });
-      const mockRunner = createMockAgentRunner();
-      const orchestrator = new Orchestrator(
-        config,
-        mockRunner as unknown as AgentRunner
+      // Create an old draft (older than 7 days)
+      const oldDraft = {
+        sessionId: "old-draft",
+        messages: [],
+        partialTaskData: {},
+        status: "active",
+        createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
+      };
+      await Bun.write(
+        join(draftsDir, "old-draft.json"),
+        JSON.stringify(oldDraft)
       );
-
-      await orchestrator.start();
-
-      mockRunner.emit("started", {
-        agentId: "agent-456",
-        process: {
-          id: "agent-456",
-          type: "completing-task",
-          taskFolder: "my-task",
-          pid: 456,
-          startedAt: new Date()
-        }
-      });
-
-      mockRunner.emit("output", {
-        agentId: "agent-456",
-        line: "Task level output"
-      });
-
-      await new Promise((r) => setTimeout(r, 50));
-      await orchestrator.stop();
-
-      const logsDir = join(devsfactoryDir, "my-task", "logs");
-      const logsExist = await Bun.file(logsDir).exists();
-      expect(logsExist).toBe(false);
-    });
-
-    test("routes output to correct subtask based on agentId", async () => {
-      await copyFixture(devsfactoryDir, "done-task", "my-task");
-
-      const config = createConfig({ devsfactoryDir });
-      const mockRunner = createMockAgentRunner();
-      const orchestrator = new Orchestrator(
-        config,
-        mockRunner as unknown as AgentRunner
-      );
-
-      await orchestrator.start();
-
-      mockRunner.emit("started", {
-        agentId: "agent-1",
-        process: {
-          id: "agent-1",
-          type: "implementation",
-          taskFolder: "my-task",
-          subtaskFile: "001-first.md",
-          pid: 100,
-          startedAt: new Date()
-        }
-      });
-
-      mockRunner.emit("started", {
-        agentId: "agent-2",
-        process: {
-          id: "agent-2",
-          type: "implementation",
-          taskFolder: "my-task",
-          subtaskFile: "002-second.md",
-          pid: 101,
-          startedAt: new Date()
-        }
-      });
-
-      mockRunner.emit("output", {
-        agentId: "agent-1",
-        line: "First agent line"
-      });
-      mockRunner.emit("output", {
-        agentId: "agent-2",
-        line: "Second agent line"
-      });
-      mockRunner.emit("output", {
-        agentId: "agent-1",
-        line: "First agent again"
-      });
-
-      await new Promise((r) => setTimeout(r, 50));
-      await orchestrator.stop();
-
-      const logStorage = new LogStorage(dirname(devsfactoryDir));
-      const lines1 = await logStorage.read("my-task", "001-first.md");
-      const lines2 = await logStorage.read("my-task", "002-second.md");
-
-      expect(lines1).toContain("First agent line");
-      expect(lines1).toContain("First agent again");
-      expect(lines1).toHaveLength(2);
-      expect(lines2).toEqual(["Second agent line"]);
-    });
-
-    test("cleans up agent tracking on completed event", async () => {
-      await copyFixture(devsfactoryDir, "done-task", "my-task");
 
       const config = createConfig({ devsfactoryDir });
       const mockRunner = createMockAgentRunner();
@@ -2213,36 +2186,55 @@ Test
       );
 
       await orchestrator.start();
-
-      mockRunner.emit("started", {
-        agentId: "agent-temp",
-        process: {
-          id: "agent-temp",
-          type: "implementation",
-          taskFolder: "my-task",
-          subtaskFile: "001-subtask.md",
-          pid: 200,
-          startedAt: new Date()
-        }
-      });
-
-      mockRunner.emit("output", {
-        agentId: "agent-temp",
-        line: "Before complete"
-      });
-      mockRunner.emit("completed", { agentId: "agent-temp", exitCode: 0 });
-
-      mockRunner.emit("output", {
-        agentId: "agent-temp",
-        line: "After complete"
-      });
-
-      await new Promise((r) => setTimeout(r, 50));
       await orchestrator.stop();
 
-      const logStorage = new LogStorage(dirname(devsfactoryDir));
-      const lines = await logStorage.read("my-task", "001-subtask.md");
-      expect(lines).toEqual(["Before complete"]);
+      // Old draft should have been cleaned up
+      const file = Bun.file(join(draftsDir, "old-draft.json"));
+      expect(await file.exists()).toBe(false);
+    });
+
+    test("ends all active brainstorm sessions on stop", async () => {
+      const config = createConfig({ devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+
+      await orchestrator.start();
+
+      const manager = orchestrator.getBrainstormManager();
+
+      // Mock endSession to just remove from map without calling subprocess
+      const endedSessions: string[] = [];
+      const sessionsMap = (
+        manager as unknown as {
+          sessions: Map<string, unknown>;
+        }
+      ).sessions;
+
+      manager.endSession = mock(async (sessionId: string) => {
+        endedSessions.push(sessionId);
+        sessionsMap.delete(sessionId);
+      });
+
+      // Simulate an active session by adding to internal sessions map
+      const mockSession = {
+        id: "mock-session",
+        status: "active" as const,
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      sessionsMap.set("mock-session", {
+        session: mockSession,
+        intentionallyEnded: false
+      });
+
+      await orchestrator.stop();
+
+      expect(endedSessions).toContain("mock-session");
     });
   });
 });

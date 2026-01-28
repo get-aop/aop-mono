@@ -1,4 +1,5 @@
 import { useDashboardStore } from "../context";
+import { NewTaskButton } from "./NewTaskButton";
 
 export const Header = () => {
   const connected = useDashboardStore((s) => s.connected);
@@ -11,6 +12,7 @@ export const Header = () => {
     <header className="header">
       <h1 className="header-title">Devsfactory</h1>
       <div className="header-controls">
+        <NewTaskButton />
         <span className={`connection-status ${connectionStatus}`}>
           {connectionStatus}
         </span>

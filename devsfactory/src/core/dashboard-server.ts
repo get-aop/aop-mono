@@ -5,9 +5,14 @@ import { z } from "zod";
 // Import the dashboard HTML for Bun's bundler
 import dashboardHtml from "../../packages/dashboard/index.html";
 import {
+  type BrainstormDraft,
+  type BrainstormSession,
   type OrchestratorState,
+  type SubtaskPreview,
+  SubtaskPreviewSchema,
   type SubtaskStatus,
   SubtaskStatusSchema,
+  type TaskPreview,
   type TaskStatus,
   TaskStatusSchema
 } from "../types";
@@ -15,6 +20,20 @@ import {
 export interface OrchestratorLike extends EventEmitter {
   getState(): OrchestratorState;
   getActiveAgents(): Promise<unknown[]>;
+}
+
+export interface DraftStorageLike {
+  saveDraft(draft: BrainstormDraft): Promise<void>;
+  loadDraft(sessionId: string): Promise<BrainstormDraft | null>;
+  listDrafts(): Promise<BrainstormDraft[]>;
+  deleteDraft(sessionId: string): Promise<void>;
+}
+
+export interface BrainstormManagerLike extends EventEmitter {
+  startSession(initialMessage?: string): Promise<BrainstormSession>;
+  sendMessage(sessionId: string, message: string): Promise<void>;
+  endSession(sessionId: string): Promise<void>;
+  getSession(sessionId: string): BrainstormSession | undefined;
 }
 
 export interface DashboardServerOptions {
@@ -37,16 +56,35 @@ export interface DashboardServerOptions {
     folder: string,
     file: string
   ) => Promise<{ logs: string[] }>;
+  brainstormManager?: BrainstormManagerLike;
+  draftStorage?: DraftStorageLike;
+  createTask?: (
+    taskPreview: TaskPreview,
+    subtasks?: SubtaskPreview[]
+  ) => Promise<{ taskFolder: string }>;
 }
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type"
 };
 
 const UpdateTaskStatusBodySchema = z.object({ status: TaskStatusSchema });
 const UpdateSubtaskStatusBodySchema = z.object({ status: SubtaskStatusSchema });
+
+const StartBrainstormBodySchema = z.object({
+  initialMessage: z.string().optional()
+});
+
+const SendMessageBodySchema = z.object({
+  content: z.string().min(1)
+});
+
+const ApproveBrainstormBodySchema = z.object({
+  taskTitle: z.string().min(1),
+  editedSubtasks: z.array(SubtaskPreviewSchema).optional()
+});
 
 const jsonResponse = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: CORS_HEADERS });
@@ -135,11 +173,66 @@ export class DashboardServer {
       event: "workerJobRetrying",
       handler: jobRetryingHandler
     });
+
+    this.subscribeToBrainstormEvents();
+  }
+
+  private subscribeToBrainstormEvents(): void {
+    const manager = this.options.brainstormManager;
+    if (!manager) return;
+
+    const sessionStartedHandler: EventHandler = (data) => {
+      const { sessionId, agentId } = data as {
+        sessionId: string;
+        agentId: string;
+      };
+      this.broadcast({ type: "brainstormStarted", sessionId, agentId });
+    };
+    manager.on("sessionStarted", sessionStartedHandler);
+    this.eventHandlers.push({
+      event: "sessionStarted",
+      handler: sessionStartedHandler
+    });
+
+    const messageHandler: EventHandler = (data) => {
+      const { sessionId, message } = data as {
+        sessionId: string;
+        message: unknown;
+      };
+      this.broadcast({ type: "brainstormMessage", sessionId, message });
+    };
+    manager.on("message", messageHandler);
+    this.eventHandlers.push({ event: "message", handler: messageHandler });
+
+    const completeHandler: EventHandler = (data) => {
+      const { sessionId, taskPreview } = data as {
+        sessionId: string;
+        taskPreview: unknown;
+      };
+      this.broadcast({ type: "brainstormComplete", sessionId, taskPreview });
+    };
+    manager.on("brainstormComplete", completeHandler);
+    this.eventHandlers.push({
+      event: "brainstormComplete",
+      handler: completeHandler
+    });
+
+    const errorHandler: EventHandler = (data) => {
+      const { sessionId, error } = data as { sessionId: string; error: Error };
+      this.broadcast({
+        type: "brainstormError",
+        sessionId,
+        error: error.message
+      });
+    };
+    manager.on("error", errorHandler);
+    this.eventHandlers.push({ event: "error", handler: errorHandler });
   }
 
   private unsubscribeFromOrchestratorEvents(): void {
     for (const { event, handler } of this.eventHandlers) {
       this.orchestrator.off(event, handler);
+      this.options.brainstormManager?.off(event, handler);
     }
     this.eventHandlers = [];
   }
@@ -214,6 +307,50 @@ export class DashboardServer {
     );
     if (logsMatch && req.method === "GET") {
       return this.handleGetSubtaskLogs(logsMatch[1]!, logsMatch[2]!);
+    }
+
+    // Brainstorm API endpoints
+    if (url.pathname === "/api/brainstorm/start" && req.method === "POST") {
+      return this.handleStartBrainstorm(req);
+    }
+
+    if (url.pathname === "/api/brainstorm/drafts" && req.method === "GET") {
+      return this.handleListDrafts();
+    }
+
+    const brainstormMessageMatch = url.pathname.match(
+      /^\/api\/brainstorm\/([^/]+)\/message$/
+    );
+    if (brainstormMessageMatch && req.method === "POST") {
+      return this.handleBrainstormMessage(req, brainstormMessageMatch[1]!);
+    }
+
+    const brainstormEndMatch = url.pathname.match(
+      /^\/api\/brainstorm\/([^/]+)\/end$/
+    );
+    if (brainstormEndMatch && req.method === "POST") {
+      return this.handleEndBrainstorm(brainstormEndMatch[1]!);
+    }
+
+    const brainstormApproveMatch = url.pathname.match(
+      /^\/api\/brainstorm\/([^/]+)\/approve$/
+    );
+    if (brainstormApproveMatch && req.method === "POST") {
+      return this.handleApproveBrainstorm(req, brainstormApproveMatch[1]!);
+    }
+
+    const draftResumeMatch = url.pathname.match(
+      /^\/api\/brainstorm\/drafts\/([^/]+)\/resume$/
+    );
+    if (draftResumeMatch && req.method === "POST") {
+      return this.handleResumeDraft(draftResumeMatch[1]!);
+    }
+
+    const draftDeleteMatch = url.pathname.match(
+      /^\/api\/brainstorm\/drafts\/([^/]+)$/
+    );
+    if (draftDeleteMatch && req.method === "DELETE") {
+      return this.handleDeleteDraft(draftDeleteMatch[1]!);
     }
 
     return new Response("Not Found", { status: 404, headers: CORS_HEADERS });
@@ -306,6 +443,203 @@ export class DashboardServer {
         return errorResponse("Logs retrieval not configured");
       }
       return jsonResponse(await this.options.getSubtaskLogs(folder, file));
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleStartBrainstorm(req: Request): Promise<Response> {
+    try {
+      if (!this.options.brainstormManager) {
+        return errorResponse("Brainstorm manager not configured");
+      }
+
+      const body = await req.json();
+      const parsed = StartBrainstormBodySchema.safeParse(body);
+      if (!parsed.success) {
+        return jsonResponse({ error: parsed.error.message }, 400);
+      }
+
+      const session = await this.options.brainstormManager.startSession(
+        parsed.data.initialMessage
+      );
+
+      return jsonResponse({ sessionId: session.id });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleBrainstormMessage(
+    req: Request,
+    sessionId: string
+  ): Promise<Response> {
+    try {
+      if (!this.options.brainstormManager) {
+        return errorResponse("Brainstorm manager not configured");
+      }
+
+      const session = this.options.brainstormManager.getSession(sessionId);
+      if (!session) {
+        return jsonResponse({ error: "Session not found" }, 404);
+      }
+
+      const body = await req.json();
+      const parsed = SendMessageBodySchema.safeParse(body);
+      if (!parsed.success) {
+        return jsonResponse({ error: parsed.error.message }, 400);
+      }
+
+      await this.options.brainstormManager.sendMessage(
+        sessionId,
+        parsed.data.content
+      );
+
+      return jsonResponse({ success: true });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleEndBrainstorm(sessionId: string): Promise<Response> {
+    try {
+      if (!this.options.brainstormManager) {
+        return errorResponse("Brainstorm manager not configured");
+      }
+
+      const session = this.options.brainstormManager.getSession(sessionId);
+      if (!session) {
+        return jsonResponse({ error: "Session not found" }, 404);
+      }
+
+      let draftId: string | undefined;
+
+      if (this.options.draftStorage && session.messages.length > 0) {
+        const draft: BrainstormDraft = {
+          sessionId: session.id,
+          messages: session.messages,
+          partialTaskData: session.taskPreview ?? {},
+          status: session.status,
+          createdAt: session.createdAt,
+          updatedAt: new Date()
+        };
+        await this.options.draftStorage.saveDraft(draft);
+        draftId = session.id;
+      }
+
+      await this.options.brainstormManager.endSession(sessionId);
+
+      return jsonResponse({ success: true, draftId });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleListDrafts(): Promise<Response> {
+    try {
+      if (!this.options.draftStorage) {
+        return errorResponse("Draft storage not configured");
+      }
+
+      const drafts = await this.options.draftStorage.listDrafts();
+      return jsonResponse({ drafts });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleResumeDraft(sessionId: string): Promise<Response> {
+    try {
+      if (!this.options.draftStorage) {
+        return errorResponse("Draft storage not configured");
+      }
+      if (!this.options.brainstormManager) {
+        return errorResponse("Brainstorm manager not configured");
+      }
+
+      const draft = await this.options.draftStorage.loadDraft(sessionId);
+      if (!draft) {
+        return jsonResponse({ error: "Draft not found" }, 404);
+      }
+
+      const lastUserMessage = draft.messages
+        .filter((m) => m.role === "user")
+        .pop();
+      const resumeContext = lastUserMessage?.content;
+
+      const session =
+        await this.options.brainstormManager.startSession(resumeContext);
+
+      await this.options.draftStorage.deleteDraft(sessionId);
+
+      return jsonResponse({ sessionId: session.id });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleDeleteDraft(sessionId: string): Promise<Response> {
+    try {
+      if (!this.options.draftStorage) {
+        return errorResponse("Draft storage not configured");
+      }
+
+      await this.options.draftStorage.deleteDraft(sessionId);
+      return jsonResponse({ success: true });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleApproveBrainstorm(
+    req: Request,
+    sessionId: string
+  ): Promise<Response> {
+    try {
+      if (!this.options.brainstormManager) {
+        return errorResponse("Brainstorm manager not configured");
+      }
+
+      const session = this.options.brainstormManager.getSession(sessionId);
+      if (!session) {
+        return jsonResponse({ error: "Session not found" }, 404);
+      }
+
+      const body = await req.json();
+      const parsed = ApproveBrainstormBodySchema.safeParse(body);
+      if (!parsed.success) {
+        return jsonResponse({ error: parsed.error.message }, 400);
+      }
+
+      if (!this.options.createTask) {
+        return errorResponse("Task creation not configured");
+      }
+
+      const taskPreview: TaskPreview = session.taskPreview ?? {
+        title: parsed.data.taskTitle,
+        description: "",
+        requirements: "",
+        acceptanceCriteria: []
+      };
+
+      const result = await this.options.createTask(
+        { ...taskPreview, title: parsed.data.taskTitle },
+        parsed.data.editedSubtasks
+      );
+
+      await this.options.brainstormManager.endSession(sessionId);
+
+      if (this.options.draftStorage) {
+        await this.options.draftStorage.deleteDraft(sessionId).catch(() => {});
+      }
+
+      this.broadcast({
+        type: "taskCreated",
+        sessionId,
+        taskFolder: result.taskFolder
+      });
+
+      return jsonResponse({ success: true, taskFolder: result.taskFolder });
     } catch (err) {
       return errorResponse(err);
     }

@@ -113,7 +113,11 @@ describe("SubtaskDetailPanel", () => {
     test("renders dependencies when present", () => {
       const html = renderPanel({
         subtask: createMockSubtask({
-          frontmatter: { title: "Test", status: "PENDING", dependencies: [1, 2] }
+          frontmatter: {
+            title: "Test",
+            status: "PENDING",
+            dependencies: [1, 2]
+          }
         })
       });
       expect(html).toContain("1");
@@ -194,14 +198,19 @@ describe("ConnectedSubtaskDetailPanel", () => {
     getSubtaskLogs: async () => ({ logs: [] })
   };
 
-  const renderConnected = (storeOverrides: {
-    selectedSubtask?: { taskFolder: string; subtaskFile: string } | null;
-    subtaskLogs?: string[];
-    subtaskLogsLoading?: boolean;
-    debugMode?: boolean;
-    subtasks?: Record<string, Subtask[]>;
-    activeAgents?: Map<string, { taskFolder: string; subtaskFile?: string; type: string }>;
-  } = {}) => {
+  const renderConnected = (
+    storeOverrides: {
+      selectedSubtask?: { taskFolder: string; subtaskFile: string } | null;
+      subtaskLogs?: string[];
+      subtaskLogsLoading?: boolean;
+      debugMode?: boolean;
+      subtasks?: Record<string, Subtask[]>;
+      activeAgents?: Map<
+        string,
+        { taskFolder: string; subtaskFile?: string; type: string }
+      >;
+    } = {}
+  ) => {
     const store = createDashboardStore(mockApiClient, {
       selectedSubtask: storeOverrides.selectedSubtask ?? null,
       subtaskLogs: storeOverrides.subtaskLogs ?? [],
@@ -265,7 +274,10 @@ describe("ConnectedSubtaskDetailPanel", () => {
   });
 
   test("detects active agent for subtask", () => {
-    const activeAgents = new Map<string, { taskFolder: string; subtaskFile?: string; type: string }>();
+    const activeAgents = new Map<
+      string,
+      { taskFolder: string; subtaskFile?: string; type: string }
+    >();
     activeAgents.set("agent-1", {
       taskFolder: "task-1",
       subtaskFile: "001-test.md",

@@ -3,6 +3,13 @@ import {
   AgentProcessSchema,
   type AgentType,
   AgentTypeSchema,
+  BrainstormDraftSchema,
+  type BrainstormMessageRole,
+  BrainstormMessageRoleSchema,
+  BrainstormMessageSchema,
+  BrainstormSessionSchema,
+  type BrainstormSessionStatus,
+  BrainstormSessionStatusSchema,
   ConfigSchema,
   OrchestratorStateSchema,
   PhaseTimingsSchema,
@@ -13,12 +20,14 @@ import {
   type Priority,
   PrioritySchema,
   SubtaskFrontmatterSchema,
+  SubtaskPreviewSchema,
   SubtaskReferenceSchema,
   SubtaskSchema,
   type SubtaskStatus,
   SubtaskStatusSchema,
   SubtaskTimingSchema,
   TaskFrontmatterSchema,
+  TaskPreviewSchema,
   TaskSchema,
   type TaskStatus,
   TaskStatusSchema,
@@ -652,6 +661,349 @@ describe("Type Exports", () => {
     expect(planStatus).toBe("REVIEW");
     expect(priority).toBe("high");
     expect(agentType).toBe("implementation");
+  });
+});
+
+describe("Brainstorm Session Schemas", () => {
+  describe("BrainstormSessionStatusSchema", () => {
+    test("accepts valid values", () => {
+      const validStatuses: BrainstormSessionStatus[] = [
+        "active",
+        "brainstorming",
+        "planning",
+        "review",
+        "completed",
+        "cancelled"
+      ];
+      for (const status of validStatuses) {
+        expect(BrainstormSessionStatusSchema.parse(status)).toBe(status);
+      }
+    });
+
+    test("rejects invalid values", () => {
+      expect(() => BrainstormSessionStatusSchema.parse("INVALID")).toThrow();
+      expect(() => BrainstormSessionStatusSchema.parse("")).toThrow();
+      expect(() => BrainstormSessionStatusSchema.parse(123)).toThrow();
+    });
+  });
+
+  describe("BrainstormMessageRoleSchema", () => {
+    test("accepts valid values", () => {
+      const validRoles: BrainstormMessageRole[] = ["user", "assistant"];
+      for (const role of validRoles) {
+        expect(BrainstormMessageRoleSchema.parse(role)).toBe(role);
+      }
+    });
+
+    test("rejects invalid values", () => {
+      expect(() => BrainstormMessageRoleSchema.parse("system")).toThrow();
+      expect(() => BrainstormMessageRoleSchema.parse("bot")).toThrow();
+    });
+  });
+
+  describe("BrainstormMessageSchema", () => {
+    test("parses with all fields", () => {
+      const input = {
+        id: "msg_123abc",
+        role: "user",
+        content: "Hello, I need help with a feature",
+        timestamp: "2026-01-28T10:00:00Z"
+      };
+
+      const result = BrainstormMessageSchema.parse(input);
+
+      expect(result.id).toBe("msg_123abc");
+      expect(result.role).toBe("user");
+      expect(result.content).toBe("Hello, I need help with a feature");
+      expect(result.timestamp).toBeInstanceOf(Date);
+    });
+
+    test("coerces timestamp from string to Date", () => {
+      const input = {
+        id: "msg_456def",
+        role: "assistant",
+        content: "I can help you with that",
+        timestamp: "2026-01-28T10:05:00Z"
+      };
+
+      const result = BrainstormMessageSchema.parse(input);
+
+      expect(result.timestamp).toBeInstanceOf(Date);
+      expect(result.timestamp.toISOString()).toBe("2026-01-28T10:05:00.000Z");
+    });
+
+    test("accepts Date object directly", () => {
+      const date = new Date("2026-01-28T10:00:00Z");
+      const input = {
+        id: "msg_789ghi",
+        role: "user",
+        content: "Test message",
+        timestamp: date
+      };
+
+      const result = BrainstormMessageSchema.parse(input);
+
+      expect(result.timestamp.getTime()).toBe(date.getTime());
+    });
+
+    test("rejects invalid role", () => {
+      const input = {
+        id: "msg_bad",
+        role: "system",
+        content: "Bad message",
+        timestamp: "2026-01-28T10:00:00Z"
+      };
+
+      expect(() => BrainstormMessageSchema.parse(input)).toThrow();
+    });
+  });
+
+  describe("TaskPreviewSchema", () => {
+    test("parses with all fields", () => {
+      const input = {
+        title: "Add User Authentication",
+        description: "Implement user login and registration",
+        requirements: "- Login form\n- Registration form\n- Password reset",
+        acceptanceCriteria: ["Users can register", "Users can login"]
+      };
+
+      const result = TaskPreviewSchema.parse(input);
+
+      expect(result.title).toBe("Add User Authentication");
+      expect(result.description).toBe("Implement user login and registration");
+      expect(result.requirements).toBe(
+        "- Login form\n- Registration form\n- Password reset"
+      );
+      expect(result.acceptanceCriteria).toEqual([
+        "Users can register",
+        "Users can login"
+      ]);
+    });
+  });
+
+  describe("SubtaskPreviewSchema", () => {
+    test("parses with all fields", () => {
+      const input = {
+        number: 1,
+        slug: "create-login-form",
+        title: "Create login form component",
+        description: "Build the UI for user login",
+        context: "Reference src/components/Form.tsx for styling patterns",
+        dependencies: [1, 2]
+      };
+
+      const result = SubtaskPreviewSchema.parse(input);
+
+      expect(result.number).toBe(1);
+      expect(result.slug).toBe("create-login-form");
+      expect(result.title).toBe("Create login form component");
+      expect(result.description).toBe("Build the UI for user login");
+      expect(result.context).toBe(
+        "Reference src/components/Form.tsx for styling patterns"
+      );
+      expect(result.dependencies).toEqual([1, 2]);
+    });
+
+    test("applies default for dependencies and optional context", () => {
+      const input = {
+        number: 2,
+        slug: "independent-subtask",
+        title: "Independent subtask",
+        description: "No dependencies"
+      };
+
+      const result = SubtaskPreviewSchema.parse(input);
+
+      expect(result.dependencies).toEqual([]);
+      expect(result.context).toBeUndefined();
+    });
+  });
+
+  describe("BrainstormSessionSchema", () => {
+    test("parses with required fields only", () => {
+      const input = {
+        id: "session_abc123",
+        status: "brainstorming",
+        messages: [],
+        createdAt: "2026-01-28T10:00:00Z",
+        updatedAt: "2026-01-28T10:00:00Z"
+      };
+
+      const result = BrainstormSessionSchema.parse(input);
+
+      expect(result.id).toBe("session_abc123");
+      expect(result.status).toBe("brainstorming");
+      expect(result.messages).toEqual([]);
+      expect(result.createdAt).toBeInstanceOf(Date);
+      expect(result.updatedAt).toBeInstanceOf(Date);
+      expect(result.taskPreview).toBeUndefined();
+      expect(result.subtaskPreviews).toBeUndefined();
+    });
+
+    test("parses with messages", () => {
+      const input = {
+        id: "session_def456",
+        status: "brainstorming",
+        messages: [
+          {
+            id: "msg_1",
+            role: "user",
+            content: "I want to add auth",
+            timestamp: "2026-01-28T10:00:00Z"
+          },
+          {
+            id: "msg_2",
+            role: "assistant",
+            content: "What type of auth?",
+            timestamp: "2026-01-28T10:01:00Z"
+          }
+        ],
+        createdAt: "2026-01-28T10:00:00Z",
+        updatedAt: "2026-01-28T10:01:00Z"
+      };
+
+      const result = BrainstormSessionSchema.parse(input);
+
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[0]?.role).toBe("user");
+      expect(result.messages[1]?.role).toBe("assistant");
+    });
+
+    test("parses with taskPreview", () => {
+      const input = {
+        id: "session_ghi789",
+        status: "planning",
+        messages: [],
+        createdAt: "2026-01-28T10:00:00Z",
+        updatedAt: "2026-01-28T10:30:00Z",
+        taskPreview: {
+          title: "User Authentication",
+          description: "Add login and registration",
+          requirements: "OAuth support",
+          acceptanceCriteria: ["Login works"]
+        }
+      };
+
+      const result = BrainstormSessionSchema.parse(input);
+
+      expect(result.taskPreview).toBeDefined();
+      expect(result.taskPreview?.title).toBe("User Authentication");
+    });
+
+    test("parses with subtaskPreviews", () => {
+      const input = {
+        id: "session_jkl012",
+        status: "review",
+        messages: [],
+        createdAt: "2026-01-28T10:00:00Z",
+        updatedAt: "2026-01-28T11:00:00Z",
+        taskPreview: {
+          title: "Auth Feature",
+          description: "Auth description",
+          requirements: "Requirements",
+          acceptanceCriteria: []
+        },
+        subtaskPreviews: [
+          {
+            number: 1,
+            slug: "setup",
+            title: "Setup",
+            description: "Initial setup",
+            dependencies: []
+          },
+          {
+            number: 2,
+            slug: "login",
+            title: "Login",
+            description: "Login form",
+            dependencies: [1]
+          }
+        ]
+      };
+
+      const result = BrainstormSessionSchema.parse(input);
+
+      expect(result.subtaskPreviews).toHaveLength(2);
+      expect(result.subtaskPreviews?.[0]?.title).toBe("Setup");
+      expect(result.subtaskPreviews?.[0]?.number).toBe(1);
+      expect(result.subtaskPreviews?.[0]?.slug).toBe("setup");
+      expect(result.subtaskPreviews?.[1]?.dependencies).toEqual([1]);
+    });
+  });
+
+  describe("BrainstormDraftSchema", () => {
+    test("parses with all fields", () => {
+      const input = {
+        sessionId: "session_abc",
+        messages: [
+          {
+            id: "msg_1",
+            role: "user",
+            content: "Help me build a feature",
+            timestamp: "2026-01-28T10:00:00Z"
+          }
+        ],
+        partialTaskData: {
+          title: "Partial Title"
+        },
+        status: "brainstorming",
+        createdAt: "2026-01-28T10:00:00Z",
+        updatedAt: "2026-01-28T10:05:00Z"
+      };
+
+      const result = BrainstormDraftSchema.parse(input);
+
+      expect(result.sessionId).toBe("session_abc");
+      expect(result.messages).toHaveLength(1);
+      expect(result.partialTaskData).toEqual({ title: "Partial Title" });
+      expect(result.status).toBe("brainstorming");
+      expect(result.createdAt).toBeInstanceOf(Date);
+      expect(result.updatedAt).toBeInstanceOf(Date);
+    });
+
+    test("accepts partial task data with any combination of fields", () => {
+      const input = {
+        sessionId: "session_def",
+        messages: [],
+        partialTaskData: {
+          description: "Only description"
+        },
+        status: "active",
+        createdAt: "2026-01-28T10:00:00Z",
+        updatedAt: "2026-01-28T10:00:00Z"
+      };
+
+      const result = BrainstormDraftSchema.parse(input);
+
+      expect(result.partialTaskData).toEqual({
+        description: "Only description"
+      });
+    });
+
+    test("accepts empty partial task data", () => {
+      const input = {
+        sessionId: "session_ghi",
+        messages: [],
+        partialTaskData: {},
+        status: "active",
+        createdAt: "2026-01-28T10:00:00Z",
+        updatedAt: "2026-01-28T10:00:00Z"
+      };
+
+      const result = BrainstormDraftSchema.parse(input);
+
+      expect(result.partialTaskData).toEqual({});
+    });
+  });
+});
+
+describe("Brainstorm Type Exports", () => {
+  test("exported brainstorm types are correctly inferred", () => {
+    const sessionStatus: BrainstormSessionStatus = "brainstorming";
+    const messageRole: BrainstormMessageRole = "assistant";
+
+    expect(sessionStatus).toBe("brainstorming");
+    expect(messageRole).toBe("assistant");
   });
 });
 

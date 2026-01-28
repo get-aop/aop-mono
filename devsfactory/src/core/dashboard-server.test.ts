@@ -1,6 +1,10 @@
 import { describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import type { OrchestratorState } from "../types";
+import type {
+  BrainstormManagerLike,
+  DraftStorageLike
+} from "./dashboard-server";
 
 const createMockOrchestrator = (state: OrchestratorState) => {
   const orchestrator = new EventEmitter() as EventEmitter & {
@@ -678,6 +682,948 @@ describe("DashboardServer", () => {
         expect(response.status).toBe(200);
         const body = (await response.json()) as { logs: string[] };
         expect(body.logs).toEqual([]);
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+});
+
+describe("Brainstorm API endpoints", () => {
+  describe("POST /api/brainstorm/start", () => {
+    test("starts a new brainstorm session", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockSession = {
+        id: "brainstorm-123",
+        status: "active" as const,
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      const mockStartSession = mock(() => Promise.resolve(mockSession));
+      const mockBrainstormManager = {
+        startSession: mockStartSession,
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/start`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              initialMessage: "I want to build a feature"
+            })
+          }
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { sessionId: string };
+        expect(body.sessionId).toBe("brainstorm-123");
+        expect(mockStartSession).toHaveBeenCalledWith(
+          "I want to build a feature"
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("starts session without initial message", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockSession = {
+        id: "brainstorm-456",
+        status: "active" as const,
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      const mockStartSession = mock(() => Promise.resolve(mockSession));
+      const mockBrainstormManager = {
+        startSession: mockStartSession,
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/start`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          }
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { sessionId: string };
+        expect(body.sessionId).toBe("brainstorm-456");
+        expect(mockStartSession).toHaveBeenCalledWith(undefined);
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 500 when brainstorm manager is not configured", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const server = new DashboardServer(orchestrator, { port: 0 });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/start`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          }
+        );
+        expect(response.status).toBe(500);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toContain("not configured");
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("POST /api/brainstorm/:sessionId/message", () => {
+    test("sends a message to the session", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockSendMessage = mock(() => Promise.resolve());
+      const mockBrainstormManager = {
+        sendMessage: mockSendMessage,
+        getSession: mock(() => ({ id: "session-123" })),
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/session-123/message`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: "Add authentication" })
+          }
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { success: boolean };
+        expect(body.success).toBe(true);
+        expect(mockSendMessage).toHaveBeenCalledWith(
+          "session-123",
+          "Add authentication"
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 400 when content is missing", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockBrainstormManager = {
+        sendMessage: mock(() => Promise.resolve()),
+        getSession: mock(() => ({ id: "session-123" })),
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/session-123/message`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          }
+        );
+        expect(response.status).toBe(400);
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 404 when session not found", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockBrainstormManager = {
+        sendMessage: mock(() => Promise.reject(new Error("Session not found"))),
+        getSession: mock(() => undefined),
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/nonexistent/message`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: "Hello" })
+          }
+        );
+        expect(response.status).toBe(404);
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("POST /api/brainstorm/:sessionId/end", () => {
+    test("ends the session", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockEndSession = mock(() => Promise.resolve());
+      const mockBrainstormManager = {
+        endSession: mockEndSession,
+        getSession: mock(() => ({
+          id: "session-123",
+          status: "active",
+          messages: [
+            {
+              id: "msg-1",
+              role: "user",
+              content: "test",
+              timestamp: new Date()
+            }
+          ]
+        })),
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const mockSaveDraft = mock(() => Promise.resolve());
+      const mockDraftStorage = {
+        saveDraft: mockSaveDraft,
+        listDrafts: mock(() => Promise.resolve([]))
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike,
+        draftStorage: mockDraftStorage as unknown as DraftStorageLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/session-123/end`,
+          { method: "POST" }
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          success: boolean;
+          draftId?: string;
+        };
+        expect(body.success).toBe(true);
+        expect(body.draftId).toBe("session-123");
+        expect(mockEndSession).toHaveBeenCalledWith("session-123");
+        expect(mockSaveDraft).toHaveBeenCalled();
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 404 when session not found", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockBrainstormManager = {
+        getSession: mock(() => undefined),
+        endSession: mock(() => Promise.resolve()),
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/nonexistent/end`,
+          { method: "POST" }
+        );
+        expect(response.status).toBe(404);
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("GET /api/brainstorm/drafts", () => {
+    test("returns list of drafts", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockDrafts = [
+        {
+          sessionId: "draft-1",
+          messages: [],
+          partialTaskData: { title: "Feature A" },
+          status: "brainstorming" as const,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        },
+        {
+          sessionId: "draft-2",
+          messages: [],
+          partialTaskData: { title: "Feature B" },
+          status: "planning" as const,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      ];
+
+      const mockDraftStorage = {
+        listDrafts: mock(() => Promise.resolve(mockDrafts))
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        draftStorage: mockDraftStorage as unknown as DraftStorageLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/drafts`
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { drafts: typeof mockDrafts };
+        expect(body.drafts).toHaveLength(2);
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 500 when draft storage not configured", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const server = new DashboardServer(orchestrator, { port: 0 });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/drafts`
+        );
+        expect(response.status).toBe(500);
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("POST /api/brainstorm/drafts/:sessionId/resume", () => {
+    test("resumes a draft session", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockDraft = {
+        sessionId: "draft-123",
+        messages: [
+          {
+            id: "msg-1",
+            role: "user" as const,
+            content: "original idea",
+            timestamp: new Date()
+          }
+        ],
+        partialTaskData: { title: "My Feature" },
+        status: "brainstorming" as const,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      const mockSession = {
+        id: "new-session-456",
+        status: "active" as const,
+        messages: mockDraft.messages,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      const mockStartSession = mock(() => Promise.resolve(mockSession));
+      const mockBrainstormManager = {
+        startSession: mockStartSession,
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const mockDraftStorage = {
+        loadDraft: mock(() => Promise.resolve(mockDraft)),
+        deleteDraft: mock(() => Promise.resolve())
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike,
+        draftStorage: mockDraftStorage as unknown as DraftStorageLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/drafts/draft-123/resume`,
+          { method: "POST" }
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { sessionId: string };
+        expect(body.sessionId).toBe("new-session-456");
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 404 when draft not found", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockBrainstormManager = {
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const mockDraftStorage = {
+        loadDraft: mock(() => Promise.resolve(null))
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike,
+        draftStorage: mockDraftStorage as unknown as DraftStorageLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/drafts/nonexistent/resume`,
+          { method: "POST" }
+        );
+        expect(response.status).toBe(404);
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("DELETE /api/brainstorm/drafts/:sessionId", () => {
+    test("deletes a draft", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockDeleteDraft = mock(() => Promise.resolve());
+      const mockDraftStorage = {
+        deleteDraft: mockDeleteDraft
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        draftStorage: mockDraftStorage as unknown as DraftStorageLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/drafts/draft-123`,
+          { method: "DELETE" }
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { success: boolean };
+        expect(body.success).toBe(true);
+        expect(mockDeleteDraft).toHaveBeenCalledWith("draft-123");
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 500 when draft storage not configured", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const server = new DashboardServer(orchestrator, { port: 0 });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/drafts/draft-123`,
+          { method: "DELETE" }
+        );
+        expect(response.status).toBe(500);
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("POST /api/brainstorm/:sessionId/approve", () => {
+    test("approves session and creates task", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockSession = {
+        id: "session-123",
+        status: "completed" as const,
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        taskPreview: {
+          title: "My Feature",
+          description: "A new feature",
+          requirements: "Must do X",
+          acceptanceCriteria: ["Does X"]
+        }
+      };
+
+      const mockBrainstormManager = {
+        getSession: mock(() => mockSession),
+        endSession: mock(() => Promise.resolve()),
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const mockCreateTask = mock(() =>
+        Promise.resolve({ taskFolder: "my-feature" })
+      );
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike,
+        createTask: mockCreateTask
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/session-123/approve`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              taskTitle: "My Feature",
+              editedSubtasks: [
+                {
+                  number: 1,
+                  slug: "subtask-1",
+                  title: "Subtask 1",
+                  description: "Do thing",
+                  dependencies: []
+                }
+              ]
+            })
+          }
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          taskFolder: string;
+          success: boolean;
+        };
+        expect(body.success).toBe(true);
+        expect(body.taskFolder).toBe("my-feature");
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 400 when taskTitle is missing", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockBrainstormManager = {
+        getSession: mock(() => ({ id: "session-123", status: "completed" })),
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/session-123/approve`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          }
+        );
+        expect(response.status).toBe(400);
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 404 when session not found", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockBrainstormManager = {
+        getSession: mock(() => undefined),
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/brainstorm/nonexistent/approve`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ taskTitle: "My Task" })
+          }
+        );
+        expect(response.status).toBe(404);
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("WebSocket brainstorm events", () => {
+    test("forwards brainstormStarted event", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+      const { EventEmitter } = await import("node:events");
+
+      const mockBrainstormManager = new EventEmitter();
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const ws = new WebSocket(`ws://localhost:${server.port}/api/events`);
+        const messages: unknown[] = [];
+
+        await new Promise<void>((resolve, reject) => {
+          ws.onopen = () => {
+            ws.onmessage = (event) => {
+              messages.push(JSON.parse(event.data as string));
+              if (messages.length >= 2) resolve();
+            };
+            setTimeout(() => {
+              mockBrainstormManager.emit("sessionStarted", {
+                sessionId: "session-123",
+                agentId: "agent-456"
+              });
+            }, 50);
+          };
+          ws.onerror = reject;
+          setTimeout(() => reject(new Error("timeout")), 1000);
+        });
+
+        ws.close();
+        const startedEvent = messages.find(
+          (m) => (m as { type: string }).type === "brainstormStarted"
+        );
+        expect(startedEvent).toBeDefined();
+        expect((startedEvent as { sessionId: string }).sessionId).toBe(
+          "session-123"
+        );
+        expect((startedEvent as { agentId: string }).agentId).toBe("agent-456");
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("forwards brainstormMessage event", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+      const { EventEmitter } = await import("node:events");
+
+      const mockBrainstormManager = new EventEmitter();
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const ws = new WebSocket(`ws://localhost:${server.port}/api/events`);
+        const messages: unknown[] = [];
+
+        await new Promise<void>((resolve, reject) => {
+          ws.onopen = () => {
+            ws.onmessage = (event) => {
+              messages.push(JSON.parse(event.data as string));
+              if (messages.length >= 2) resolve();
+            };
+            setTimeout(() => {
+              mockBrainstormManager.emit("message", {
+                sessionId: "session-123",
+                message: {
+                  id: "msg-1",
+                  role: "assistant",
+                  content: "Hello!",
+                  timestamp: new Date()
+                }
+              });
+            }, 50);
+          };
+          ws.onerror = reject;
+          setTimeout(() => reject(new Error("timeout")), 1000);
+        });
+
+        ws.close();
+        const messageEvent = messages.find(
+          (m) => (m as { type: string }).type === "brainstormMessage"
+        );
+        expect(messageEvent).toBeDefined();
+        expect((messageEvent as { sessionId: string }).sessionId).toBe(
+          "session-123"
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("forwards brainstormComplete event", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+      const { EventEmitter } = await import("node:events");
+
+      const mockBrainstormManager = new EventEmitter();
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const ws = new WebSocket(`ws://localhost:${server.port}/api/events`);
+        const messages: unknown[] = [];
+
+        await new Promise<void>((resolve, reject) => {
+          ws.onopen = () => {
+            ws.onmessage = (event) => {
+              messages.push(JSON.parse(event.data as string));
+              if (messages.length >= 2) resolve();
+            };
+            setTimeout(() => {
+              mockBrainstormManager.emit("brainstormComplete", {
+                sessionId: "session-123",
+                taskPreview: { title: "My Feature", description: "A feature" }
+              });
+            }, 50);
+          };
+          ws.onerror = reject;
+          setTimeout(() => reject(new Error("timeout")), 1000);
+        });
+
+        ws.close();
+        const completeEvent = messages.find(
+          (m) => (m as { type: string }).type === "brainstormComplete"
+        );
+        expect(completeEvent).toBeDefined();
+        expect((completeEvent as { sessionId: string }).sessionId).toBe(
+          "session-123"
+        );
+        expect(
+          (completeEvent as { taskPreview: { title: string } }).taskPreview
+            .title
+        ).toBe("My Feature");
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("forwards brainstormError event", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+      const { EventEmitter } = await import("node:events");
+
+      const mockBrainstormManager = new EventEmitter();
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike
+      });
+      await server.start();
+
+      try {
+        const ws = new WebSocket(`ws://localhost:${server.port}/api/events`);
+        const messages: unknown[] = [];
+
+        await new Promise<void>((resolve, reject) => {
+          ws.onopen = () => {
+            ws.onmessage = (event) => {
+              messages.push(JSON.parse(event.data as string));
+              if (messages.length >= 2) resolve();
+            };
+            setTimeout(() => {
+              mockBrainstormManager.emit("error", {
+                sessionId: "session-123",
+                error: new Error("Agent crashed")
+              });
+            }, 50);
+          };
+          ws.onerror = reject;
+          setTimeout(() => reject(new Error("timeout")), 1000);
+        });
+
+        ws.close();
+        const errorEvent = messages.find(
+          (m) => (m as { type: string }).type === "brainstormError"
+        );
+        expect(errorEvent).toBeDefined();
+        expect((errorEvent as { sessionId: string }).sessionId).toBe(
+          "session-123"
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("taskCreated WebSocket event", () => {
+    test("broadcasts taskCreated event when task is approved", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockSession = {
+        id: "session-123",
+        status: "completed" as const,
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        taskPreview: {
+          title: "My Feature",
+          description: "A new feature",
+          requirements: "Must do X",
+          acceptanceCriteria: ["Does X"]
+        }
+      };
+
+      const mockBrainstormManager = {
+        getSession: mock(() => mockSession),
+        endSession: mock(() => Promise.resolve()),
+        on: mock(() => {}),
+        off: mock(() => {})
+      };
+
+      const mockCreateTask = mock(() =>
+        Promise.resolve({ taskFolder: "my-feature" })
+      );
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        brainstormManager:
+          mockBrainstormManager as unknown as BrainstormManagerLike,
+        createTask: mockCreateTask
+      });
+      await server.start();
+
+      try {
+        const ws = new WebSocket(`ws://localhost:${server.port}/api/events`);
+        const messages: unknown[] = [];
+
+        await new Promise<void>((resolve, reject) => {
+          ws.onopen = async () => {
+            ws.onmessage = (event) => {
+              messages.push(JSON.parse(event.data as string));
+              const taskCreatedEvent = messages.find(
+                (m) => (m as { type: string }).type === "taskCreated"
+              );
+              if (taskCreatedEvent) resolve();
+            };
+
+            await fetch(
+              `http://localhost:${server.port}/api/brainstorm/session-123/approve`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ taskTitle: "My Feature" })
+              }
+            );
+          };
+          ws.onerror = reject;
+          setTimeout(() => reject(new Error("timeout")), 2000);
+        });
+
+        ws.close();
+        const taskCreatedEvent = messages.find(
+          (m) => (m as { type: string }).type === "taskCreated"
+        );
+        expect(taskCreatedEvent).toBeDefined();
+        expect((taskCreatedEvent as { sessionId: string }).sessionId).toBe(
+          "session-123"
+        );
+        expect((taskCreatedEvent as { taskFolder: string }).taskFolder).toBe(
+          "my-feature"
+        );
       } finally {
         await server.stop();
       }

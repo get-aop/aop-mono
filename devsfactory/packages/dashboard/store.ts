@@ -2,11 +2,15 @@ import { createStore } from "zustand/vanilla";
 import { type ApiClient, createApiClient } from "./api";
 import type {
   ActiveAgent,
+  BrainstormDraft,
+  BrainstormMessage,
   Plan,
   ServerEvent,
   Subtask,
+  SubtaskPreview,
   SubtaskStatus,
   Task,
+  TaskPreview,
   TaskStatus
 } from "./types";
 
@@ -15,7 +19,48 @@ export interface SelectedSubtask {
   subtaskFile: string;
 }
 
-export interface DashboardStore {
+export type BrainstormSessionStatus =
+  | "idle"
+  | "starting"
+  | "brainstorming"
+  | "planning"
+  | "review"
+  | "creating";
+
+export type BrainstormStep = "drafts" | "brainstorm" | "review" | "approve";
+
+export interface BrainstormState {
+  activeSession: string | null;
+  sessionStatus: BrainstormSessionStatus;
+  messages: BrainstormMessage[];
+  isWaitingForAgent: boolean;
+  streamingMessage: string | null;
+  taskPreview: TaskPreview | null;
+  subtaskPreviews: SubtaskPreview[];
+  editedSubtasks: SubtaskPreview[];
+  drafts: BrainstormDraft[];
+  draftsLoading: boolean;
+  isModalOpen: boolean;
+  currentStep: BrainstormStep;
+  error: string | null;
+}
+
+export interface BrainstormActions {
+  openModal(): void;
+  closeModal(): Promise<void>;
+  startSession(initialMessage?: string): Promise<void>;
+  resumeSession(draftId: string): Promise<void>;
+  sendMessage(content: string): Promise<void>;
+  endSession(): Promise<void>;
+  confirmTaskPreview(): Promise<void>;
+  updateSubtask(index: number, updates: Partial<SubtaskPreview>): void;
+  reorderSubtasks(fromIndex: number, toIndex: number): void;
+  approveAndCreate(): Promise<void>;
+  loadDrafts(): Promise<void>;
+  deleteDraft(sessionId: string): Promise<void>;
+}
+
+export interface DashboardStore extends BrainstormActions {
   tasks: Task[];
   plans: Record<string, Plan>;
   subtasks: Record<string, Subtask[]>;
@@ -31,6 +76,8 @@ export interface DashboardStore {
   selectedSubtask: SelectedSubtask | null;
   subtaskLogs: string[];
   subtaskLogsLoading: boolean;
+
+  brainstorm: BrainstormState;
 
   updateFromServer: (event: ServerEvent) => void;
   selectTask: (folder: string | null) => void;
@@ -66,9 +113,26 @@ export interface DashboardStoreInitialState {
   selectedSubtask?: SelectedSubtask | null;
   subtaskLogs?: string[];
   subtaskLogsLoading?: boolean;
+  brainstorm?: Partial<BrainstormState>;
 }
 
 const MAX_OUTPUT_LINES = 1000;
+
+const defaultBrainstormState: BrainstormState = {
+  activeSession: null,
+  sessionStatus: "idle",
+  messages: [],
+  isWaitingForAgent: false,
+  streamingMessage: null,
+  taskPreview: null,
+  subtaskPreviews: [],
+  editedSubtasks: [],
+  drafts: [],
+  draftsLoading: false,
+  isModalOpen: false,
+  currentStep: "drafts",
+  error: null
+};
 
 export const createDashboardStore = (
   apiClient?: ApiClient,
@@ -76,7 +140,7 @@ export const createDashboardStore = (
 ) => {
   const client = apiClient ?? createApiClient();
 
-  return createStore<DashboardStore>((set) => ({
+  return createStore<DashboardStore>((set, get) => ({
     tasks: initialState?.tasks ?? [],
     plans: initialState?.plans ?? {},
     subtasks: initialState?.subtasks ?? {},
@@ -92,6 +156,11 @@ export const createDashboardStore = (
     selectedSubtask: initialState?.selectedSubtask ?? null,
     subtaskLogs: initialState?.subtaskLogs ?? [],
     subtaskLogsLoading: initialState?.subtaskLogsLoading ?? false,
+
+    brainstorm: {
+      ...defaultBrainstormState,
+      ...initialState?.brainstorm
+    },
 
     selectTask: (folder) =>
       set({
@@ -129,6 +198,158 @@ export const createDashboardStore = (
         subtaskLogs: [],
         subtaskLogsLoading: false
       }),
+
+    openModal: () =>
+      set((state) => ({
+        brainstorm: { ...state.brainstorm, isModalOpen: true }
+      })),
+
+    closeModal: async () => {
+      set({
+        brainstorm: { ...defaultBrainstormState }
+      });
+    },
+
+    startSession: async (initialMessage) => {
+      set((state) => ({
+        brainstorm: {
+          ...state.brainstorm,
+          sessionStatus: "starting",
+          currentStep: "brainstorm",
+          error: null
+        }
+      }));
+      await client.startBrainstorm(initialMessage);
+    },
+
+    resumeSession: async (draftId) => {
+      set((state) => ({
+        brainstorm: {
+          ...state.brainstorm,
+          sessionStatus: "starting",
+          currentStep: "brainstorm",
+          error: null
+        }
+      }));
+      await client.resumeDraft(draftId);
+    },
+
+    sendMessage: async (content) => {
+      const { brainstorm } = get();
+      if (!brainstorm.activeSession) return;
+
+      const userMessage: BrainstormMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content,
+        timestamp: new Date()
+      };
+
+      set((state) => ({
+        brainstorm: {
+          ...state.brainstorm,
+          messages: [...state.brainstorm.messages, userMessage],
+          isWaitingForAgent: true
+        }
+      }));
+
+      await client.sendBrainstormMessage(brainstorm.activeSession, content);
+    },
+
+    endSession: async () => {
+      const { brainstorm } = get();
+      if (!brainstorm.activeSession) return;
+      await client.endBrainstorm(brainstorm.activeSession);
+    },
+
+    confirmTaskPreview: async () => {
+      const { brainstorm } = get();
+      if (!brainstorm.activeSession) return;
+
+      set((state) => ({
+        brainstorm: {
+          ...state.brainstorm,
+          sessionStatus: "planning"
+        }
+      }));
+
+      await client.confirmBrainstorm(brainstorm.activeSession);
+    },
+
+    updateSubtask: (index, updates) => {
+      set((state) => {
+        const editedSubtasks = [...state.brainstorm.editedSubtasks];
+        editedSubtasks[index] = { ...editedSubtasks[index], ...updates };
+        return {
+          brainstorm: {
+            ...state.brainstorm,
+            editedSubtasks
+          }
+        };
+      });
+    },
+
+    reorderSubtasks: (fromIndex, toIndex) => {
+      set((state) => {
+        const editedSubtasks = [...state.brainstorm.editedSubtasks];
+        const [removed] = editedSubtasks.splice(fromIndex, 1);
+        editedSubtasks.splice(toIndex, 0, removed);
+        return {
+          brainstorm: {
+            ...state.brainstorm,
+            editedSubtasks
+          }
+        };
+      });
+    },
+
+    approveAndCreate: async () => {
+      const { brainstorm } = get();
+      if (!brainstorm.activeSession) return;
+
+      set((state) => ({
+        brainstorm: {
+          ...state.brainstorm,
+          sessionStatus: "creating"
+        }
+      }));
+
+      await client.approveBrainstorm(brainstorm.activeSession, {
+        subtasks: brainstorm.editedSubtasks
+      });
+    },
+
+    loadDrafts: async () => {
+      set((state) => ({
+        brainstorm: {
+          ...state.brainstorm,
+          draftsLoading: true
+        }
+      }));
+
+      const { drafts } = await client.listDrafts();
+
+      set((state) => ({
+        brainstorm: {
+          ...state.brainstorm,
+          drafts,
+          draftsLoading: false
+        }
+      }));
+    },
+
+    deleteDraft: async (sessionId) => {
+      await client.deleteDraft(sessionId);
+
+      set((state) => ({
+        brainstorm: {
+          ...state.brainstorm,
+          drafts: state.brainstorm.drafts.filter(
+            (d) => d.sessionId !== sessionId
+          )
+        }
+      }));
+    },
 
     updateFromServer: (event) => {
       switch (event.type) {
@@ -213,6 +434,122 @@ export const createDashboardStore = (
             const activeAgents = new Map(state.activeAgents);
             activeAgents.delete(event.agentId);
             return { activeAgents };
+          });
+          break;
+
+        case "brainstormStarted":
+          set((state) => ({
+            brainstorm: {
+              ...state.brainstorm,
+              activeSession: event.sessionId,
+              sessionStatus: "brainstorming",
+              isWaitingForAgent: true
+            }
+          }));
+          break;
+
+        case "brainstormMessage":
+          set((state) => {
+            if (state.brainstorm.activeSession !== event.sessionId) {
+              return {};
+            }
+            return {
+              brainstorm: {
+                ...state.brainstorm,
+                messages: [...state.brainstorm.messages, event.message],
+                isWaitingForAgent: false,
+                streamingMessage: null
+              }
+            };
+          });
+          break;
+
+        case "brainstormWaiting":
+          set((state) => {
+            if (state.brainstorm.activeSession !== event.sessionId) {
+              return {};
+            }
+            return {
+              brainstorm: {
+                ...state.brainstorm,
+                isWaitingForAgent: false
+              }
+            };
+          });
+          break;
+
+        case "brainstormChunk":
+          set((state) => {
+            if (state.brainstorm.activeSession !== event.sessionId) {
+              return {};
+            }
+            return {
+              brainstorm: {
+                ...state.brainstorm,
+                streamingMessage:
+                  (state.brainstorm.streamingMessage ?? "") + event.chunk
+              }
+            };
+          });
+          break;
+
+        case "brainstormComplete":
+          set((state) => {
+            if (state.brainstorm.activeSession !== event.sessionId) {
+              return {};
+            }
+            return {
+              brainstorm: {
+                ...state.brainstorm,
+                taskPreview: event.taskPreview,
+                sessionStatus: "review",
+                currentStep: "review"
+              }
+            };
+          });
+          break;
+
+        case "planGenerated":
+          set((state) => {
+            if (state.brainstorm.activeSession !== event.sessionId) {
+              return {};
+            }
+            return {
+              brainstorm: {
+                ...state.brainstorm,
+                subtaskPreviews: event.subtaskPreviews,
+                editedSubtasks: [...event.subtaskPreviews],
+                currentStep: "approve"
+              }
+            };
+          });
+          break;
+
+        case "taskCreated":
+          set((state) => {
+            if (state.brainstorm.activeSession !== event.sessionId) {
+              return {};
+            }
+            return {
+              brainstorm: {
+                ...defaultBrainstormState
+              }
+            };
+          });
+          break;
+
+        case "brainstormError":
+          set((state) => {
+            if (state.brainstorm.activeSession !== event.sessionId) {
+              return {};
+            }
+            return {
+              brainstorm: {
+                ...state.brainstorm,
+                error: event.error,
+                isWaitingForAgent: false
+              }
+            };
           });
           break;
 

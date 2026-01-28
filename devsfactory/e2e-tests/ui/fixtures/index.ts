@@ -7,7 +7,23 @@ export {
   injectWebSocketReadyState,
   mockApiResponse,
   mockStateApi,
-  createMockWebSocketServer
+  createMockWebSocketServer,
+  createMockBrainstormMessage,
+  createMockBrainstormDraft,
+  createMockTaskPreview,
+  createMockSubtaskPreview,
+  createMockSubtaskPreviews,
+  mockBrainstormStartApi,
+  mockBrainstormMessageApi,
+  mockBrainstormEndApi,
+  mockBrainstormConfirmApi,
+  mockBrainstormApproveApi,
+  mockBrainstormDraftsApi,
+  mockBrainstormResumeDraftApi,
+  mockBrainstormDeleteDraftApi,
+  mockAllBrainstormApis,
+  simulateBrainstormWebSocketEvent,
+  injectMockWebSocket
 } from "./test-helpers";
 
 export type {
@@ -16,7 +32,11 @@ export type {
   MockOrchestratorStateOptions,
   WaitForWebSocketOptions,
   MockApiResponseOptions,
-  MockWebSocketMessage
+  MockWebSocketMessage,
+  MockBrainstormMessageOptions,
+  MockBrainstormDraftOptions,
+  MockTaskPreviewOptions,
+  MockSubtaskPreviewOptions
 } from "./test-helpers";
 
 export { test, expect, type DashboardFixtures } from "./base-fixture";

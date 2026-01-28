@@ -229,7 +229,8 @@ p {
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
@@ -312,7 +313,8 @@ p {
 }
 
 @keyframes badge-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -661,6 +663,33 @@ p {
 .status-toggle-blocked {
   background-color: var(--status-done);
   color: var(--color-bg);
+}
+
+/* New Task Button */
+.new-task-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--status-pending);
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.new-task-button:hover {
+  opacity: 0.9;
+}
+
+.draft-indicator {
+  width: 6px;
+  height: 6px;
+  background-color: var(--status-inprogress);
+  border-radius: 50%;
 }
 
 /* Subtask Detail Panel */

@@ -101,6 +101,54 @@ export interface ActiveAgent {
   type: AgentType;
 }
 
+// Brainstorm Session Types
+export type BrainstormSessionStatus =
+  | "active"
+  | "brainstorming"
+  | "planning"
+  | "review"
+  | "completed"
+  | "cancelled";
+
+export interface BrainstormMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+}
+
+export interface TaskPreview {
+  title: string;
+  description: string;
+  requirements: string;
+  acceptanceCriteria: string[];
+}
+
+export interface SubtaskPreview {
+  title: string;
+  description: string;
+  dependencies: number[];
+}
+
+export interface BrainstormSession {
+  id: string;
+  status: BrainstormSessionStatus;
+  messages: BrainstormMessage[];
+  createdAt: Date;
+  updatedAt: Date;
+  taskPreview?: TaskPreview;
+  subtaskPreviews?: SubtaskPreview[];
+}
+
+export interface BrainstormDraft {
+  sessionId: string;
+  messages: BrainstormMessage[];
+  partialTaskData: Partial<TaskPreview>;
+  status: BrainstormSessionStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export type ServerEvent =
   | { type: "state"; data: OrchestratorState }
   | { type: "taskChanged"; task: Task }
@@ -120,4 +168,16 @@ export type ServerEvent =
       jobId: string;
       attempt: number;
       nextRetryMs: number;
-    };
+    }
+  | { type: "brainstormStarted"; sessionId: string; agentId: string }
+  | { type: "brainstormMessage"; sessionId: string; message: BrainstormMessage }
+  | { type: "brainstormWaiting"; sessionId: string }
+  | { type: "brainstormChunk"; sessionId: string; chunk: string }
+  | { type: "brainstormComplete"; sessionId: string; taskPreview: TaskPreview }
+  | {
+      type: "planGenerated";
+      sessionId: string;
+      subtaskPreviews: SubtaskPreview[];
+    }
+  | { type: "taskCreated"; sessionId: string; taskFolder: string }
+  | { type: "brainstormError"; sessionId: string; error: string };

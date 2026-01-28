@@ -25,6 +25,8 @@ import type {
   Task
 } from "../types";
 import { AgentRunner } from "./agent-runner";
+import { BrainstormSessionManager } from "./brainstorm-session-manager";
+import { cleanupOldDrafts } from "./draft-storage";
 import {
   createSubtaskWorktree,
   createTaskWorktree,
@@ -63,6 +65,7 @@ export class Orchestrator extends EventEmitter {
   private producer: JobProducer;
   private worker: JobWorker;
   private logStorage: LogStorage;
+  private brainstormManager: BrainstormSessionManager;
   private runningAgents = new Map<string, AgentContext>();
   private reconciling = false;
   private reconcileQueued = false;
@@ -124,6 +127,13 @@ export class Orchestrator extends EventEmitter {
       }
     );
 
+    this.brainstormManager = new BrainstormSessionManager({
+      provider: this.provider,
+      cwd: dirname(this.config.devsfactoryDir)
+    });
+
+    this.setupBrainstormEventForwarding();
+
     this.state = {
       tasks: [],
       plans: {},
@@ -133,6 +143,8 @@ export class Orchestrator extends EventEmitter {
 
   async start(): Promise<void> {
     await mkdir(this.config.devsfactoryDir, { recursive: true });
+
+    await cleanupOldDrafts(this.config.devsfactoryDir);
 
     const scanResult = await this.watcher.scan(this.config.devsfactoryDir);
     this.state.tasks = scanResult.tasks;
@@ -170,6 +182,10 @@ export class Orchestrator extends EventEmitter {
       await this.agentRunner.kill(agent.id);
     }
 
+    for (const session of this.brainstormManager.getActiveSessions()) {
+      await this.brainstormManager.endSession(session.id);
+    }
+
     this.emit("stateChanged");
   }
 
@@ -187,6 +203,25 @@ export class Orchestrator extends EventEmitter {
 
   async getQueueDepth(): Promise<number> {
     return this.queue.size();
+  }
+
+  getBrainstormManager(): BrainstormSessionManager {
+    return this.brainstormManager;
+  }
+
+  private setupBrainstormEventForwarding(): void {
+    const events = [
+      "sessionStarted",
+      "message",
+      "brainstormComplete",
+      "error"
+    ] as const;
+
+    for (const event of events) {
+      this.brainstormManager.on(event, (data) => {
+        this.emit(`brainstorm:${event}`, data);
+      });
+    }
   }
 
   private scheduleReconcile(): void {

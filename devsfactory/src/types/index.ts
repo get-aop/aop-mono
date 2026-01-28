@@ -208,3 +208,68 @@ export type RetryBackoff = z.infer<typeof RetryBackoffSchema>;
 export type OrchestratorState = z.infer<typeof OrchestratorStateSchema>;
 export type WatcherEventType = z.infer<typeof WatcherEventTypeSchema>;
 export type WatcherEvent = z.infer<typeof WatcherEventSchema>;
+
+// Brainstorm Session Schemas
+export const BrainstormSessionStatusSchema = z.enum([
+  "active",
+  "brainstorming",
+  "planning",
+  "review",
+  "completed",
+  "cancelled"
+]);
+
+export const BrainstormMessageRoleSchema = z.enum(["user", "assistant"]);
+
+export const BrainstormMessageSchema = z.object({
+  id: z.string(),
+  role: BrainstormMessageRoleSchema,
+  content: z.string(),
+  timestamp: z.coerce.date()
+});
+
+export const TaskPreviewSchema = z.object({
+  title: z.string(),
+  description: z.string(),
+  requirements: z.string(),
+  acceptanceCriteria: z.array(z.string())
+});
+
+export const SubtaskPreviewSchema = z.object({
+  number: z.number(),
+  slug: z.string(),
+  title: z.string(),
+  description: z.string(),
+  context: z.string().optional(),
+  dependencies: z.array(z.number()).default([])
+});
+
+export const BrainstormSessionSchema = z.object({
+  id: z.string(),
+  status: BrainstormSessionStatusSchema,
+  messages: z.array(BrainstormMessageSchema),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  taskPreview: TaskPreviewSchema.optional(),
+  subtaskPreviews: z.array(SubtaskPreviewSchema).optional()
+});
+
+export const BrainstormDraftSchema = z.object({
+  sessionId: z.string(),
+  messages: z.array(BrainstormMessageSchema),
+  partialTaskData: TaskPreviewSchema.partial(),
+  status: BrainstormSessionStatusSchema,
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date()
+});
+
+// Brainstorm Inferred Types
+export type BrainstormSessionStatus = z.infer<
+  typeof BrainstormSessionStatusSchema
+>;
+export type BrainstormMessageRole = z.infer<typeof BrainstormMessageRoleSchema>;
+export type BrainstormMessage = z.infer<typeof BrainstormMessageSchema>;
+export type TaskPreview = z.infer<typeof TaskPreviewSchema>;
+export type SubtaskPreview = z.infer<typeof SubtaskPreviewSchema>;
+export type BrainstormSession = z.infer<typeof BrainstormSessionSchema>;
+export type BrainstormDraft = z.infer<typeof BrainstormDraftSchema>;
