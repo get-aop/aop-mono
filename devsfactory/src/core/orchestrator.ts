@@ -275,10 +275,22 @@ export class Orchestrator extends EventEmitter {
   }
 
   private async refreshState(): Promise<void> {
+    const previousTasks = new Map(
+      this.state.tasks.map((t) => [t.folder, t.frontmatter.status])
+    );
+
     const scanResult = await this.watcher.scan(this.config.devsfactoryDir);
     this.state.tasks = scanResult.tasks;
     this.state.plans = scanResult.plans;
     this.state.subtasks = scanResult.subtasks;
+
+    for (const task of this.state.tasks) {
+      const prevStatus = previousTasks.get(task.folder);
+      if (prevStatus && prevStatus !== "DONE" && task.frontmatter.status === "DONE") {
+        const subtasks = this.state.subtasks[task.folder] ?? [];
+        this.emit("taskCompleted", { task, subtasks });
+      }
+    }
   }
 
   private async runRecovery(): Promise<void> {

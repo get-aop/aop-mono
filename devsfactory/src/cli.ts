@@ -3,9 +3,11 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { AgentRunner } from "./core/agent-runner";
 import { Orchestrator } from "./core/orchestrator";
+import { renderSummaryTable } from "./core/summary-table";
+import { generateTaskSummary } from "./core/timing";
 import { configureLogger, getLogger } from "./infra/logger";
 import { parseStreamJson } from "./providers/claude";
-import type { AgentProcess, Config } from "./types";
+import type { AgentProcess, Config, Subtask, Task } from "./types";
 
 const VERSION = "0.1.0";
 
@@ -272,6 +274,15 @@ const main = async () => {
       data
     );
   });
+
+  orchestrator.on(
+    "taskCompleted",
+    ({ task, subtasks }: { task: Task; subtasks: Subtask[] }) => {
+      const summary = generateTaskSummary(task, subtasks);
+      const table = renderSummaryTable(summary);
+      console.log("\n" + table + "\n");
+    }
+  );
 
   const shutdown = async () => {
     log.info("Shutting down...");
