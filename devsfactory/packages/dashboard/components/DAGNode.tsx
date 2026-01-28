@@ -70,6 +70,7 @@ export interface DAGNodeProps {
   width: number;
   height: number;
   hasActiveAgent?: boolean;
+  isSelected?: boolean;
   onClick?: () => void;
   onUnblock?: () => void;
 }
@@ -81,6 +82,7 @@ export const DAGNode = ({
   width,
   height,
   hasActiveAgent,
+  isSelected,
   onClick,
   onUnblock
 }: DAGNodeProps) => {
@@ -89,6 +91,9 @@ export const DAGNode = ({
   const showUnblock = onUnblock && subtask.frontmatter.status === "BLOCKED";
   const titleY = showUnblock ? 35 : 40;
 
+  const strokeWidth = isSelected ? 3 : 2;
+  const strokeColor = isSelected ? "#3b82f6" : style.borderColor;
+
   const nodeContent = (
     <>
       <rect
@@ -96,8 +101,8 @@ export const DAGNode = ({
         height={height}
         rx={6}
         fill={style.fillColor}
-        stroke={style.borderColor}
-        strokeWidth={2}
+        stroke={strokeColor}
+        strokeWidth={strokeWidth}
       />
       <text
         x={width / 2}

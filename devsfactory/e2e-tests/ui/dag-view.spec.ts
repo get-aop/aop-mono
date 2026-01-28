@@ -1,6 +1,10 @@
-import { test, expect, createMockSubtask, createMockTask } from "./fixtures";
 import type { Page } from "@playwright/test";
-import type { OrchestratorState, Subtask, SubtaskStatus } from "../../packages/dashboard/types";
+import type {
+  OrchestratorState,
+  Subtask,
+  SubtaskStatus
+} from "../../packages/dashboard/types";
+import { createMockSubtask, createMockTask, expect, test } from "./fixtures";
 
 const STATUS_COLORS: Record<SubtaskStatus, { border: string; fill: string }> = {
   PENDING: { border: "rgb(156, 163, 175)", fill: "rgb(255, 255, 255)" },
@@ -62,7 +66,11 @@ test.describe("DAG View", () => {
     test("renders SVG nodes for each subtask", async ({ page }) => {
       const subtasks = [
         createMockSubtask({ number: 1, status: "PENDING", dependencies: [] }),
-        createMockSubtask({ number: 2, status: "INPROGRESS", dependencies: [1] }),
+        createMockSubtask({
+          number: 2,
+          status: "INPROGRESS",
+          dependencies: [1]
+        }),
         createMockSubtask({ number: 3, status: "DONE", dependencies: [2] })
       ];
       const state = createStateWithSubtasks(subtasks);
@@ -76,7 +84,10 @@ test.describe("DAG View", () => {
 
       const svg = dagView.locator("svg");
       await expect(svg).toHaveAttribute("role", "img");
-      await expect(svg).toHaveAttribute("aria-label", "Subtask dependency graph");
+      await expect(svg).toHaveAttribute(
+        "aria-label",
+        "Subtask dependency graph"
+      );
 
       const nodeGroups = svg.locator("g[role='button']");
       await expect(nodeGroups).toHaveCount(3);
@@ -85,7 +96,9 @@ test.describe("DAG View", () => {
         const nodeNumber = svg.locator(`text:has-text("#${subtask.number}")`);
         await expect(nodeNumber).toBeVisible();
 
-        const nodeTitle = svg.locator(`text:has-text("${subtask.frontmatter.title}")`);
+        const nodeTitle = svg.locator(
+          `text:has-text("${subtask.frontmatter.title}")`
+        );
         await expect(nodeTitle).toBeVisible();
       }
     });
@@ -114,14 +127,22 @@ test.describe("DAG View", () => {
       { status: "INPROGRESS", description: "blue border, light blue fill" },
       { status: "DONE", description: "green border, light green fill" },
       { status: "BLOCKED", description: "red border, light red fill" },
-      { status: "AGENT_REVIEW", description: "yellow border, light yellow fill" },
-      { status: "PENDING_MERGE", description: "yellow border, light yellow fill" },
+      {
+        status: "AGENT_REVIEW",
+        description: "yellow border, light yellow fill"
+      },
+      {
+        status: "PENDING_MERGE",
+        description: "yellow border, light yellow fill"
+      },
       { status: "MERGE_CONFLICT", description: "red border, light red fill" }
     ];
 
     for (const { status, description } of testCases) {
       test(`${status} status shows ${description}`, async ({ page }) => {
-        const subtasks = [createMockSubtask({ number: 1, status, dependencies: [] })];
+        const subtasks = [
+          createMockSubtask({ number: 1, status, dependencies: [] })
+        ];
         const state = createStateWithSubtasks(subtasks);
         await setupMockWebSocket(page, state);
         await page.goto("/");
@@ -140,7 +161,9 @@ test.describe("DAG View", () => {
       });
     }
 
-    test("multiple nodes show their respective status colors", async ({ page }) => {
+    test("multiple nodes show their respective status colors", async ({
+      page
+    }) => {
       const statuses: SubtaskStatus[] = ["DONE", "INPROGRESS", "PENDING"];
       const subtasks = statuses.map((status, i) =>
         createMockSubtask({
@@ -197,7 +220,9 @@ test.describe("DAG View", () => {
       }
     });
 
-    test("renders no edges when nodes have no dependencies", async ({ page }) => {
+    test("renders no edges when nodes have no dependencies", async ({
+      page
+    }) => {
       const subtasks = [
         createMockSubtask({ number: 1, dependencies: [] }),
         createMockSubtask({ number: 2, dependencies: [] }),
@@ -213,7 +238,9 @@ test.describe("DAG View", () => {
       await expect(edges).toHaveCount(0);
     });
 
-    test("renders multiple edges for multi-dependency nodes", async ({ page }) => {
+    test("renders multiple edges for multi-dependency nodes", async ({
+      page
+    }) => {
       const subtasks = [
         createMockSubtask({ number: 1, dependencies: [] }),
         createMockSubtask({ number: 2, dependencies: [] }),
@@ -252,7 +279,11 @@ test.describe("DAG View", () => {
   test.describe("Node Interactions", () => {
     test("nodes have pointer cursor and are interactive", async ({ page }) => {
       const subtasks = [
-        createMockSubtask({ number: 1, status: "INPROGRESS", dependencies: [] }),
+        createMockSubtask({
+          number: 1,
+          status: "INPROGRESS",
+          dependencies: []
+        }),
         createMockSubtask({ number: 2, status: "PENDING", dependencies: [1] })
       ];
       const state = createStateWithSubtasks(subtasks);
@@ -267,7 +298,9 @@ test.describe("DAG View", () => {
     });
 
     test("nodes are keyboard accessible", async ({ page }) => {
-      const subtasks = [createMockSubtask({ number: 1, status: "INPROGRESS", dependencies: [] })];
+      const subtasks = [
+        createMockSubtask({ number: 1, status: "INPROGRESS", dependencies: [] })
+      ];
       const state = createStateWithSubtasks(subtasks);
       await setupMockWebSocket(page, state);
       await page.goto("/");
@@ -280,7 +313,9 @@ test.describe("DAG View", () => {
     });
 
     test("blocked nodes show unblock button", async ({ page }) => {
-      const subtasks = [createMockSubtask({ number: 1, status: "BLOCKED", dependencies: [] })];
+      const subtasks = [
+        createMockSubtask({ number: 1, status: "BLOCKED", dependencies: [] })
+      ];
       const state = createStateWithSubtasks(subtasks);
       await setupMockWebSocket(page, state);
       await page.goto("/");
@@ -295,7 +330,9 @@ test.describe("DAG View", () => {
     });
 
     test("non-blocked nodes do not show unblock button", async ({ page }) => {
-      const subtasks = [createMockSubtask({ number: 1, status: "INPROGRESS", dependencies: [] })];
+      const subtasks = [
+        createMockSubtask({ number: 1, status: "INPROGRESS", dependencies: [] })
+      ];
       const state = createStateWithSubtasks(subtasks);
       await setupMockWebSocket(page, state);
       await page.goto("/");
@@ -308,7 +345,9 @@ test.describe("DAG View", () => {
   });
 
   test.describe("Node Positions", () => {
-    test("nodes without dependencies appear in first column", async ({ page }) => {
+    test("nodes without dependencies appear in first column", async ({
+      page
+    }) => {
       const subtasks = [
         createMockSubtask({ number: 1, dependencies: [] }),
         createMockSubtask({ number: 2, dependencies: [] })
@@ -363,7 +402,9 @@ test.describe("DAG View", () => {
       expect(xPositions[2]).toBeGreaterThan(xPositions[1]);
     });
 
-    test("nodes with same dependencies appear in same column", async ({ page }) => {
+    test("nodes with same dependencies appear in same column", async ({
+      page
+    }) => {
       const subtasks = [
         createMockSubtask({ number: 1, dependencies: [] }),
         createMockSubtask({ number: 2, dependencies: [1] }),
@@ -438,6 +479,108 @@ test.describe("DAG View", () => {
       const [, , width, height] = viewBox!.split(" ").map(Number);
       expect(width).toBeGreaterThan(0);
       expect(height).toBeGreaterThan(0);
+    });
+  });
+
+  test.describe("Node Selection", () => {
+    test("clicking a node highlights it with blue border", async ({ page }) => {
+      const subtasks = [
+        createMockSubtask({ number: 1, status: "PENDING", dependencies: [] }),
+        createMockSubtask({
+          number: 2,
+          status: "INPROGRESS",
+          dependencies: [1]
+        })
+      ];
+      const state = createStateWithSubtasks(subtasks);
+      await setupMockWebSocket(page, state);
+      await page.goto("/");
+
+      await selectTask(page);
+
+      const dagView = page.locator(".dag-view");
+      await expect(dagView).toBeVisible();
+
+      const firstNode = dagView.locator("svg g[role='button']").first();
+      const firstRect = firstNode.locator("rect").first();
+
+      await expect(firstRect).toHaveCSS("stroke", STATUS_COLORS.PENDING.border);
+      await expect(firstRect).toHaveAttribute("stroke-width", "2");
+
+      await firstNode.click();
+
+      await expect(firstRect).toHaveCSS("stroke", "rgb(59, 130, 246)");
+      await expect(firstRect).toHaveAttribute("stroke-width", "3");
+    });
+
+    test("clicking a different node changes selection", async ({ page }) => {
+      const subtasks = [
+        createMockSubtask({ number: 1, status: "PENDING", dependencies: [] }),
+        createMockSubtask({ number: 2, status: "PENDING", dependencies: [1] })
+      ];
+      const state = createStateWithSubtasks(subtasks);
+      await setupMockWebSocket(page, state);
+      await page.goto("/");
+
+      await selectTask(page);
+
+      const nodeGroups = page.locator(".dag-view svg g[role='button']");
+      const firstNode = nodeGroups.first();
+      const secondNode = nodeGroups.nth(1);
+
+      await firstNode.click();
+
+      const firstRect = firstNode.locator("rect").first();
+      await expect(firstRect).toHaveAttribute("stroke-width", "3");
+
+      await secondNode.click();
+
+      await expect(firstRect).toHaveAttribute("stroke-width", "2");
+
+      const secondRect = secondNode.locator("rect").first();
+      await expect(secondRect).toHaveAttribute("stroke-width", "3");
+    });
+
+    test("selected node has blue stroke regardless of status", async ({
+      page
+    }) => {
+      const subtasks = [
+        createMockSubtask({ number: 1, status: "DONE", dependencies: [] })
+      ];
+      const state = createStateWithSubtasks(subtasks);
+      await setupMockWebSocket(page, state);
+      await page.goto("/");
+
+      await selectTask(page);
+
+      const node = page.locator(".dag-view svg g[role='button']").first();
+      const rect = node.locator("rect").first();
+
+      await expect(rect).toHaveCSS("stroke", STATUS_COLORS.DONE.border);
+
+      await node.click();
+
+      await expect(rect).toHaveCSS("stroke", "rgb(59, 130, 246)");
+    });
+
+    test("node is keyboard accessible for selection", async ({ page }) => {
+      const subtasks = [
+        createMockSubtask({ number: 1, status: "PENDING", dependencies: [] })
+      ];
+      const state = createStateWithSubtasks(subtasks);
+      await setupMockWebSocket(page, state);
+      await page.goto("/");
+
+      await selectTask(page);
+
+      const node = page.locator(".dag-view svg g[role='button']").first();
+      const rect = node.locator("rect").first();
+
+      await node.focus();
+      await page.keyboard.press("Enter");
+
+      await expect(rect).toHaveAttribute("stroke-width", "3");
+      await expect(rect).toHaveCSS("stroke", "rgb(59, 130, 246)");
     });
   });
 });

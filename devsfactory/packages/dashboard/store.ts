@@ -10,6 +10,11 @@ import type {
   TaskStatus
 } from "./types";
 
+export interface SelectedSubtask {
+  taskFolder: string;
+  subtaskFile: string;
+}
+
 export interface DashboardStore {
   tasks: Task[];
   plans: Record<string, Plan>;
@@ -23,12 +28,19 @@ export interface DashboardStore {
   debugMode: boolean;
   connected: boolean;
 
+  selectedSubtask: SelectedSubtask | null;
+  subtaskLogs: string[];
+  subtaskLogsLoading: boolean;
+
   updateFromServer: (event: ServerEvent) => void;
   selectTask: (folder: string | null) => void;
   focusAgent: (agentId: string, pin?: boolean) => void;
   clearFocus: () => void;
   toggleDebugMode: () => void;
   setConnected: (connected: boolean) => void;
+
+  selectSubtask: (taskFolder: string, subtaskFile: string) => Promise<void>;
+  clearSubtaskSelection: () => void;
 
   setTaskStatus: (folder: string, status: TaskStatus) => Promise<void>;
   setSubtaskStatus: (
@@ -51,6 +63,9 @@ export interface DashboardStoreInitialState {
   isPinned?: boolean;
   debugMode?: boolean;
   connected?: boolean;
+  selectedSubtask?: SelectedSubtask | null;
+  subtaskLogs?: string[];
+  subtaskLogsLoading?: boolean;
 }
 
 const MAX_OUTPUT_LINES = 1000;
@@ -74,7 +89,17 @@ export const createDashboardStore = (
     debugMode: initialState?.debugMode ?? false,
     connected: initialState?.connected ?? false,
 
-    selectTask: (folder) => set({ selectedTask: folder }),
+    selectedSubtask: initialState?.selectedSubtask ?? null,
+    subtaskLogs: initialState?.subtaskLogs ?? [],
+    subtaskLogsLoading: initialState?.subtaskLogsLoading ?? false,
+
+    selectTask: (folder) =>
+      set({
+        selectedTask: folder,
+        selectedSubtask: null,
+        subtaskLogs: [],
+        subtaskLogsLoading: false
+      }),
 
     focusAgent: (agentId, pin = false) =>
       set({ focusedAgent: agentId, isPinned: pin }),
@@ -84,6 +109,26 @@ export const createDashboardStore = (
     toggleDebugMode: () => set((state) => ({ debugMode: !state.debugMode })),
 
     setConnected: (connected) => set({ connected }),
+
+    selectSubtask: async (taskFolder, subtaskFile) => {
+      set({
+        selectedSubtask: { taskFolder, subtaskFile },
+        subtaskLogsLoading: true
+      });
+      try {
+        const { logs } = await client.getSubtaskLogs(taskFolder, subtaskFile);
+        set({ subtaskLogs: logs, subtaskLogsLoading: false });
+      } catch {
+        set({ subtaskLogs: [], subtaskLogsLoading: false });
+      }
+    },
+
+    clearSubtaskSelection: () =>
+      set({
+        selectedSubtask: null,
+        subtaskLogs: [],
+        subtaskLogsLoading: false
+      }),
 
     updateFromServer: (event) => {
       switch (event.type) {
@@ -146,7 +191,20 @@ export const createDashboardStore = (
               updated.splice(0, updated.length - MAX_OUTPUT_LINES);
             }
             agentOutputs.set(event.agentId, updated);
-            return { agentOutputs };
+
+            const result: Partial<DashboardStore> = { agentOutputs };
+
+            if (state.selectedSubtask) {
+              const agent = state.activeAgents.get(event.agentId);
+              if (
+                agent?.taskFolder === state.selectedSubtask.taskFolder &&
+                agent?.subtaskFile === state.selectedSubtask.subtaskFile
+              ) {
+                result.subtaskLogs = [...state.subtaskLogs, event.chunk];
+              }
+            }
+
+            return result;
           });
           break;
 

@@ -33,6 +33,10 @@ export interface DashboardServerOptions {
   ) => Promise<void>;
   createPr?: (folder: string) => Promise<{ prUrl: string }>;
   getDiff?: (folder: string) => Promise<{ diff: string }>;
+  getSubtaskLogs?: (
+    folder: string,
+    file: string
+  ) => Promise<{ logs: string[] }>;
 }
 
 const CORS_HEADERS = {
@@ -205,6 +209,13 @@ export class DashboardServer {
       return this.handleGetDiff(diffMatch[1]!);
     }
 
+    const logsMatch = url.pathname.match(
+      /^\/api\/tasks\/([^/]+)\/subtasks\/([^/]+)\/logs$/
+    );
+    if (logsMatch && req.method === "GET") {
+      return this.handleGetSubtaskLogs(logsMatch[1]!, logsMatch[2]!);
+    }
+
     return new Response("Not Found", { status: 404, headers: CORS_HEADERS });
   }
 
@@ -281,6 +292,20 @@ export class DashboardServer {
         return errorResponse("Diff retrieval not configured");
       }
       return jsonResponse(await this.options.getDiff(folder));
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleGetSubtaskLogs(
+    folder: string,
+    file: string
+  ): Promise<Response> {
+    try {
+      if (!this.options.getSubtaskLogs) {
+        return errorResponse("Logs retrieval not configured");
+      }
+      return jsonResponse(await this.options.getSubtaskLogs(folder, file));
     } catch (err) {
       return errorResponse(err);
     }

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   cleanupTestDir,
   createTestDir,
@@ -9,6 +9,7 @@ import {
 } from "../test-helpers";
 import { MemoryQueue } from "./local/memory-queue";
 import { MemoryAgentRegistry } from "./local/memory-registry";
+import { LogStorage } from "./log-storage";
 import { JobProducer } from "./producer/job-producer";
 
 const FIXTURES_DIR = join(import.meta.dir, "../../e2e-tests/fixtures");
@@ -2014,6 +2015,234 @@ Test
         // Should not throw - the orchestrator should gracefully handle this
         expect(true).toBe(true);
       });
+    });
+  });
+
+  describe("log storage integration", () => {
+    let tempDir: string;
+    let devsfactoryDir: string;
+
+    beforeEach(async () => {
+      tempDir = await createTestDir("orchestrator-logs");
+      devsfactoryDir = join(tempDir, ".devsfactory");
+      await mkdir(devsfactoryDir, { recursive: true });
+    });
+
+    afterEach(async () => {
+      await cleanupTestDir(tempDir);
+    });
+
+    test("creates LogStorage instance with repo root", () => {
+      const config = createConfig({ devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+
+      const logStorage = (orchestrator as unknown as { logStorage: LogStorage })
+        .logStorage;
+
+      expect(logStorage).toBeInstanceOf(LogStorage);
+    });
+
+    test("subscribes to agent runner output events", async () => {
+      const config = createConfig({ devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+
+      await orchestrator.start();
+
+      expect(mockRunner.listenerCount("output")).toBeGreaterThan(0);
+
+      await orchestrator.stop();
+    });
+
+    test("writes output lines to log file when agent has subtaskFile", async () => {
+      await copyFixture(devsfactoryDir, "done-task", "my-task");
+
+      const config = createConfig({ devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+
+      await orchestrator.start();
+
+      mockRunner.emit("started", {
+        agentId: "agent-123",
+        process: {
+          id: "agent-123",
+          type: "implementation",
+          taskFolder: "my-task",
+          subtaskFile: "001-first-subtask.md",
+          pid: 123,
+          startedAt: new Date()
+        }
+      });
+
+      mockRunner.emit("output", {
+        agentId: "agent-123",
+        line: "Hello from agent"
+      });
+      mockRunner.emit("output", {
+        agentId: "agent-123",
+        line: "Second line"
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+      await orchestrator.stop();
+
+      const logStorage = new LogStorage(dirname(devsfactoryDir));
+      const lines = await logStorage.read("my-task", "001-first-subtask.md");
+      expect(lines).toContain("Hello from agent");
+      expect(lines).toContain("Second line");
+      expect(lines).toHaveLength(2);
+    });
+
+    test("does not write output for agents without subtaskFile", async () => {
+      await copyFixture(devsfactoryDir, "done-task", "my-task");
+
+      const config = createConfig({ devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+
+      await orchestrator.start();
+
+      mockRunner.emit("started", {
+        agentId: "agent-456",
+        process: {
+          id: "agent-456",
+          type: "completing-task",
+          taskFolder: "my-task",
+          pid: 456,
+          startedAt: new Date()
+        }
+      });
+
+      mockRunner.emit("output", {
+        agentId: "agent-456",
+        line: "Task level output"
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+      await orchestrator.stop();
+
+      const logsDir = join(devsfactoryDir, "my-task", "logs");
+      const logsExist = await Bun.file(logsDir).exists();
+      expect(logsExist).toBe(false);
+    });
+
+    test("routes output to correct subtask based on agentId", async () => {
+      await copyFixture(devsfactoryDir, "done-task", "my-task");
+
+      const config = createConfig({ devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+
+      await orchestrator.start();
+
+      mockRunner.emit("started", {
+        agentId: "agent-1",
+        process: {
+          id: "agent-1",
+          type: "implementation",
+          taskFolder: "my-task",
+          subtaskFile: "001-first.md",
+          pid: 100,
+          startedAt: new Date()
+        }
+      });
+
+      mockRunner.emit("started", {
+        agentId: "agent-2",
+        process: {
+          id: "agent-2",
+          type: "implementation",
+          taskFolder: "my-task",
+          subtaskFile: "002-second.md",
+          pid: 101,
+          startedAt: new Date()
+        }
+      });
+
+      mockRunner.emit("output", {
+        agentId: "agent-1",
+        line: "First agent line"
+      });
+      mockRunner.emit("output", {
+        agentId: "agent-2",
+        line: "Second agent line"
+      });
+      mockRunner.emit("output", {
+        agentId: "agent-1",
+        line: "First agent again"
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+      await orchestrator.stop();
+
+      const logStorage = new LogStorage(dirname(devsfactoryDir));
+      const lines1 = await logStorage.read("my-task", "001-first.md");
+      const lines2 = await logStorage.read("my-task", "002-second.md");
+
+      expect(lines1).toContain("First agent line");
+      expect(lines1).toContain("First agent again");
+      expect(lines1).toHaveLength(2);
+      expect(lines2).toEqual(["Second agent line"]);
+    });
+
+    test("cleans up agent tracking on completed event", async () => {
+      await copyFixture(devsfactoryDir, "done-task", "my-task");
+
+      const config = createConfig({ devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+
+      await orchestrator.start();
+
+      mockRunner.emit("started", {
+        agentId: "agent-temp",
+        process: {
+          id: "agent-temp",
+          type: "implementation",
+          taskFolder: "my-task",
+          subtaskFile: "001-subtask.md",
+          pid: 200,
+          startedAt: new Date()
+        }
+      });
+
+      mockRunner.emit("output", {
+        agentId: "agent-temp",
+        line: "Before complete"
+      });
+      mockRunner.emit("completed", { agentId: "agent-temp", exitCode: 0 });
+
+      mockRunner.emit("output", {
+        agentId: "agent-temp",
+        line: "After complete"
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+      await orchestrator.stop();
+
+      const logStorage = new LogStorage(dirname(devsfactoryDir));
+      const lines = await logStorage.read("my-task", "001-subtask.md");
+      expect(lines).toEqual(["Before complete"]);
     });
   });
 });

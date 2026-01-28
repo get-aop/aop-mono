@@ -99,6 +99,22 @@ describe("DashboardStore", () => {
       store.getState().selectTask(null);
       expect(store.getState().selectedTask).toBeNull();
     });
+
+    test("clears selectedSubtask when task changes", () => {
+      store = createDashboardStore(undefined, {
+        selectedTask: "task-a",
+        selectedSubtask: { taskFolder: "task-a", subtaskFile: "001-subtask.md" },
+        subtaskLogs: ["log line 1"],
+        subtaskLogsLoading: false
+      });
+
+      store.getState().selectTask("task-b");
+
+      expect(store.getState().selectedTask).toBe("task-b");
+      expect(store.getState().selectedSubtask).toBeNull();
+      expect(store.getState().subtaskLogs).toEqual([]);
+      expect(store.getState().subtaskLogsLoading).toBe(false);
+    });
   });
 
   describe("focusAgent", () => {
@@ -385,6 +401,195 @@ describe("DashboardStore", () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(result.prUrl).toBe("https://github.com/org/repo/pull/1");
+    });
+  });
+
+  describe("selectSubtask", () => {
+    let originalFetch: typeof globalThis.fetch;
+    let mockFetch: ReturnType<typeof mock>;
+
+    beforeEach(() => {
+      originalFetch = globalThis.fetch;
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    test("sets selectedSubtask and loads logs", async () => {
+      const mockLogs = { logs: ["Log line 1", "Log line 2"] };
+      mockFetch = mock(() =>
+        Promise.resolve(new Response(JSON.stringify(mockLogs), { status: 200 }))
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+      await store.getState().selectSubtask("my-task", "001-first-subtask.md");
+
+      const state = store.getState();
+      expect(state.selectedSubtask).toEqual({
+        taskFolder: "my-task",
+        subtaskFile: "001-first-subtask.md"
+      });
+      expect(state.subtaskLogs).toEqual(mockLogs.logs);
+      expect(state.subtaskLogsLoading).toBe(false);
+    });
+
+    test("sets loading state while fetching logs", async () => {
+      let resolvePromise: (value: Response) => void;
+      const pendingPromise = new Promise<Response>((resolve) => {
+        resolvePromise = resolve;
+      });
+
+      mockFetch = mock(() => pendingPromise);
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+      const selectPromise = store
+        .getState()
+        .selectSubtask("my-task", "001-first-subtask.md");
+
+      expect(store.getState().subtaskLogsLoading).toBe(true);
+      expect(store.getState().selectedSubtask).toEqual({
+        taskFolder: "my-task",
+        subtaskFile: "001-first-subtask.md"
+      });
+
+      resolvePromise!(
+        new Response(JSON.stringify({ logs: ["line1"] }), { status: 200 })
+      );
+      await selectPromise;
+
+      expect(store.getState().subtaskLogsLoading).toBe(false);
+    });
+
+    test("clears logs on fetch error", async () => {
+      mockFetch = mock(() =>
+        Promise.resolve(new Response("Not Found", { status: 404 }))
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+      await store.getState().selectSubtask("my-task", "001-first-subtask.md");
+
+      const state = store.getState();
+      expect(state.selectedSubtask).toEqual({
+        taskFolder: "my-task",
+        subtaskFile: "001-first-subtask.md"
+      });
+      expect(state.subtaskLogs).toEqual([]);
+      expect(state.subtaskLogsLoading).toBe(false);
+    });
+  });
+
+  describe("clearSubtaskSelection", () => {
+    let originalFetch: typeof globalThis.fetch;
+    let mockFetch: ReturnType<typeof mock>;
+
+    beforeEach(() => {
+      originalFetch = globalThis.fetch;
+      mockFetch = mock(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ logs: ["line1", "line2"] }), {
+            status: 200
+          })
+        )
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    test("clears selectedSubtask and related state", async () => {
+      await store.getState().selectSubtask("my-task", "001-subtask.md");
+      expect(store.getState().selectedSubtask).not.toBeNull();
+
+      store.getState().clearSubtaskSelection();
+
+      const state = store.getState();
+      expect(state.selectedSubtask).toBeNull();
+      expect(state.subtaskLogs).toEqual([]);
+      expect(state.subtaskLogsLoading).toBe(false);
+    });
+  });
+
+  describe("real-time log updates for selected subtask", () => {
+    let originalFetch: typeof globalThis.fetch;
+    let mockFetch: ReturnType<typeof mock>;
+
+    beforeEach(() => {
+      originalFetch = globalThis.fetch;
+      mockFetch = mock(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ logs: ["initial log"] }), {
+            status: 200
+          })
+        )
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    test("appends logs for selected subtask when agentOutput matches", async () => {
+      store.getState().updateFromServer({
+        type: "agentStarted",
+        agentId: "agent-1",
+        taskFolder: "my-task",
+        subtaskFile: "001-subtask.md",
+        agentType: "implementation"
+      });
+
+      await store.getState().selectSubtask("my-task", "001-subtask.md");
+
+      store.getState().updateFromServer({
+        type: "agentOutput",
+        agentId: "agent-1",
+        chunk: "new real-time log"
+      });
+
+      const state = store.getState();
+      expect(state.subtaskLogs).toEqual(["initial log", "new real-time log"]);
+    });
+
+    test("does not append logs for unrelated agent", async () => {
+      store.getState().updateFromServer({
+        type: "agentStarted",
+        agentId: "agent-1",
+        taskFolder: "other-task",
+        subtaskFile: "002-other-subtask.md",
+        agentType: "implementation"
+      });
+
+      await store.getState().selectSubtask("my-task", "001-subtask.md");
+
+      store.getState().updateFromServer({
+        type: "agentOutput",
+        agentId: "agent-1",
+        chunk: "log from other task"
+      });
+
+      const state = store.getState();
+      expect(state.subtaskLogs).toEqual(["initial log"]);
+    });
+
+    test("does not append logs when no subtask is selected", () => {
+      store.getState().updateFromServer({
+        type: "agentStarted",
+        agentId: "agent-1",
+        taskFolder: "my-task",
+        subtaskFile: "001-subtask.md",
+        agentType: "implementation"
+      });
+
+      store.getState().updateFromServer({
+        type: "agentOutput",
+        agentId: "agent-1",
+        chunk: "some log"
+      });
+
+      expect(store.getState().subtaskLogs).toEqual([]);
     });
   });
 });

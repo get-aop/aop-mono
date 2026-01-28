@@ -159,4 +159,38 @@ describe("api client", () => {
       expect(result.prUrl).toBe("https://github.com/org/repo/pull/456");
     });
   });
+
+  describe("getSubtaskLogs", () => {
+    test("fetches logs from /api/tasks/:folder/subtasks/:file/logs", async () => {
+      const logsResponse = { logs: ["log line 1", "log line 2"] };
+      mockFetch = mock(() =>
+        Promise.resolve(
+          new Response(JSON.stringify(logsResponse), { status: 200 })
+        )
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = createApiClient("http://test:3000");
+      const result = await client.getSubtaskLogs("my-task", "001-subtask.md");
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toBe(
+        "http://test:3000/api/tasks/my-task/subtasks/001-subtask.md/logs"
+      );
+      expect(result).toEqual(logsResponse);
+    });
+
+    test("throws on non-ok response", async () => {
+      mockFetch = mock(() =>
+        Promise.resolve(new Response("Not Found", { status: 404 }))
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = createApiClient();
+      await expect(
+        client.getSubtaskLogs("nonexistent", "001-subtask.md")
+      ).rejects.toThrow("404");
+    });
+  });
 });

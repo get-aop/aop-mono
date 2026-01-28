@@ -35,6 +35,7 @@ import type { AgentRegistry, RunningAgent } from "./interfaces/agent-registry";
 import type { JobQueue } from "./interfaces/job-queue";
 import { MemoryQueue } from "./local/memory-queue";
 import { MemoryAgentRegistry } from "./local/memory-registry";
+import { LogStorage } from "./log-storage";
 import { JobProducer } from "./producer/job-producer";
 import { DevsfactoryWatcher } from "./watcher";
 import { createHandlerRegistry, type HandlerContext } from "./worker/handlers";
@@ -44,6 +45,11 @@ export interface OrchestratorQueueOptions {
   queue?: JobQueue & EventEmitter;
   registry?: AgentRegistry & EventEmitter;
   producer?: JobProducer;
+}
+
+interface AgentContext {
+  taskFolder: string;
+  subtaskFile?: string;
 }
 
 export class Orchestrator extends EventEmitter {
@@ -56,6 +62,8 @@ export class Orchestrator extends EventEmitter {
   private registry: AgentRegistry & EventEmitter;
   private producer: JobProducer;
   private worker: JobWorker;
+  private logStorage: LogStorage;
+  private runningAgents = new Map<string, AgentContext>();
   private reconciling = false;
   private reconcileQueued = false;
   private reconcileTimer: ReturnType<typeof setInterval> | null = null;
@@ -71,6 +79,7 @@ export class Orchestrator extends EventEmitter {
     this.agentRunner = agentRunner ?? new AgentRunner();
     this.watcher = new DevsfactoryWatcher(config);
     this.provider = createProvider("claude");
+    this.logStorage = new LogStorage(this.getRepoRoot());
 
     this.queue = queueOptions?.queue ?? new MemoryQueue();
     this.registry = queueOptions?.registry ?? new MemoryAgentRegistry();
@@ -135,6 +144,7 @@ export class Orchestrator extends EventEmitter {
     this.watcher.start(this.config.devsfactoryDir);
     this.subscribeToWatcherEvents();
     this.subscribeToWorkerEvents();
+    this.subscribeToAgentRunnerEvents();
     this.worker.start();
 
     await this.reconcile();
@@ -275,6 +285,37 @@ export class Orchestrator extends EventEmitter {
         nextRetryMs: number;
       }) => {
         this.emit("workerJobRetrying", { jobId, attempt, nextRetryMs });
+      }
+    );
+  }
+
+  private subscribeToAgentRunnerEvents(): void {
+    this.agentRunner.on(
+      "started",
+      ({ agentId, process }: { agentId: string; process: AgentProcess }) => {
+        this.runningAgents.set(agentId, {
+          taskFolder: process.taskFolder,
+          subtaskFile: process.subtaskFile
+        });
+      }
+    );
+
+    this.agentRunner.on(
+      "output",
+      ({ agentId, line }: { agentId: string; line: string }) => {
+        const context = this.runningAgents.get(agentId);
+        if (!context?.subtaskFile) return;
+
+        this.logStorage
+          .append(context.taskFolder, context.subtaskFile, line)
+          .catch(() => {});
+      }
+    );
+
+    this.agentRunner.on(
+      "completed",
+      ({ agentId }: { agentId: string; exitCode: number }) => {
+        this.runningAgents.delete(agentId);
       }
     );
   }

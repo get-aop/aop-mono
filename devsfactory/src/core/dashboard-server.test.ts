@@ -585,4 +585,102 @@ describe("DashboardServer", () => {
       }
     });
   });
+
+  describe("GET /api/tasks/:folder/subtasks/:file/logs", () => {
+    test("returns logs from getSubtaskLogs callback", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+      const getSubtaskLogsMock = mock(() =>
+        Promise.resolve({ logs: ["line 1", "line 2", "line 3"] })
+      );
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        getSubtaskLogs: getSubtaskLogsMock
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/tasks/my-task/subtasks/001-subtask.md/logs`
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { logs: string[] };
+        expect(body.logs).toEqual(["line 1", "line 2", "line 3"]);
+        expect(getSubtaskLogsMock).toHaveBeenCalledWith(
+          "my-task",
+          "001-subtask.md"
+        );
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 500 when getSubtaskLogs fails", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+      const getSubtaskLogsMock = mock(() =>
+        Promise.reject(new Error("Log file not found"))
+      );
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        getSubtaskLogs: getSubtaskLogsMock
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/tasks/my-task/subtasks/001-subtask.md/logs`
+        );
+        expect(response.status).toBe(500);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toContain("Log file not found");
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 500 when getSubtaskLogs is not configured", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const server = new DashboardServer(orchestrator, { port: 0 });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/tasks/my-task/subtasks/001-subtask.md/logs`
+        );
+        expect(response.status).toBe(500);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toContain("not configured");
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns empty logs array when subtask has no logs", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+      const getSubtaskLogsMock = mock(() => Promise.resolve({ logs: [] }));
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        getSubtaskLogs: getSubtaskLogsMock
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/tasks/my-task/subtasks/001-subtask.md/logs`
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { logs: string[] };
+        expect(body.logs).toEqual([]);
+      } finally {
+        await server.stop();
+      }
+    });
+  });
 });

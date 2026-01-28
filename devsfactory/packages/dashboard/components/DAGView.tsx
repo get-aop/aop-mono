@@ -14,7 +14,8 @@ export interface DAGViewProps {
 
 export const DAGView = ({ subtasks, taskFolder }: DAGViewProps) => {
   const activeAgents = useDashboardStore((s) => s.activeAgents);
-  const selectTask = useDashboardStore((s) => s.selectTask);
+  const selectedSubtask = useDashboardStore((s) => s.selectedSubtask);
+  const selectSubtask = useDashboardStore((s) => s.selectSubtask);
   const setSubtaskStatus = useDashboardStore((s) => s.setSubtaskStatus);
 
   const nodes = calculateDAGLayout(subtasks);
@@ -29,6 +30,10 @@ export const DAGView = ({ subtasks, taskFolder }: DAGViewProps) => {
         agent.taskFolder === taskFolder &&
         agent.subtaskFile === subtask.filename
     );
+
+  const isSelected = (subtask: Subtask) =>
+    selectedSubtask?.taskFolder === taskFolder &&
+    selectedSubtask?.subtaskFile === subtask.filename;
 
   return (
     <div className="dag-view">
@@ -65,7 +70,8 @@ export const DAGView = ({ subtasks, taskFolder }: DAGViewProps) => {
             width={node.width}
             height={node.height}
             hasActiveAgent={hasActiveAgent(node.subtask)}
-            onClick={() => selectTask(taskFolder)}
+            isSelected={isSelected(node.subtask)}
+            onClick={() => selectSubtask(taskFolder, node.subtask.filename)}
             onUnblock={() =>
               setSubtaskStatus(taskFolder, node.subtask.filename, "PENDING")
             }

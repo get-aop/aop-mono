@@ -11,6 +11,7 @@ export interface ApiClient {
   ): Promise<void>;
   createPullRequest(folder: string): Promise<{ prUrl: string }>;
   fetchDiff(folder: string): Promise<{ diff: string }>;
+  getSubtaskLogs(folder: string, file: string): Promise<{ logs: string[] }>;
 }
 
 export const createApiClient = (
@@ -54,6 +55,9 @@ export const createApiClient = (
       }),
 
     fetchDiff: (folder) =>
-      request<{ diff: string }>(`/api/tasks/${folder}/diff`)
+      request<{ diff: string }>(`/api/tasks/${folder}/diff`),
+
+    getSubtaskLogs: (folder, file) =>
+      request<{ logs: string[] }>(`/api/tasks/${folder}/subtasks/${file}/logs`)
   };
 };

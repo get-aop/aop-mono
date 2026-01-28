@@ -167,4 +167,70 @@ describe("DAGView", () => {
     expect(html).not.toContain("Unblock");
     expect(html).not.toContain("dag-node-unblock");
   });
+
+  test("selected node has blue stroke and wider border", () => {
+    const subtasks = [makeSubtask(1, "PENDING")];
+    const storeWithSelection = createDashboardStore(undefined, {
+      selectedSubtask: { taskFolder: "test-task", subtaskFile: "001-test.md" }
+    });
+
+    const html = renderToString(
+      <StoreContext.Provider value={storeWithSelection}>
+        <DAGView subtasks={subtasks} taskFolder="test-task" />
+      </StoreContext.Provider>
+    );
+
+    expect(html).toContain('stroke="#3b82f6"');
+    expect(html).toContain('stroke-width="3"');
+  });
+
+  test("unselected node has status-based stroke", () => {
+    const subtasks = [makeSubtask(1, "PENDING")];
+    const html = renderToString(
+      <StoreContext.Provider value={store}>
+        <DAGView subtasks={subtasks} taskFolder="test-task" />
+      </StoreContext.Provider>
+    );
+
+    expect(html).toContain('stroke="#9ca3af"');
+    expect(html).toContain('stroke-width="2"');
+  });
+
+  test("only matching subtask is selected when multiple exist", () => {
+    const subtasks = [makeSubtask(1, "PENDING"), makeSubtask(2, "PENDING")];
+    const storeWithSelection = createDashboardStore(undefined, {
+      selectedSubtask: { taskFolder: "test-task", subtaskFile: "001-test.md" }
+    });
+
+    const html = renderToString(
+      <StoreContext.Provider value={storeWithSelection}>
+        <DAGView subtasks={subtasks} taskFolder="test-task" />
+      </StoreContext.Provider>
+    );
+
+    const selectedCount = (html.match(/stroke-width="3"/g) || []).length;
+    expect(selectedCount).toBe(1);
+
+    const unselectedCount = (html.match(/stroke-width="2"/g) || []).length;
+    expect(unselectedCount).toBe(1);
+  });
+
+  test("no nodes selected when taskFolder does not match", () => {
+    const subtasks = [makeSubtask(1, "PENDING")];
+    const storeWithSelection = createDashboardStore(undefined, {
+      selectedSubtask: {
+        taskFolder: "different-task",
+        subtaskFile: "001-test.md"
+      }
+    });
+
+    const html = renderToString(
+      <StoreContext.Provider value={storeWithSelection}>
+        <DAGView subtasks={subtasks} taskFolder="test-task" />
+      </StoreContext.Provider>
+    );
+
+    expect(html).not.toContain('stroke="#3b82f6"');
+    expect(html).toContain('stroke-width="2"');
+  });
 });
