@@ -27,7 +27,9 @@
       "Bash(make:*)",
       "Bash(mkdir:*)",
       "Bash(ls:*)",
-      "Bash(sort:*)"
+      "Bash(sort:*)",
+      "Bash(bunx playwright:*)",
+      "Bash(npx playwright:*)"
     ]
   },
   "model": "opus",
@@ -57,6 +59,7 @@
     "slack@claude-plugins-official": false,
     "context7@claude-plugins-official": true,
     "linear@claude-plugins-official": false,
-    "code-review@claude-plugins-official": false
+    "code-review@claude-plugins-official": false,
+    "playwright@claude-plugins-official": true
   }
 }

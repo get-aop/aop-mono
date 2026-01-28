@@ -37,3 +37,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .worktrees
 .logs
 test-runs
+
+# Playwright
+.playwright
+playwright-report
+test-results

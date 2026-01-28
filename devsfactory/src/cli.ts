@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { AgentRunner } from "./core/agent-runner";
+import { DashboardServer } from "./core/dashboard-server";
 import { Orchestrator } from "./core/orchestrator";
 import { configureLogger, getLogger } from "./infra/logger";
 import { parseStreamJson } from "./providers/claude";
@@ -28,6 +29,7 @@ ENVIRONMENT VARIABLES
   DEVSFACTORY_DIR       Task definitions directory (default: .devsfactory)
   WORKTREES_DIR         Git worktrees directory (default: .worktrees)
   MAX_CONCURRENT_AGENTS Maximum parallel agents (default: 2)
+  DASHBOARD_PORT        Dashboard server port (default: 3001)
   DEBOUNCE_MS           File watcher debounce in ms (default: 100)
   RETRY_INITIAL_MS      Initial retry backoff in ms (default: 2000)
   RETRY_MAX_MS          Maximum retry backoff in ms (default: 300000)
@@ -36,10 +38,9 @@ ENVIRONMENT VARIABLES
   LOG_MODE              Log format: "pretty" or "json" (default: pretty)
 
 SETUP
-  1. Create a .devsfactory directory in your project root
+  1. Run 'aop' from your project root (creates .devsfactory if needed)
   2. Add task definitions as markdown files (see documentation)
   3. Optionally create a .env file with configuration
-  4. Run 'aop' from your project root
 
 EXAMPLES
   # Start orchestrator with defaults
@@ -110,17 +111,12 @@ const isInsideGitRepo = async (): Promise<boolean> => {
   }
 };
 
-const validateEnvironment = async (config: Config): Promise<string[]> => {
+const validateEnvironment = async (
+  config: Config
+): Promise<{ errors: string[]; shouldCreateDir: boolean }> => {
   const errors: string[] = [];
 
-  if (!existsSync(config.devsfactoryDir)) {
-    errors.push(
-      `Directory not found: ${config.devsfactoryDir}\n` +
-        `  Create it with: mkdir ${process.env.DEVSFACTORY_DIR ?? ".devsfactory"}`
-    );
-  }
-
-  // Check if we're in a git repository (works from any subdirectory or worktree)
+  // Check if we're in a git repository first (works from any subdirectory or worktree)
   const inGitRepo = await isInsideGitRepo();
   if (!inGitRepo) {
     errors.push(
@@ -129,7 +125,10 @@ const validateEnvironment = async (config: Config): Promise<string[]> => {
     );
   }
 
-  return errors;
+  const shouldCreateDir =
+    errors.length === 0 && !existsSync(config.devsfactoryDir);
+
+  return { errors, shouldCreateDir };
 };
 
 const showHelp = () => {
@@ -165,7 +164,8 @@ const main = async () => {
   }
 
   const config = parseEnvConfig();
-  const validationErrors = await validateEnvironment(config);
+  const { errors: validationErrors, shouldCreateDir } =
+    await validateEnvironment(config);
 
   if (validationErrors.length > 0) {
     console.error("Configuration errors:\n");
@@ -176,8 +176,18 @@ const main = async () => {
     process.exit(1);
   }
 
+  if (shouldCreateDir) {
+    mkdirSync(config.devsfactoryDir, { recursive: true });
+  }
+
   await configureLogger();
   const log = getLogger("orchestrator");
+
+  if (shouldCreateDir) {
+    log.info(
+      `Created ${process.env.DEVSFACTORY_DIR ?? ".devsfactory"} directory`
+    );
+  }
   const agentLog = getLogger("agent");
 
   log.info("Starting orchestrator", {
@@ -246,6 +256,15 @@ const main = async () => {
 
   const orchestrator = new Orchestrator(config, agentRunner);
 
+  // Start dashboard server
+  const dashboardPort = Number(process.env.DASHBOARD_PORT ?? 3001);
+  const dashboardServer = new DashboardServer(orchestrator, {
+    port: dashboardPort,
+    devsfactoryDir: config.devsfactoryDir
+  });
+  await dashboardServer.start();
+  log.info(`Dashboard server started on port ${dashboardServer.port}`);
+
   orchestrator.on("stateChanged", () => {
     const state = orchestrator.getState();
     log.debug("State changed", {
@@ -275,6 +294,7 @@ const main = async () => {
 
   const shutdown = async () => {
     log.info("Shutting down...");
+    await dashboardServer.stop();
     await orchestrator.stop();
     log.info("Orchestrator stopped");
     process.exit(0);
