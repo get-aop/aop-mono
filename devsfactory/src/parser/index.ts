@@ -13,11 +13,14 @@ export {
   getReadySubtasks,
   listSubtasks,
   parseSubtask,
-  updateSubtaskStatus
+  recordPhaseDuration,
+  updateSubtaskStatus,
+  updateSubtaskTiming
 } from "./subtask";
 export {
   createTask,
   listTaskFolders,
   parseTask,
-  updateTaskStatus
+  updateTaskStatus,
+  updateTaskTiming
 } from "./task";

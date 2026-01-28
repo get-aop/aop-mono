@@ -5,6 +5,7 @@ import {
   AgentTypeSchema,
   ConfigSchema,
   OrchestratorStateSchema,
+  PhaseTimingsSchema,
   PlanFrontmatterSchema,
   PlanSchema,
   type PlanStatus,
@@ -16,10 +17,12 @@ import {
   SubtaskSchema,
   type SubtaskStatus,
   SubtaskStatusSchema,
+  SubtaskTimingSchema,
   TaskFrontmatterSchema,
   TaskSchema,
   type TaskStatus,
   TaskStatusSchema,
+  TaskTimingSchema,
   WatcherEventSchema
 } from "./index.ts";
 
@@ -669,5 +672,309 @@ describe("Extended AgentTypeSchema", () => {
     for (const type of existingTypes) {
       expect(AgentTypeSchema.parse(type)).toBe(type);
     }
+  });
+});
+
+describe("Timing Schemas", () => {
+  describe("PhaseTimingsSchema", () => {
+    test("parses with all phase durations", () => {
+      const input = {
+        implementation: 120000,
+        review: 60000,
+        merge: 5000,
+        conflictSolver: 30000
+      };
+
+      const result = PhaseTimingsSchema.parse(input);
+
+      expect(result.implementation).toBe(120000);
+      expect(result.review).toBe(60000);
+      expect(result.merge).toBe(5000);
+      expect(result.conflictSolver).toBe(30000);
+    });
+
+    test("applies null defaults for missing fields", () => {
+      const result = PhaseTimingsSchema.parse({});
+
+      expect(result.implementation).toBeNull();
+      expect(result.review).toBeNull();
+      expect(result.merge).toBeNull();
+      expect(result.conflictSolver).toBeNull();
+    });
+
+    test("accepts null values explicitly", () => {
+      const input = {
+        implementation: null,
+        review: 60000,
+        merge: null,
+        conflictSolver: null
+      };
+
+      const result = PhaseTimingsSchema.parse(input);
+
+      expect(result.implementation).toBeNull();
+      expect(result.review).toBe(60000);
+      expect(result.merge).toBeNull();
+      expect(result.conflictSolver).toBeNull();
+    });
+
+    test("accepts partial phase timings", () => {
+      const input = {
+        implementation: 120000
+      };
+
+      const result = PhaseTimingsSchema.parse(input);
+
+      expect(result.implementation).toBe(120000);
+      expect(result.review).toBeNull();
+    });
+  });
+
+  describe("SubtaskTimingSchema", () => {
+    test("parses with all timing fields", () => {
+      const input = {
+        startedAt: "2026-01-25T10:00:00Z",
+        completedAt: "2026-01-25T12:00:00Z",
+        durationMs: 7200000,
+        phases: {
+          implementation: 6000000,
+          review: 1000000,
+          merge: 200000,
+          conflictSolver: null
+        }
+      };
+
+      const result = SubtaskTimingSchema.parse(input);
+
+      expect(result.startedAt).toBeInstanceOf(Date);
+      expect(result.completedAt).toBeInstanceOf(Date);
+      expect(result.durationMs).toBe(7200000);
+      expect(result.phases.implementation).toBe(6000000);
+      expect(result.phases.review).toBe(1000000);
+    });
+
+    test("applies null defaults for missing fields", () => {
+      const result = SubtaskTimingSchema.parse({});
+
+      expect(result.startedAt).toBeNull();
+      expect(result.completedAt).toBeNull();
+      expect(result.durationMs).toBeNull();
+      expect(result.phases.implementation).toBeNull();
+      expect(result.phases.review).toBeNull();
+      expect(result.phases.merge).toBeNull();
+      expect(result.phases.conflictSolver).toBeNull();
+    });
+
+    test("coerces date strings to Date objects", () => {
+      const input = {
+        startedAt: "2026-01-25T10:00:00Z",
+        completedAt: "2026-01-25T12:00:00Z"
+      };
+
+      const result = SubtaskTimingSchema.parse(input);
+
+      expect(result.startedAt).toBeInstanceOf(Date);
+      expect(result.startedAt?.toISOString()).toBe("2026-01-25T10:00:00.000Z");
+      expect(result.completedAt).toBeInstanceOf(Date);
+      expect(result.completedAt?.toISOString()).toBe(
+        "2026-01-25T12:00:00.000Z"
+      );
+    });
+
+    test("accepts Date objects directly", () => {
+      const startDate = new Date("2026-01-25T10:00:00Z");
+      const endDate = new Date("2026-01-25T12:00:00Z");
+      const input = {
+        startedAt: startDate,
+        completedAt: endDate
+      };
+
+      const result = SubtaskTimingSchema.parse(input);
+
+      expect(result.startedAt?.getTime()).toBe(startDate.getTime());
+      expect(result.completedAt?.getTime()).toBe(endDate.getTime());
+    });
+  });
+
+  describe("TaskTimingSchema", () => {
+    test("parses with all timing fields", () => {
+      const input = {
+        startedAt: "2026-01-25T08:00:00Z",
+        completedAt: "2026-01-25T18:00:00Z",
+        durationMs: 36000000
+      };
+
+      const result = TaskTimingSchema.parse(input);
+
+      expect(result.startedAt).toBeInstanceOf(Date);
+      expect(result.completedAt).toBeInstanceOf(Date);
+      expect(result.durationMs).toBe(36000000);
+    });
+
+    test("applies null defaults for missing fields", () => {
+      const result = TaskTimingSchema.parse({});
+
+      expect(result.startedAt).toBeNull();
+      expect(result.completedAt).toBeNull();
+      expect(result.durationMs).toBeNull();
+    });
+
+    test("coerces date strings to Date objects", () => {
+      const input = {
+        startedAt: "2026-01-25T08:00:00Z"
+      };
+
+      const result = TaskTimingSchema.parse(input);
+
+      expect(result.startedAt).toBeInstanceOf(Date);
+      expect(result.startedAt?.toISOString()).toBe("2026-01-25T08:00:00.000Z");
+      expect(result.completedAt).toBeNull();
+    });
+  });
+});
+
+describe("Extended Frontmatter Schemas with Timing", () => {
+  describe("TaskFrontmatterSchema with timing fields", () => {
+    test("parses with timing fields", () => {
+      const input = {
+        title: "Task with timing",
+        status: "INPROGRESS",
+        created: "2026-01-25T08:00:00Z",
+        priority: "high",
+        startedAt: "2026-01-25T08:00:00Z",
+        completedAt: "2026-01-25T18:00:00Z",
+        durationMs: 36000000
+      };
+
+      const result = TaskFrontmatterSchema.parse(input);
+
+      expect(result.startedAt).toBeInstanceOf(Date);
+      expect(result.completedAt).toBeInstanceOf(Date);
+      expect(result.durationMs).toBe(36000000);
+    });
+
+    test("applies null defaults for timing fields when not provided", () => {
+      const input = {
+        title: "Task without timing",
+        status: "PENDING",
+        created: "2026-01-25T08:00:00Z",
+        priority: "medium"
+      };
+
+      const result = TaskFrontmatterSchema.parse(input);
+
+      expect(result.startedAt).toBeNull();
+      expect(result.completedAt).toBeNull();
+      expect(result.durationMs).toBeNull();
+    });
+
+    test("backward compatible - existing task files without timing still parse", () => {
+      const existingTaskFormat = {
+        title: "Legacy Task",
+        status: "DONE",
+        created: "2026-01-20T00:00:00Z",
+        priority: "low",
+        tags: ["legacy"],
+        assignee: "developer",
+        dependencies: []
+      };
+
+      const result = TaskFrontmatterSchema.parse(existingTaskFormat);
+
+      expect(result.title).toBe("Legacy Task");
+      expect(result.status).toBe("DONE");
+      expect(result.startedAt).toBeNull();
+      expect(result.completedAt).toBeNull();
+      expect(result.durationMs).toBeNull();
+    });
+
+    test("allows partial timing - only startedAt provided", () => {
+      const input = {
+        title: "In Progress Task",
+        status: "INPROGRESS",
+        created: "2026-01-25T08:00:00Z",
+        priority: "high",
+        startedAt: "2026-01-25T08:00:00Z"
+      };
+
+      const result = TaskFrontmatterSchema.parse(input);
+
+      expect(result.startedAt).toBeInstanceOf(Date);
+      expect(result.completedAt).toBeNull();
+      expect(result.durationMs).toBeNull();
+    });
+  });
+
+  describe("SubtaskFrontmatterSchema with timing field", () => {
+    test("parses with timing object", () => {
+      const input = {
+        title: "Subtask with timing",
+        status: "DONE",
+        dependencies: [1],
+        timing: {
+          startedAt: "2026-01-25T10:00:00Z",
+          completedAt: "2026-01-25T12:00:00Z",
+          durationMs: 7200000,
+          phases: {
+            implementation: 6000000,
+            review: 1000000,
+            merge: 200000,
+            conflictSolver: null
+          }
+        }
+      };
+
+      const result = SubtaskFrontmatterSchema.parse(input);
+
+      expect(result.timing).toBeDefined();
+      expect(result.timing?.startedAt).toBeInstanceOf(Date);
+      expect(result.timing?.completedAt).toBeInstanceOf(Date);
+      expect(result.timing?.durationMs).toBe(7200000);
+      expect(result.timing?.phases.implementation).toBe(6000000);
+    });
+
+    test("applies undefined default for timing when not provided", () => {
+      const input = {
+        title: "Subtask without timing",
+        status: "PENDING",
+        dependencies: []
+      };
+
+      const result = SubtaskFrontmatterSchema.parse(input);
+
+      expect(result.timing).toBeUndefined();
+    });
+
+    test("backward compatible - existing subtask files without timing still parse", () => {
+      const existingSubtaskFormat = {
+        title: "Legacy Subtask",
+        status: "DONE",
+        dependencies: [1, 2]
+      };
+
+      const result = SubtaskFrontmatterSchema.parse(existingSubtaskFormat);
+
+      expect(result.title).toBe("Legacy Subtask");
+      expect(result.status).toBe("DONE");
+      expect(result.dependencies).toEqual([1, 2]);
+      expect(result.timing).toBeUndefined();
+    });
+
+    test("accepts empty timing object with defaults", () => {
+      const input = {
+        title: "Subtask with empty timing",
+        status: "INPROGRESS",
+        dependencies: [],
+        timing: {}
+      };
+
+      const result = SubtaskFrontmatterSchema.parse(input);
+
+      expect(result.timing).toBeDefined();
+      expect(result.timing?.startedAt).toBeNull();
+      expect(result.timing?.completedAt).toBeNull();
+      expect(result.timing?.durationMs).toBeNull();
+      expect(result.timing?.phases.implementation).toBeNull();
+    });
   });
 });

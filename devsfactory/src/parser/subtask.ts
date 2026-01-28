@@ -1,6 +1,12 @@
 import { ZodError } from "zod";
 import { ParseError } from "../errors";
-import type { Subtask, SubtaskFrontmatter, SubtaskStatus } from "../types";
+import type {
+  PhaseTimings,
+  Subtask,
+  SubtaskFrontmatter,
+  SubtaskStatus,
+  SubtaskTiming
+} from "../types";
 import { SubtaskFrontmatterSchema } from "../types";
 import {
   parseFrontmatter,
@@ -10,6 +16,17 @@ import {
 
 const DEFAULT_DEVSFACTORY_DIR = ".devsfactory";
 const SUBTASK_FILENAME_REGEX = /^(\d{3})-(.+)\.md$/;
+const DEFAULT_TIMING: SubtaskTiming = {
+  startedAt: null,
+  completedAt: null,
+  durationMs: null,
+  phases: {
+    implementation: null,
+    review: null,
+    merge: null,
+    conflictSolver: null
+  }
+};
 
 export const parseSubtask = async (
   taskFolder: string,
@@ -87,6 +104,48 @@ export const updateSubtaskStatus = async (
     ...current,
     status
   }));
+};
+
+export const updateSubtaskTiming = async (
+  taskFolder: string,
+  filename: string,
+  timingUpdate: Partial<Omit<SubtaskTiming, "phases">> & {
+    phases?: Partial<PhaseTimings>;
+  },
+  devsfactoryDir = DEFAULT_DEVSFACTORY_DIR
+): Promise<void> => {
+  const filePath = `${devsfactoryDir}/${taskFolder}/${filename}`;
+
+  await updateFrontmatter(filePath, SubtaskFrontmatterSchema, (current) => {
+    const existingTiming = current.timing ?? DEFAULT_TIMING;
+
+    return {
+      ...current,
+      timing: {
+        ...existingTiming,
+        ...timingUpdate,
+        phases: {
+          ...existingTiming.phases,
+          ...timingUpdate.phases
+        }
+      }
+    };
+  });
+};
+
+export const recordPhaseDuration = async (
+  taskFolder: string,
+  filename: string,
+  phase: keyof PhaseTimings,
+  durationMs: number,
+  devsfactoryDir = DEFAULT_DEVSFACTORY_DIR
+): Promise<void> => {
+  await updateSubtaskTiming(
+    taskFolder,
+    filename,
+    { phases: { [phase]: durationMs } },
+    devsfactoryDir
+  );
 };
 
 export const listSubtasks = async (

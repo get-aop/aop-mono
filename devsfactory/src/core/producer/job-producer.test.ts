@@ -29,7 +29,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -79,7 +82,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -138,7 +144,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -196,7 +205,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -242,7 +254,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -300,7 +315,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -346,7 +364,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -395,7 +416,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -453,7 +477,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -499,7 +526,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -545,7 +575,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -609,7 +642,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -681,7 +717,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -747,7 +786,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -795,7 +837,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -843,7 +888,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",
@@ -858,7 +906,10 @@ describe("JobProducer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "",
             requirements: "",

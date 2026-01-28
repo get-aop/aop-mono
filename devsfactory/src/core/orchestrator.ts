@@ -3,7 +3,10 @@ import { mkdir, readdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import {
   updateSubtaskStatus as parserUpdateSubtaskStatus,
-  updateTaskStatus
+  recordPhaseDuration,
+  updateSubtaskTiming,
+  updateTaskStatus,
+  updateTaskTiming
 } from "../parser";
 import {
   getCompletingTaskPrompt,
@@ -17,6 +20,7 @@ import type {
   AgentProcess,
   Config,
   OrchestratorState,
+  PhaseTimings,
   Subtask,
   Task
 } from "../types";
@@ -55,6 +59,7 @@ export class Orchestrator extends EventEmitter {
   private reconciling = false;
   private reconcileQueued = false;
   private reconcileTimer: ReturnType<typeof setInterval> | null = null;
+  private subtaskStartTimes = new Map<string, number>();
 
   constructor(
     config: Config,
@@ -210,10 +215,38 @@ export class Orchestrator extends EventEmitter {
   }
 
   private subscribeToWorkerEvents(): void {
-    this.worker.on("jobCompleted", ({ jobId }: { jobId: string }) => {
-      this.scheduleReconcile();
-      this.emit("workerJobCompleted", { jobId });
-    });
+    this.worker.on(
+      "jobCompleted",
+      ({
+        jobId,
+        job,
+        durationMs
+      }: {
+        jobId: string;
+        job: { type: string; taskFolder: string; subtaskFile?: string };
+        durationMs: number;
+      }) => {
+        this.scheduleReconcile();
+        this.emit("workerJobCompleted", { jobId, job, durationMs });
+
+        if (job.subtaskFile) {
+          const phase = this.mapJobTypeToPhase(job.type);
+          if (phase) {
+            recordPhaseDuration(
+              job.taskFolder,
+              job.subtaskFile,
+              phase,
+              durationMs,
+              this.config.devsfactoryDir
+            ).catch(() => {});
+          }
+
+          if (job.type === "merge" || job.type === "conflict-solver") {
+            this.emitSubtaskCompleted(job.taskFolder, job.subtaskFile);
+          }
+        }
+      }
+    );
 
     this.worker.on(
       "jobFailed",
@@ -246,11 +279,50 @@ export class Orchestrator extends EventEmitter {
     );
   }
 
+  private getSubtaskKey(taskFolder: string, subtaskFile: string): string {
+    return `${taskFolder}:${subtaskFile}`;
+  }
+
+  private emitSubtaskCompleted(taskFolder: string, subtaskFile: string): void {
+    const subtasks = this.state.subtasks[taskFolder] ?? [];
+    const subtask = subtasks.find((s) => s.filename === subtaskFile);
+    if (!subtask) return;
+
+    const subtaskKey = this.getSubtaskKey(taskFolder, subtaskFile);
+    const startTime = this.subtaskStartTimes.get(subtaskKey);
+    const durationMs = startTime ? Date.now() - startTime : 0;
+    this.subtaskStartTimes.delete(subtaskKey);
+
+    this.emit("subtaskCompleted", {
+      taskFolder,
+      subtaskNumber: subtask.number,
+      subtaskTotal: subtasks.length,
+      subtaskTitle: subtask.frontmatter.title,
+      durationMs
+    });
+  }
+
   private async refreshState(): Promise<void> {
+    const previousTasks = new Map(
+      this.state.tasks.map((t) => [t.folder, t.frontmatter.status])
+    );
+
     const scanResult = await this.watcher.scan(this.config.devsfactoryDir);
     this.state.tasks = scanResult.tasks;
     this.state.plans = scanResult.plans;
     this.state.subtasks = scanResult.subtasks;
+
+    for (const task of this.state.tasks) {
+      const prevStatus = previousTasks.get(task.folder);
+      if (
+        prevStatus &&
+        prevStatus !== "DONE" &&
+        task.frontmatter.status === "DONE"
+      ) {
+        const subtasks = this.state.subtasks[task.folder] ?? [];
+        this.emit("taskCompleted", { task, subtasks });
+      }
+    }
   }
 
   private async runRecovery(): Promise<void> {
@@ -355,6 +427,11 @@ export class Orchestrator extends EventEmitter {
         "INPROGRESS",
         this.config.devsfactoryDir
       );
+      await updateTaskTiming(
+        task.folder,
+        { startedAt: new Date() },
+        this.config.devsfactoryDir
+      );
       task.frontmatter.status = "INPROGRESS";
       await createTaskWorktree(this.getRepoRoot(), task.folder);
     }
@@ -375,12 +452,30 @@ export class Orchestrator extends EventEmitter {
           "INPROGRESS",
           this.config.devsfactoryDir
         );
+        await updateSubtaskTiming(
+          task.folder,
+          subtask.filename,
+          { startedAt: new Date() },
+          this.config.devsfactoryDir
+        );
         subtask.frontmatter.status = "INPROGRESS";
         await createSubtaskWorktree(
           this.getRepoRoot(),
           task.folder,
           subtask.slug
         );
+
+        this.subtaskStartTimes.set(
+          this.getSubtaskKey(task.folder, subtask.filename),
+          Date.now()
+        );
+
+        this.emit("subtaskStarted", {
+          taskFolder: task.folder,
+          subtaskNumber: subtask.number,
+          subtaskTotal: subtasks.length,
+          subtaskTitle: subtask.frontmatter.title
+        });
       }
     }
   }
@@ -459,5 +554,15 @@ export class Orchestrator extends EventEmitter {
       };
       this.agentRunner.on("completed", handler);
     });
+  }
+
+  private mapJobTypeToPhase(jobType: string): keyof PhaseTimings | null {
+    const mapping: Record<string, keyof PhaseTimings> = {
+      implementation: "implementation",
+      review: "review",
+      merge: "merge",
+      "conflict-solver": "conflictSolver"
+    };
+    return mapping[jobType] ?? null;
   }
 }

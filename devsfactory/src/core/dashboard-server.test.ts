@@ -56,7 +56,10 @@ describe("DashboardServer", () => {
               priority: "medium",
               tags: [],
               assignee: null,
-              dependencies: []
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
             },
             description: "Test description",
             requirements: "Test requirements",

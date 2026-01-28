@@ -5,7 +5,8 @@ import {
   createTask,
   listTaskFolders,
   parseTask,
-  updateTaskStatus
+  updateTaskStatus,
+  updateTaskTiming
 } from "./task";
 
 let TEST_DIR: string;
@@ -166,7 +167,10 @@ describe("createTask", () => {
         priority: "medium",
         tags: ["feature"],
         assignee: null,
-        dependencies: []
+        dependencies: [],
+        startedAt: null,
+        completedAt: null,
+        durationMs: null
       },
       description: "Build a new feature",
       requirements: "- Must work",
@@ -191,7 +195,10 @@ describe("createTask", () => {
         priority: "high",
         tags: ["test", "example"],
         assignee: "agent-1",
-        dependencies: ["dep-1"]
+        dependencies: ["dep-1"],
+        startedAt: null,
+        completedAt: null,
+        durationMs: null
       },
       description: "This is the description.",
       requirements: "- Requirement 1\n- Requirement 2",
@@ -228,7 +235,10 @@ describe("createTask", () => {
         priority: "low",
         tags: ["a", "b"],
         assignee: null,
-        dependencies: []
+        dependencies: [],
+        startedAt: null,
+        completedAt: null,
+        durationMs: null
       },
       description: "Description text",
       requirements: "- Req 1",
@@ -406,5 +416,174 @@ describe("listTaskFolders", () => {
     const folders = await listTaskFolders(`${TEST_DIR}/non-existent-dir`);
 
     expect(folders).toEqual([]);
+  });
+});
+
+describe("updateTaskTiming", () => {
+  beforeEach(async () => {
+    TEST_DIR = await createTestDir("task-timing");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
+    await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/20260125143022-timing-test`;
+    await Bun.write(
+      `${DEVSFACTORY_DIR}/20260125143022-timing-test/task.md`,
+      sampleTaskMarkdown
+    );
+  });
+
+  afterEach(async () => {
+    await cleanupTestDir(TEST_DIR);
+  });
+
+  test("sets startedAt timestamp", async () => {
+    const startedAt = new Date("2026-01-27T10:00:00Z");
+
+    await updateTaskTiming(
+      "20260125143022-timing-test",
+      { startedAt },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseTask(
+      "20260125143022-timing-test",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.startedAt).toEqual(startedAt);
+  });
+
+  test("sets completedAt timestamp", async () => {
+    const completedAt = new Date("2026-01-27T11:00:00Z");
+
+    await updateTaskTiming(
+      "20260125143022-timing-test",
+      { completedAt },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseTask(
+      "20260125143022-timing-test",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.completedAt).toEqual(completedAt);
+  });
+
+  test("sets durationMs", async () => {
+    const durationMs = 3600000;
+
+    await updateTaskTiming(
+      "20260125143022-timing-test",
+      { durationMs },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseTask(
+      "20260125143022-timing-test",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.durationMs).toBe(durationMs);
+  });
+
+  test("sets all timing fields at once", async () => {
+    const startedAt = new Date("2026-01-27T10:00:00Z");
+    const completedAt = new Date("2026-01-27T11:00:00Z");
+    const durationMs = 3600000;
+
+    await updateTaskTiming(
+      "20260125143022-timing-test",
+      { startedAt, completedAt, durationMs },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseTask(
+      "20260125143022-timing-test",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.startedAt).toEqual(startedAt);
+    expect(updated.frontmatter.completedAt).toEqual(completedAt);
+    expect(updated.frontmatter.durationMs).toBe(durationMs);
+  });
+
+  test("merges with existing timing data", async () => {
+    await updateTaskTiming(
+      "20260125143022-timing-test",
+      { startedAt: new Date("2026-01-27T10:00:00Z") },
+      DEVSFACTORY_DIR
+    );
+
+    await updateTaskTiming(
+      "20260125143022-timing-test",
+      { completedAt: new Date("2026-01-27T11:00:00Z") },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseTask(
+      "20260125143022-timing-test",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.startedAt).toEqual(
+      new Date("2026-01-27T10:00:00Z")
+    );
+    expect(updated.frontmatter.completedAt).toEqual(
+      new Date("2026-01-27T11:00:00Z")
+    );
+  });
+
+  test("preserves other frontmatter fields", async () => {
+    const original = await parseTask(
+      "20260125143022-timing-test",
+      DEVSFACTORY_DIR
+    );
+
+    await updateTaskTiming(
+      "20260125143022-timing-test",
+      { startedAt: new Date() },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseTask(
+      "20260125143022-timing-test",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.title).toBe(original.frontmatter.title);
+    expect(updated.frontmatter.status).toBe(original.frontmatter.status);
+    expect(updated.frontmatter.priority).toBe(original.frontmatter.priority);
+    expect(updated.frontmatter.tags).toEqual(original.frontmatter.tags);
+    expect(updated.description).toBe(original.description);
+  });
+
+  test("throws on non-existent task", async () => {
+    await expect(
+      updateTaskTiming(
+        "non-existent-task",
+        { startedAt: new Date() },
+        DEVSFACTORY_DIR
+      )
+    ).rejects.toThrow();
+  });
+
+  test("timing roundtrip: write -> read preserves all values", async () => {
+    const startedAt = new Date("2026-01-27T10:00:00Z");
+    const completedAt = new Date("2026-01-27T11:30:00Z");
+    const durationMs = 5400000;
+
+    await updateTaskTiming(
+      "20260125143022-timing-test",
+      { startedAt, completedAt, durationMs },
+      DEVSFACTORY_DIR
+    );
+
+    const parsed = await parseTask(
+      "20260125143022-timing-test",
+      DEVSFACTORY_DIR
+    );
+
+    expect(parsed.frontmatter.startedAt).toEqual(startedAt);
+    expect(parsed.frontmatter.completedAt).toEqual(completedAt);
+    expect(parsed.frontmatter.durationMs).toBe(durationMs);
   });
 });

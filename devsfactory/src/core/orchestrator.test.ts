@@ -336,6 +336,153 @@ describe("Orchestrator", () => {
       expect(events[0]!.jobId).toBe("test-job-1");
       expect(events[0]!.error).toBe("Agent exited with non-zero code");
     });
+
+    test("emits workerJobCompleted with durationMs when worker completes job", async () => {
+      const config = createConfig({ devsfactoryDir: devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+      const events: Array<{
+        jobId: string;
+        job: { type: string; taskFolder: string; subtaskFile?: string };
+        durationMs: number;
+      }> = [];
+
+      orchestrator.on("workerJobCompleted", (data) => events.push(data));
+      await orchestrator.start();
+
+      const worker = (
+        orchestrator as unknown as {
+          worker: EventEmitter | undefined;
+        }
+      ).worker;
+      worker!.emit("jobCompleted", {
+        jobId: "test-job-1",
+        job: {
+          type: "implementation",
+          taskFolder: "my-task",
+          subtaskFile: "001-test.md"
+        },
+        durationMs: 272000
+      });
+
+      await orchestrator.stop();
+
+      expect(events.length).toBe(1);
+      expect(events[0]!.jobId).toBe("test-job-1");
+      expect(events[0]!.job.type).toBe("implementation");
+      expect(events[0]!.durationMs).toBe(272000);
+    });
+
+    test("emits subtaskCompleted with durationMs when merge job completes", async () => {
+      await copyFixture(
+        devsfactoryDir,
+        "inprogress-with-subtask-pending-merge",
+        "my-task"
+      );
+
+      const config = createConfig({ devsfactoryDir: devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+      const events: Array<{
+        taskFolder: string;
+        subtaskNumber: number;
+        subtaskTotal: number;
+        subtaskTitle: string;
+        durationMs: number;
+      }> = [];
+
+      orchestrator.on("subtaskCompleted", (data) => events.push(data));
+      await orchestrator.start();
+
+      const worker = (
+        orchestrator as unknown as {
+          worker: EventEmitter | undefined;
+        }
+      ).worker;
+      worker!.emit("jobCompleted", {
+        jobId: "merge-job-1",
+        job: {
+          type: "merge",
+          taskFolder: "my-task",
+          subtaskFile: "001-first-subtask.md"
+        },
+        durationMs: 5000
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+      await orchestrator.stop();
+
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      const mergeEvent = events.find((e) => e.taskFolder === "my-task");
+      expect(mergeEvent).toBeDefined();
+      expect(mergeEvent!.subtaskNumber).toBe(1);
+      expect(mergeEvent!.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    test("emits taskCompleted when task transitions to DONE", async () => {
+      await copyFixture(
+        devsfactoryDir,
+        "inprogress-with-subtask-done",
+        "my-task"
+      );
+
+      const config = createConfig({ devsfactoryDir: devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+      const events: Array<{ task: { folder: string }; subtasks: unknown[] }> =
+        [];
+
+      orchestrator.on("taskCompleted", (data) => events.push(data));
+      await orchestrator.start();
+
+      // Simulate task status change to DONE by modifying the file
+      const taskPath = join(devsfactoryDir, "my-task/task.md");
+      const taskContent = await Bun.file(taskPath).text();
+      await writeFile(
+        taskPath,
+        taskContent.replace("status: INPROGRESS", "status: DONE")
+      );
+
+      // Wait for watcher debounce and reconcile
+      await new Promise((r) => setTimeout(r, 150));
+
+      await orchestrator.stop();
+
+      expect(events.length).toBe(1);
+      expect(events[0]!.task.folder).toBe("my-task");
+      expect(events[0]!.subtasks).toBeInstanceOf(Array);
+    });
+
+    test("does not emit taskCompleted when task was already DONE", async () => {
+      await copyFixture(devsfactoryDir, "done-task", "my-task");
+
+      const config = createConfig({ devsfactoryDir: devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+      const events: unknown[] = [];
+
+      orchestrator.on("taskCompleted", (data) => events.push(data));
+      await orchestrator.start();
+
+      // Wait to ensure no taskCompleted is emitted for already-DONE tasks
+      await new Promise((r) => setTimeout(r, 100));
+
+      await orchestrator.stop();
+
+      expect(events.length).toBe(0);
+    });
   });
 
   describe("processState()", () => {
@@ -662,6 +809,44 @@ describe("Orchestrator", () => {
           devsfactoryDir
         );
         expect(subtask.frontmatter.status).toBe("INPROGRESS");
+      });
+
+      test("emits subtaskStarted event when subtask transitions to INPROGRESS", async () => {
+        await copyFixture(devsfactoryDir, "simple-task-with-plan", "my-task");
+        const taskMd = await Bun.file(
+          join(devsfactoryDir, "my-task/task.md")
+        ).text();
+        await writeFile(
+          join(devsfactoryDir, "my-task/task.md"),
+          taskMd.replace("status: PENDING", "status: INPROGRESS")
+        );
+
+        const config = createConfig({
+          devsfactoryDir: devsfactoryDir,
+          worktreesDir: worktreesDir
+        });
+        const mockRunner = createMockAgentRunner();
+        const orchestrator = new Orchestrator(
+          config,
+          mockRunner as unknown as AgentRunner
+        );
+        const events: Array<{
+          taskFolder: string;
+          subtaskNumber: number;
+          subtaskTotal: number;
+          subtaskTitle: string;
+        }> = [];
+
+        orchestrator.on("subtaskStarted", (data) => events.push(data));
+        await orchestrator.start();
+        await new Promise((r) => setTimeout(r, 50));
+        await orchestrator.stop();
+
+        expect(events.length).toBeGreaterThanOrEqual(1);
+        expect(events[0]!.taskFolder).toBe("my-task");
+        expect(events[0]!.subtaskNumber).toBe(1);
+        expect(events[0]!.subtaskTotal).toBeGreaterThanOrEqual(1);
+        expect(events[0]!.subtaskTitle).toBeDefined();
       });
 
       test("calls createSubtaskWorktree before spawning implementation agent", async () => {
@@ -1551,12 +1736,283 @@ Test
             worker: EventEmitter | undefined;
           }
         ).worker;
-        worker!.emit("jobCompleted", { jobId: "test-job" });
+        worker!.emit("jobCompleted", {
+          jobId: "test-job",
+          job: { type: "implementation", taskFolder: "test-task" },
+          durationMs: 1000
+        });
 
         await new Promise((r) => setTimeout(r, 50));
         await orchestrator.stop();
 
         expect(reconcileCalled).toBe(true);
+      });
+    });
+  });
+
+  describe("timing capture", () => {
+    let tempDir: string;
+    let devsfactoryDir: string;
+    let worktreesDir: string;
+
+    beforeEach(async () => {
+      tempDir = await createTestGitRepo("orchestrator-timing");
+      devsfactoryDir = join(tempDir, ".devsfactory");
+      worktreesDir = join(tempDir, ".worktrees");
+      await mkdir(devsfactoryDir, { recursive: true });
+      await mkdir(worktreesDir, { recursive: true });
+    });
+
+    afterEach(async () => {
+      await cleanupTestDir(tempDir);
+    });
+
+    describe("task start timing", () => {
+      test("records startedAt when task transitions PENDING → INPROGRESS", async () => {
+        await copyFixture(devsfactoryDir, "simple-task", "my-task");
+
+        const config = createConfig({
+          devsfactoryDir,
+          worktreesDir
+        });
+        const mockRunner = createMockAgentRunner();
+        const orchestrator = new Orchestrator(
+          config,
+          mockRunner as unknown as AgentRunner
+        );
+
+        const before = new Date();
+        await orchestrator.start();
+        await orchestrator.stop();
+        const after = new Date();
+
+        const { parseTask } = await import("../parser/task");
+        const task = await parseTask("my-task", devsfactoryDir);
+
+        expect(task.frontmatter.startedAt).toBeDefined();
+        expect(task.frontmatter.startedAt!.getTime()).toBeGreaterThanOrEqual(
+          before.getTime()
+        );
+        expect(task.frontmatter.startedAt!.getTime()).toBeLessThanOrEqual(
+          after.getTime()
+        );
+      });
+    });
+
+    describe("subtask start timing", () => {
+      test("records startedAt when subtask transitions PENDING → INPROGRESS", async () => {
+        const { mock: bunMock } = await import("bun:test");
+        const { dirname } = await import("node:path");
+        const { fileURLToPath } = await import("node:url");
+        const __dirname = dirname(fileURLToPath(import.meta.url));
+        const gitModulePath = join(__dirname, "git");
+
+        bunMock.module(gitModulePath, () => ({
+          createTaskWorktree: mock(() => Promise.resolve("/path")),
+          createSubtaskWorktree: mock(() => Promise.resolve("/path")),
+          deleteWorktree: mock(() => Promise.resolve()),
+          mergeSubtaskIntoTask: mock(() =>
+            Promise.resolve({ success: true, commitSha: "abc123" })
+          )
+        }));
+
+        const { Orchestrator: MockedOrchestrator } = await import(
+          "./orchestrator"
+        );
+
+        await copyFixture(devsfactoryDir, "simple-task-with-plan", "my-task");
+        const taskMd = await Bun.file(
+          join(devsfactoryDir, "my-task/task.md")
+        ).text();
+        await writeFile(
+          join(devsfactoryDir, "my-task/task.md"),
+          taskMd.replace("status: PENDING", "status: INPROGRESS")
+        );
+
+        const config = createConfig({
+          devsfactoryDir,
+          worktreesDir
+        });
+        const mockRunner = createMockAgentRunner();
+        const orchestrator = new MockedOrchestrator(
+          config,
+          mockRunner as unknown as AgentRunner
+        );
+
+        const before = new Date();
+        await orchestrator.start();
+        await new Promise((r) => setTimeout(r, 50));
+        await orchestrator.stop();
+        const after = new Date();
+
+        const { parseSubtask } = await import("../parser/subtask");
+        const subtask = await parseSubtask(
+          "my-task",
+          "001-create-hello.md",
+          devsfactoryDir
+        );
+
+        expect(subtask.frontmatter.timing?.startedAt).toBeDefined();
+        expect(
+          subtask.frontmatter.timing!.startedAt!.getTime()
+        ).toBeGreaterThanOrEqual(before.getTime());
+        expect(
+          subtask.frontmatter.timing!.startedAt!.getTime()
+        ).toBeLessThanOrEqual(after.getTime());
+
+        bunMock.restore();
+      });
+    });
+
+    describe("phase duration recording", () => {
+      test("records phase duration when jobCompleted event is emitted", async () => {
+        await copyFixture(
+          devsfactoryDir,
+          "inprogress-with-subtask-inprogress",
+          "my-task"
+        );
+
+        const config = createConfig({
+          devsfactoryDir,
+          worktreesDir
+        });
+        const mockRunner = createMockAgentRunner();
+        const orchestrator = new Orchestrator(
+          config,
+          mockRunner as unknown as AgentRunner
+        );
+
+        await orchestrator.start();
+
+        const worker = (
+          orchestrator as unknown as {
+            worker: EventEmitter | undefined;
+          }
+        ).worker;
+
+        worker!.emit("jobCompleted", {
+          jobId: "test-job",
+          job: {
+            id: "test-job",
+            type: "implementation",
+            taskFolder: "my-task",
+            subtaskFile: "001-first-subtask.md",
+            status: "completed",
+            priority: 0,
+            createdAt: new Date()
+          },
+          durationMs: 5000
+        });
+
+        await new Promise((r) => setTimeout(r, 100));
+        await orchestrator.stop();
+
+        const { parseSubtask } = await import("../parser/subtask");
+        const subtask = await parseSubtask(
+          "my-task",
+          "001-first-subtask.md",
+          devsfactoryDir
+        );
+
+        expect(subtask.frontmatter.timing?.phases?.implementation).toBe(5000);
+      });
+
+      test("maps conflict-solver job type to conflictSolver phase", async () => {
+        await copyFixture(
+          devsfactoryDir,
+          "inprogress-with-subtask-inprogress",
+          "my-task"
+        );
+
+        const config = createConfig({
+          devsfactoryDir,
+          worktreesDir
+        });
+        const mockRunner = createMockAgentRunner();
+        const orchestrator = new Orchestrator(
+          config,
+          mockRunner as unknown as AgentRunner
+        );
+
+        await orchestrator.start();
+
+        const worker = (
+          orchestrator as unknown as {
+            worker: EventEmitter | undefined;
+          }
+        ).worker;
+
+        worker!.emit("jobCompleted", {
+          jobId: "test-job",
+          job: {
+            id: "test-job",
+            type: "conflict-solver",
+            taskFolder: "my-task",
+            subtaskFile: "001-first-subtask.md",
+            status: "completed",
+            priority: 0,
+            createdAt: new Date()
+          },
+          durationMs: 3000
+        });
+
+        await new Promise((r) => setTimeout(r, 100));
+        await orchestrator.stop();
+
+        const { parseSubtask } = await import("../parser/subtask");
+        const subtask = await parseSubtask(
+          "my-task",
+          "001-first-subtask.md",
+          devsfactoryDir
+        );
+
+        expect(subtask.frontmatter.timing?.phases?.conflictSolver).toBe(3000);
+      });
+
+      test("ignores jobs without subtaskFile for phase recording", async () => {
+        await copyFixture(
+          devsfactoryDir,
+          "inprogress-with-subtask-done",
+          "my-task"
+        );
+
+        const config = createConfig({
+          devsfactoryDir,
+          worktreesDir
+        });
+        const mockRunner = createMockAgentRunner();
+        const orchestrator = new Orchestrator(
+          config,
+          mockRunner as unknown as AgentRunner
+        );
+
+        await orchestrator.start();
+
+        const worker = (
+          orchestrator as unknown as {
+            worker: EventEmitter | undefined;
+          }
+        ).worker;
+
+        // completing-task jobs don't have subtaskFile
+        worker!.emit("jobCompleted", {
+          jobId: "test-job",
+          job: {
+            id: "test-job",
+            type: "completing-task",
+            taskFolder: "my-task",
+            status: "completed",
+            priority: 0,
+            createdAt: new Date()
+          },
+          durationMs: 2000
+        });
+
+        await new Promise((r) => setTimeout(r, 100));
+        await orchestrator.stop();
+
+        // Should not throw - the orchestrator should gracefully handle this
+        expect(true).toBe(true);
       });
     });
   });

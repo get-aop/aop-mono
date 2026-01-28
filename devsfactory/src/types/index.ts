@@ -39,6 +39,32 @@ export const AgentTypeSchema = z.enum([
   "conflict-solver"
 ]);
 
+// Timing Schemas
+export const PhaseTimingsSchema = z.object({
+  implementation: z.number().nullable().default(null),
+  review: z.number().nullable().default(null),
+  merge: z.number().nullable().default(null),
+  conflictSolver: z.number().nullable().default(null)
+});
+
+export const SubtaskTimingSchema = z.object({
+  startedAt: z.coerce.date().nullable().default(null),
+  completedAt: z.coerce.date().nullable().default(null),
+  durationMs: z.number().nullable().default(null),
+  phases: PhaseTimingsSchema.default({
+    implementation: null,
+    review: null,
+    merge: null,
+    conflictSolver: null
+  })
+});
+
+export const TaskTimingSchema = z.object({
+  startedAt: z.coerce.date().nullable().default(null),
+  completedAt: z.coerce.date().nullable().default(null),
+  durationMs: z.number().nullable().default(null)
+});
+
 // Frontmatter Schemas
 export const TaskFrontmatterSchema = z.object({
   title: z.string(),
@@ -47,7 +73,10 @@ export const TaskFrontmatterSchema = z.object({
   priority: PrioritySchema,
   tags: z.array(z.string()).default([]),
   assignee: z.string().nullable().default(null),
-  dependencies: z.array(z.string()).default([])
+  dependencies: z.array(z.string()).default([]),
+  startedAt: z.coerce.date().nullable().default(null),
+  completedAt: z.coerce.date().nullable().default(null),
+  durationMs: z.number().nullable().default(null)
 });
 
 export const PlanFrontmatterSchema = z.object({
@@ -59,7 +88,8 @@ export const PlanFrontmatterSchema = z.object({
 export const SubtaskFrontmatterSchema = z.object({
   title: z.string(),
   status: SubtaskStatusSchema,
-  dependencies: z.array(z.number()).default([])
+  dependencies: z.array(z.number()).default([]),
+  timing: SubtaskTimingSchema.optional()
 });
 
 // Entity Schemas
@@ -162,6 +192,10 @@ export type AgentType = z.infer<typeof AgentTypeSchema>;
 export type TaskFrontmatter = z.output<typeof TaskFrontmatterSchema>;
 export type PlanFrontmatter = z.output<typeof PlanFrontmatterSchema>;
 export type SubtaskFrontmatter = z.output<typeof SubtaskFrontmatterSchema>;
+
+export type PhaseTimings = z.output<typeof PhaseTimingsSchema>;
+export type SubtaskTiming = z.output<typeof SubtaskTimingSchema>;
+export type TaskTiming = z.output<typeof TaskTimingSchema>;
 
 export type Task = z.infer<typeof TaskSchema>;
 export type Plan = z.infer<typeof PlanSchema>;

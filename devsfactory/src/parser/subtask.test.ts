@@ -7,7 +7,9 @@ import {
   getReadySubtasks,
   listSubtasks,
   parseSubtask,
-  updateSubtaskStatus
+  recordPhaseDuration,
+  updateSubtaskStatus,
+  updateSubtaskTiming
 } from "./subtask";
 
 let TEST_DIR: string;
@@ -667,5 +669,333 @@ describe("appendReviewHistory", () => {
 
     // Check that header includes ISO timestamp pattern
     expect(content).toMatch(/## Review #1 - \d{4}-\d{2}-\d{2}T/);
+  });
+});
+
+describe("updateSubtaskTiming", () => {
+  beforeEach(async () => {
+    TEST_DIR = await createTestDir("subtask-timing");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
+    await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/${TASK_FOLDER}`;
+    await Bun.write(
+      `${DEVSFACTORY_DIR}/${TASK_FOLDER}/001-test-subtask.md`,
+      sampleSubtaskMarkdown
+    );
+  });
+
+  afterEach(async () => {
+    await cleanupTestDir(TEST_DIR);
+  });
+
+  test("sets startedAt timestamp", async () => {
+    const startedAt = new Date("2026-01-27T10:00:00Z");
+
+    await updateSubtaskTiming(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      { startedAt },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseSubtask(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.timing?.startedAt).toEqual(startedAt);
+  });
+
+  test("sets completedAt and durationMs", async () => {
+    const completedAt = new Date("2026-01-27T10:05:00Z");
+    const durationMs = 300000;
+
+    await updateSubtaskTiming(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      { completedAt, durationMs },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseSubtask(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.timing?.completedAt).toEqual(completedAt);
+    expect(updated.frontmatter.timing?.durationMs).toBe(durationMs);
+  });
+
+  test("merges with existing timing data", async () => {
+    const startedAt = new Date("2026-01-27T10:00:00Z");
+    const completedAt = new Date("2026-01-27T10:05:00Z");
+
+    await updateSubtaskTiming(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      { startedAt },
+      DEVSFACTORY_DIR
+    );
+
+    await updateSubtaskTiming(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      { completedAt },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseSubtask(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.timing?.startedAt).toEqual(startedAt);
+    expect(updated.frontmatter.timing?.completedAt).toEqual(completedAt);
+  });
+
+  test("preserves other frontmatter fields", async () => {
+    const original = await parseSubtask(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      DEVSFACTORY_DIR
+    );
+
+    await updateSubtaskTiming(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      { startedAt: new Date() },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseSubtask(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.title).toBe(original.frontmatter.title);
+    expect(updated.frontmatter.status).toBe(original.frontmatter.status);
+    expect(updated.frontmatter.dependencies).toEqual(
+      original.frontmatter.dependencies
+    );
+    expect(updated.description).toBe(original.description);
+  });
+
+  test("handles file without existing timing gracefully", async () => {
+    const subtaskWithoutTiming = `---
+title: No timing subtask
+status: PENDING
+dependencies: []
+---
+
+### Description
+A subtask without timing data.
+`;
+    await Bun.write(
+      `${DEVSFACTORY_DIR}/${TASK_FOLDER}/002-no-timing.md`,
+      subtaskWithoutTiming
+    );
+
+    await updateSubtaskTiming(
+      TASK_FOLDER,
+      "002-no-timing.md",
+      { startedAt: new Date("2026-01-27T10:00:00Z") },
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseSubtask(
+      TASK_FOLDER,
+      "002-no-timing.md",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.timing?.startedAt).toEqual(
+      new Date("2026-01-27T10:00:00Z")
+    );
+  });
+
+  test("throws on non-existent file", async () => {
+    await expect(
+      updateSubtaskTiming(
+        TASK_FOLDER,
+        "999-nonexistent.md",
+        { startedAt: new Date() },
+        DEVSFACTORY_DIR
+      )
+    ).rejects.toThrow();
+  });
+});
+
+describe("recordPhaseDuration", () => {
+  beforeEach(async () => {
+    TEST_DIR = await createTestDir("subtask-phase");
+    DEVSFACTORY_DIR = `${TEST_DIR}/.devsfactory`;
+    await Bun.$`mkdir -p ${DEVSFACTORY_DIR}/${TASK_FOLDER}`;
+    await Bun.write(
+      `${DEVSFACTORY_DIR}/${TASK_FOLDER}/001-test-subtask.md`,
+      sampleSubtaskMarkdown
+    );
+  });
+
+  afterEach(async () => {
+    await cleanupTestDir(TEST_DIR);
+  });
+
+  test("records implementation phase duration", async () => {
+    await recordPhaseDuration(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      "implementation",
+      120000,
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseSubtask(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.timing?.phases.implementation).toBe(120000);
+  });
+
+  test("records review phase duration", async () => {
+    await recordPhaseDuration(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      "review",
+      60000,
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseSubtask(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.timing?.phases.review).toBe(60000);
+  });
+
+  test("records multiple phases independently", async () => {
+    await recordPhaseDuration(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      "implementation",
+      120000,
+      DEVSFACTORY_DIR
+    );
+
+    await recordPhaseDuration(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      "review",
+      30000,
+      DEVSFACTORY_DIR
+    );
+
+    await recordPhaseDuration(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      "merge",
+      5000,
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseSubtask(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.timing?.phases.implementation).toBe(120000);
+    expect(updated.frontmatter.timing?.phases.review).toBe(30000);
+    expect(updated.frontmatter.timing?.phases.merge).toBe(5000);
+    expect(updated.frontmatter.timing?.phases.conflictSolver).toBeNull();
+  });
+
+  test("preserves existing timing data when adding phase", async () => {
+    await updateSubtaskTiming(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      { startedAt: new Date("2026-01-27T10:00:00Z") },
+      DEVSFACTORY_DIR
+    );
+
+    await recordPhaseDuration(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      "implementation",
+      120000,
+      DEVSFACTORY_DIR
+    );
+
+    const updated = await parseSubtask(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      DEVSFACTORY_DIR
+    );
+
+    expect(updated.frontmatter.timing?.startedAt).toEqual(
+      new Date("2026-01-27T10:00:00Z")
+    );
+    expect(updated.frontmatter.timing?.phases.implementation).toBe(120000);
+  });
+
+  test("throws on non-existent file", async () => {
+    await expect(
+      recordPhaseDuration(
+        TASK_FOLDER,
+        "999-nonexistent.md",
+        "implementation",
+        120000,
+        DEVSFACTORY_DIR
+      )
+    ).rejects.toThrow();
+  });
+
+  test("timing roundtrip: write -> read preserves all values", async () => {
+    const startedAt = new Date("2026-01-27T10:00:00Z");
+    const completedAt = new Date("2026-01-27T10:30:00Z");
+    const durationMs = 1800000;
+
+    await updateSubtaskTiming(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      { startedAt, completedAt, durationMs },
+      DEVSFACTORY_DIR
+    );
+
+    await recordPhaseDuration(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      "implementation",
+      1200000,
+      DEVSFACTORY_DIR
+    );
+
+    await recordPhaseDuration(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      "review",
+      600000,
+      DEVSFACTORY_DIR
+    );
+
+    const parsed = await parseSubtask(
+      TASK_FOLDER,
+      "001-test-subtask.md",
+      DEVSFACTORY_DIR
+    );
+
+    expect(parsed.frontmatter.timing?.startedAt).toEqual(startedAt);
+    expect(parsed.frontmatter.timing?.completedAt).toEqual(completedAt);
+    expect(parsed.frontmatter.timing?.durationMs).toBe(durationMs);
+    expect(parsed.frontmatter.timing?.phases.implementation).toBe(1200000);
+    expect(parsed.frontmatter.timing?.phases.review).toBe(600000);
+    expect(parsed.frontmatter.timing?.phases.merge).toBeNull();
+    expect(parsed.frontmatter.timing?.phases.conflictSolver).toBeNull();
   });
 });

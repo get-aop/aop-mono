@@ -26,5 +26,5 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "exclude": ["packages"]
+  "exclude": ["packages", "e2e-tests/ui"]
 }
