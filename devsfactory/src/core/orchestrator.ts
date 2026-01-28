@@ -69,6 +69,7 @@ export class Orchestrator extends EventEmitter {
   private runningAgents = new Map<string, AgentContext>();
   private reconciling = false;
   private reconcileQueued = false;
+  private reconcilePromise: Promise<void> | null = null;
   private reconcileTimer: ReturnType<typeof setInterval> | null = null;
   private subtaskStartTimes = new Map<string, number>();
 
@@ -159,7 +160,7 @@ export class Orchestrator extends EventEmitter {
     this.subscribeToAgentRunnerEvents();
     this.worker.start();
 
-    await this.reconcile();
+    await this.scheduleReconcile();
     this.startReconcileTicker();
   }
 
@@ -175,6 +176,12 @@ export class Orchestrator extends EventEmitter {
       this.reconcileTimer = null;
     }
     this.watcher.stop();
+
+    // Wait for any in-flight reconcile to complete
+    if (this.reconcilePromise) {
+      await this.reconcilePromise.catch(() => {});
+      this.reconcilePromise = null;
+    }
     this.worker.stop();
 
     const activeAgents = this.agentRunner.getActive();
@@ -224,19 +231,20 @@ export class Orchestrator extends EventEmitter {
     }
   }
 
-  private scheduleReconcile(): void {
+  private scheduleReconcile(): Promise<void> {
     if (this.reconciling) {
       this.reconcileQueued = true;
-      return;
+      return this.reconcilePromise ?? Promise.resolve();
     }
     this.reconciling = true;
-    this.reconcile().finally(() => {
+    this.reconcilePromise = this.reconcile().finally(() => {
       this.reconciling = false;
       if (this.reconcileQueued) {
         this.reconcileQueued = false;
         this.scheduleReconcile();
       }
     });
+    return this.reconcilePromise;
   }
 
   private async reconcile(): Promise<void> {
