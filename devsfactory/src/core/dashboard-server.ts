@@ -1,6 +1,9 @@
 import type { EventEmitter } from "node:events";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
+
+// Import the dashboard HTML for Bun's bundler
+import dashboardHtml from "../../packages/dashboard/index.html";
 import {
   type OrchestratorState,
   type SubtaskStatus,
@@ -72,6 +75,9 @@ export class DashboardServer {
   async start(): Promise<void> {
     this.server = Bun.serve({
       port: this.options.port,
+      routes: {
+        "/": dashboardHtml
+      },
       fetch: (req, server) => this.handleRequest(req, server),
       websocket: {
         open: (ws: ServerWebSocket<WebSocketData>) => {

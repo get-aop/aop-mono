@@ -5,8 +5,8 @@ import { StoreContext } from "./context";
 import { createDashboardStore } from "./store";
 import "./index.css";
 
-// Connect to dev server on port 3001
-const apiClient = createApiClient("http://localhost:3001");
+// Use same origin (empty string) when served by dashboard server
+const apiClient = createApiClient("");
 const store = createDashboardStore(apiClient);
 
 const root = createRoot(document.getElementById("root")!);

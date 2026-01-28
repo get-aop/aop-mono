@@ -102,6 +102,21 @@ const parseEnvConfig = (): Config => {
   };
 };
 
+const openBrowser = async (url: string): Promise<void> => {
+  try {
+    const platform = process.platform;
+    if (platform === "darwin") {
+      await Bun.$`open ${url}`.quiet();
+    } else if (platform === "win32") {
+      await Bun.$`cmd /c start ${url}`.quiet();
+    } else {
+      await Bun.$`xdg-open ${url}`.quiet();
+    }
+  } catch {
+    // Silently ignore if browser can't be opened
+  }
+};
+
 const isInsideGitRepo = async (): Promise<boolean> => {
   try {
     const result = await Bun.$`git rev-parse --is-inside-work-tree`.quiet();
@@ -263,7 +278,9 @@ const main = async () => {
     devsfactoryDir: config.devsfactoryDir
   });
   await dashboardServer.start();
-  log.info(`Dashboard server started on port ${dashboardServer.port}`);
+  const dashboardUrl = `http://localhost:${dashboardServer.port}`;
+  log.info(`Dashboard available at ${dashboardUrl}`);
+  openBrowser(dashboardUrl);
 
   orchestrator.on("stateChanged", () => {
     const state = orchestrator.getState();
