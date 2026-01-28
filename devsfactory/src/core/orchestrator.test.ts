@@ -424,6 +424,60 @@ describe("Orchestrator", () => {
       expect(mergeEvent!.subtaskNumber).toBe(1);
       expect(mergeEvent!.durationMs).toBeGreaterThanOrEqual(0);
     });
+
+    test("emits taskCompleted when task transitions to DONE", async () => {
+      await copyFixture(devsfactoryDir, "inprogress-with-subtask-done", "my-task");
+
+      const config = createConfig({ devsfactoryDir: devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+      const events: Array<{ task: { folder: string }; subtasks: unknown[] }> = [];
+
+      orchestrator.on("taskCompleted", (data) => events.push(data));
+      await orchestrator.start();
+
+      // Simulate task status change to DONE by modifying the file
+      const taskPath = join(devsfactoryDir, "my-task/task.md");
+      const taskContent = await Bun.file(taskPath).text();
+      await writeFile(
+        taskPath,
+        taskContent.replace("status: INPROGRESS", "status: DONE")
+      );
+
+      // Wait for watcher debounce and reconcile
+      await new Promise((r) => setTimeout(r, 150));
+
+      await orchestrator.stop();
+
+      expect(events.length).toBe(1);
+      expect(events[0]!.task.folder).toBe("my-task");
+      expect(events[0]!.subtasks).toBeInstanceOf(Array);
+    });
+
+    test("does not emit taskCompleted when task was already DONE", async () => {
+      await copyFixture(devsfactoryDir, "done-task", "my-task");
+
+      const config = createConfig({ devsfactoryDir: devsfactoryDir });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as AgentRunner
+      );
+      const events: unknown[] = [];
+
+      orchestrator.on("taskCompleted", (data) => events.push(data));
+      await orchestrator.start();
+
+      // Wait to ensure no taskCompleted is emitted for already-DONE tasks
+      await new Promise((r) => setTimeout(r, 100));
+
+      await orchestrator.stop();
+
+      expect(events.length).toBe(0);
+    });
   });
 
   describe("processState()", () => {
