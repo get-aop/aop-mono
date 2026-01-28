@@ -8,6 +8,8 @@ import { JobWorker, type JobWorkerConfig } from "./job-worker";
 
 interface JobCompletedEvent {
   jobId: string;
+  job: Job;
+  durationMs: number;
 }
 
 interface JobFailedEvent {
@@ -213,6 +215,34 @@ describe("JobWorker", () => {
 
       expect(events.length).toBe(1);
       expect(events[0]!.jobId).toBe(job.id);
+
+      worker.stop();
+    });
+
+    test("jobCompleted event includes job object and duration", async () => {
+      const job = createJob({ id: "timing-job" });
+      handlers.handler = {
+        execute: async (j: Job) => {
+          await new Promise((r) => setTimeout(r, 50));
+          return { jobId: j.id, success: true };
+        }
+      };
+
+      const worker = new JobWorker(queue, registry, handlers, config);
+      const events: JobCompletedEvent[] = [];
+      worker.on("jobCompleted", (e) => events.push(e));
+
+      worker.start();
+      await queue.enqueue(job);
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(events.length).toBe(1);
+      expect(events[0]!.job).toBeDefined();
+      expect(events[0]!.job.id).toBe(job.id);
+      expect(events[0]!.job.type).toBe(job.type);
+      expect(events[0]!.job.taskFolder).toBe(job.taskFolder);
+      expect(typeof events[0]!.durationMs).toBe("number");
+      expect(events[0]!.durationMs).toBeGreaterThanOrEqual(40);
 
       worker.stop();
     });

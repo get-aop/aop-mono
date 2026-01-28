@@ -65,13 +65,15 @@ export class JobWorker extends EventEmitter {
     }
 
     this.processing++;
+    const startedAt = Date.now();
     try {
       const result = await handler.execute(job);
 
       if (result.success) {
+        const durationMs = Date.now() - startedAt;
         await this.queue.ack(job.id);
         this.attempts.delete(job.id);
-        this.emit("jobCompleted", { jobId: job.id });
+        this.emit("jobCompleted", { jobId: job.id, job, durationMs });
       } else {
         const attempt = (this.attempts.get(job.id) ?? 0) + 1;
         const maxAttempts = this.config.retryBackoff.maxAttempts;
