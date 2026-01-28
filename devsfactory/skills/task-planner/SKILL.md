@@ -56,7 +56,14 @@ Break the task into subtasks following these principles:
 
 For each subtask, create `.devsfactory/{task-folder}/{NNN}-{slug}.md`:
 
-Use the template at `./templates/subtask.md`:
+Use the template at `./templates/subtask.md` with these variables:
+
+| Variable | Description |
+|----------|-------------|
+| `{{title}}` | Short descriptive title for the subtask |
+| `{{dependencies}}` | Comma-separated list of subtask numbers this depends on (e.g., `001, 002`) or empty |
+| `{{description}}` | What this subtask implements |
+| `{{context}}` | File references, links, patterns to follow |
 
 **Naming convention**: `{NNN}-{slug}.md` where:
 
@@ -67,7 +74,20 @@ Use the template at `./templates/subtask.md`:
 
 Create/update `.devsfactory/{task-folder}/plan.md`
 
-Use the template at `./templates/plan.md`
+Use the template at `./templates/plan.md` with these variables:
+
+| Variable | Description |
+|----------|-------------|
+| `{{taskFolder}}` | The task folder name (e.g., `20260125143022-add-user-auth`) |
+| `{{timestamp}}` | ISO timestamp (e.g., `2026-01-25T14:30:22Z`) |
+| `{{subtasks}}` | Numbered list of subtasks with dependencies |
+
+**Subtasks format**:
+```
+1. [001-slug](001-slug.md) - Title
+2. [002-slug](002-slug.md) - Title → depends on: 001
+3. [003-slug](003-slug.md) - Title → depends on: 001, 002
+```
 
 ## Step 6: Prompt to Move Task to PENDING
 
