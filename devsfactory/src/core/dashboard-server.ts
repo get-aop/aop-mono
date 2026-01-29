@@ -115,26 +115,50 @@ export class DashboardServer {
   }
 
   async start(): Promise<void> {
-    this.server = Bun.serve({
-      port: this.options.port,
-      routes: {
-        "/": dashboardHtml
-      },
-      fetch: (req, server) => this.handleRequest(req, server),
-      websocket: {
-        open: (ws: ServerWebSocket<WebSocketData>) => {
-          this.connectedClients.add(ws);
-          const state = this.orchestrator.getState();
-          ws.send(JSON.stringify({ type: "state", data: state }));
-        },
-        message: () => {},
-        close: (ws: ServerWebSocket<WebSocketData>) => {
-          this.connectedClients.delete(ws);
-        }
-      }
-    });
+    const maxPortAttempts = 10;
+    let port = this.options.port;
+    let lastError: Error | null = null;
 
-    this.subscribeToOrchestratorEvents();
+    for (let attempt = 0; attempt < maxPortAttempts; attempt++) {
+      try {
+        this.server = Bun.serve({
+          port,
+          routes: {
+            "/": dashboardHtml
+          },
+          fetch: (req, server) => this.handleRequest(req, server),
+          websocket: {
+            open: (ws: ServerWebSocket<WebSocketData>) => {
+              this.connectedClients.add(ws);
+              const state = this.orchestrator.getState();
+              ws.send(JSON.stringify({ type: "state", data: state }));
+            },
+            message: () => {},
+            close: (ws: ServerWebSocket<WebSocketData>) => {
+              this.connectedClients.delete(ws);
+            }
+          }
+        });
+
+        this.subscribeToOrchestratorEvents();
+        return;
+      } catch (err) {
+        lastError = err as Error;
+        const isPortInUse =
+          lastError.message?.includes("EADDRINUSE") ||
+          lastError.message?.includes("address already in use") ||
+          (lastError as NodeJS.ErrnoException).code === "EADDRINUSE";
+
+        if (!isPortInUse) {
+          throw lastError;
+        }
+        port++;
+      }
+    }
+
+    throw new Error(
+      `Failed to start server. Ports ${this.options.port}-${port - 1} are all in use.`
+    );
   }
 
   async stop(): Promise<void> {

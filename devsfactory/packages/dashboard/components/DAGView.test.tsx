@@ -48,13 +48,13 @@ describe("DAGView", () => {
     store = createDashboardStore();
   });
 
-  test("renders SVG element", () => {
+  test("renders React Flow container", () => {
     const html = renderToString(
       <StoreContext.Provider value={store}>
         <DAGView subtasks={[]} taskFolder="test-task" />
       </StoreContext.Provider>
     );
-    expect(html).toContain("<svg");
+    expect(html).toContain("react-flow");
   });
 
   test("renders empty state for no subtasks", () => {
@@ -63,45 +63,27 @@ describe("DAGView", () => {
         <DAGView subtasks={[]} taskFolder="test-task" />
       </StoreContext.Provider>
     );
-    expect(html).toContain("svg");
+    expect(html).toContain("react-flow");
   });
 
   test("renders nodes for each subtask", () => {
     const subtasks = [makeSubtask(1), makeSubtask(2)];
-    const html = renderToString(
-      <StoreContext.Provider value={store}>
-        <DAGView subtasks={subtasks} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-    expect(html).toContain("Subtask 1");
-    expect(html).toContain("Subtask 2");
+    const { container } = renderWithStore(subtasks);
+    expect(container.innerHTML).toContain("Subtask 1");
+    expect(container.innerHTML).toContain("Subtask 2");
   });
 
-  test("renders edges for dependencies", () => {
-    const subtasks = [makeSubtask(1), makeSubtask(2, "PENDING", [1])];
-    const html = renderToString(
-      <StoreContext.Provider value={store}>
-        <DAGView subtasks={subtasks} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-    expect(html).toContain("<path");
-  });
-
-  test("includes arrow marker definition", () => {
-    const html = renderToString(
-      <StoreContext.Provider value={store}>
-        <DAGView subtasks={[makeSubtask(1)]} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-    expect(html).toContain("<marker");
-    expect(html).toContain('id="arrowhead"');
+  test("uses custom SubtaskNode component", () => {
+    const subtasks = [makeSubtask(1)];
+    const { container } = renderWithStore(subtasks);
+    expect(container.innerHTML).toContain(">#1<");
   });
 
   test("clicking node calls selectSubtask", () => {
     const subtasks = [makeSubtask(1)];
     const { container } = renderWithStore(subtasks);
 
-    const node = container.querySelector("g[style*='cursor']");
+    const node = container.querySelector('[role="button"]');
     expect(node).not.toBeNull();
 
     fireEvent.click(node!);
@@ -136,64 +118,36 @@ describe("DAGView", () => {
     expect(html).toContain("dag-view");
   });
 
-  test("calculates viewBox based on node positions", () => {
-    const subtasks = [makeSubtask(1), makeSubtask(2, "PENDING", [1])];
-    const html = renderToString(
-      <StoreContext.Provider value={store}>
-        <DAGView subtasks={subtasks} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-    expect(html).toContain("viewBox");
-  });
-
   test("renders unblock button for BLOCKED subtasks", () => {
     const subtasks = [makeSubtask(1, "BLOCKED")];
-    const html = renderToString(
-      <StoreContext.Provider value={store}>
-        <DAGView subtasks={subtasks} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-    expect(html).toContain("Unblock");
-    expect(html).toContain("dag-node-unblock");
+    const { container } = renderWithStore(subtasks);
+    expect(container.innerHTML).toContain("Unblock");
+    expect(container.innerHTML).toContain("dag-node-unblock");
   });
 
   test("does not render unblock button for non-BLOCKED subtasks", () => {
     const subtasks = [makeSubtask(1, "PENDING")];
-    const html = renderToString(
-      <StoreContext.Provider value={store}>
-        <DAGView subtasks={subtasks} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-    expect(html).not.toContain("Unblock");
-    expect(html).not.toContain("dag-node-unblock");
+    const { container } = renderWithStore(subtasks);
+    expect(container.innerHTML).not.toContain("Unblock");
+    expect(container.innerHTML).not.toContain("dag-node-unblock");
   });
 
-  test("selected node has blue stroke and wider border", () => {
+  test("selected node has blue border", () => {
     const subtasks = [makeSubtask(1, "PENDING")];
     const storeWithSelection = createDashboardStore(undefined, {
       selectedSubtask: { taskFolder: "test-task", subtaskFile: "001-test.md" }
     });
 
-    const html = renderToString(
-      <StoreContext.Provider value={storeWithSelection}>
-        <DAGView subtasks={subtasks} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-
-    expect(html).toContain('stroke="#3b82f6"');
-    expect(html).toContain('stroke-width="3"');
+    const { container } = renderWithStore(subtasks, storeWithSelection);
+    expect(container.innerHTML).toContain("border-color: #3b82f6");
+    expect(container.innerHTML).toContain("border-width: 3px");
   });
 
-  test("unselected node has status-based stroke", () => {
+  test("unselected node has status-based border", () => {
     const subtasks = [makeSubtask(1, "PENDING")];
-    const html = renderToString(
-      <StoreContext.Provider value={store}>
-        <DAGView subtasks={subtasks} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-
-    expect(html).toContain('stroke="#9ca3af"');
-    expect(html).toContain('stroke-width="2"');
+    const { container } = renderWithStore(subtasks);
+    expect(container.innerHTML).toContain("border-color: #9ca3af");
+    expect(container.innerHTML).toContain("border-width: 2px");
   });
 
   test("only matching subtask is selected when multiple exist", () => {
@@ -202,16 +156,13 @@ describe("DAGView", () => {
       selectedSubtask: { taskFolder: "test-task", subtaskFile: "001-test.md" }
     });
 
-    const html = renderToString(
-      <StoreContext.Provider value={storeWithSelection}>
-        <DAGView subtasks={subtasks} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
+    const { container } = renderWithStore(subtasks, storeWithSelection);
+    const html = container.innerHTML;
 
-    const selectedCount = (html.match(/stroke-width="3"/g) || []).length;
+    const selectedCount = (html.match(/border-width: 3px/g) || []).length;
     expect(selectedCount).toBe(1);
 
-    const unselectedCount = (html.match(/stroke-width="2"/g) || []).length;
+    const unselectedCount = (html.match(/border-width: 2px/g) || []).length;
     expect(unselectedCount).toBe(1);
   });
 
@@ -224,13 +175,31 @@ describe("DAGView", () => {
       }
     });
 
+    const { container } = renderWithStore(subtasks, storeWithSelection);
+    const html = container.innerHTML;
+
+    expect(html).not.toContain("border-color: #3b82f6");
+    expect(html).toContain("border-width: 2px");
+  });
+
+  test("container has explicit dimensions for React Flow", () => {
     const html = renderToString(
-      <StoreContext.Provider value={storeWithSelection}>
-        <DAGView subtasks={subtasks} taskFolder="test-task" />
+      <StoreContext.Provider value={store}>
+        <DAGView subtasks={[]} taskFolder="test-task" />
       </StoreContext.Provider>
     );
+    expect(html).toContain("width:");
+    expect(html).toContain("height:");
+  });
 
-    expect(html).not.toContain('stroke="#3b82f6"');
-    expect(html).toContain('stroke-width="2"');
+  test("creates edges container for dependencies", () => {
+    const subtasks = [
+      makeSubtask(1),
+      makeSubtask(2, "PENDING", [1]),
+      makeSubtask(3, "PENDING", [1, 2])
+    ];
+    const { container } = renderWithStore(subtasks);
+
+    expect(container.innerHTML).toContain("react-flow__edges");
   });
 });

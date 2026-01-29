@@ -1548,6 +1548,44 @@ describe("Brainstorm API endpoints", () => {
     });
   });
 
+  describe("port fallback", () => {
+    test("uses next available port when initial port is in use", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      // Start first server on a random port
+      const server1 = new DashboardServer(orchestrator, { port: 0 });
+      await server1.start();
+      const usedPort = server1.port;
+
+      try {
+        // Start second server requesting the same port
+        const server2 = new DashboardServer(orchestrator, { port: usedPort });
+        await server2.start();
+
+        try {
+          // Second server should have picked the next available port
+          expect(server2.port).toBeGreaterThan(usedPort);
+
+          // Both servers should be functional
+          const response1 = await fetch(
+            `http://localhost:${server1.port}/api/state`
+          );
+          expect(response1.status).toBe(200);
+
+          const response2 = await fetch(
+            `http://localhost:${server2.port}/api/state`
+          );
+          expect(response2.status).toBe(200);
+        } finally {
+          await server2.stop();
+        }
+      } finally {
+        await server1.stop();
+      }
+    });
+  });
+
   describe("taskCreated WebSocket event", () => {
     test("broadcasts taskCreated event when task is approved", async () => {
       const { DashboardServer } = await import("./dashboard-server");

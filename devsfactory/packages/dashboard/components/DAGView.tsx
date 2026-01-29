@@ -1,16 +1,34 @@
-import { useDashboardStore } from "../context";
 import {
-  calculateDAGLayout,
-  type DAGNode as DAGNodeData
-} from "../lib/dag-layout";
+  Background,
+  BackgroundVariant,
+  Controls,
+  type Edge,
+  MarkerType,
+  MiniMap,
+  type Node,
+  ReactFlow,
+  ReactFlowProvider
+} from "@xyflow/react";
+import { useDashboardStore } from "../context";
+import { calculateDAGLayout } from "../lib/dag-layout";
 import type { Subtask } from "../types";
-import { DAGEdge } from "./DAGEdge";
-import { DAGNode } from "./DAGNode";
+import {
+  getStatusStyle,
+  SubtaskNode,
+  type SubtaskNodeData
+} from "./SubtaskNode";
+
+import "@xyflow/react/dist/style.css";
 
 export interface DAGViewProps {
   subtasks: Subtask[];
   taskFolder: string;
 }
+
+const nodeTypes = { subtask: SubtaskNode };
+
+const nodeColor = (node: Node<SubtaskNodeData>) =>
+  getStatusStyle(node.data.subtask.frontmatter.status).borderColor;
 
 export const DAGView = ({ subtasks, taskFolder }: DAGViewProps) => {
   const activeAgents = useDashboardStore((s) => s.activeAgents);
@@ -18,11 +36,8 @@ export const DAGView = ({ subtasks, taskFolder }: DAGViewProps) => {
   const selectSubtask = useDashboardStore((s) => s.selectSubtask);
   const setSubtaskStatus = useDashboardStore((s) => s.setSubtaskStatus);
 
-  const nodes = calculateDAGLayout(subtasks);
-  const nodeMap = new Map(nodes.map((n) => [n.subtask.number, n]));
-
-  const edges = buildEdges(subtasks, nodeMap);
-  const viewBox = calculateViewBox(nodes);
+  const dagNodes = calculateDAGLayout(subtasks);
+  const subtaskByNumber = new Map(subtasks.map((s) => [s.number, s]));
 
   const hasActiveAgent = (subtask: Subtask) =>
     Array.from(activeAgents.values()).some(
@@ -35,97 +50,57 @@ export const DAGView = ({ subtasks, taskFolder }: DAGViewProps) => {
     selectedSubtask?.taskFolder === taskFolder &&
     selectedSubtask?.subtaskFile === subtask.filename;
 
+  const nodes: Node<SubtaskNodeData>[] = dagNodes.map((node) => ({
+    id: node.subtask.filename,
+    type: "subtask",
+    position: { x: node.x, y: node.y },
+    data: {
+      subtask: node.subtask,
+      hasActiveAgent: hasActiveAgent(node.subtask),
+      isSelected: isSelected(node.subtask),
+      onSelect: () => selectSubtask(taskFolder, node.subtask.filename),
+      onUnblock: () =>
+        setSubtaskStatus(taskFolder, node.subtask.filename, "PENDING")
+    }
+  }));
+
+  const edges: Edge[] = subtasks.flatMap((subtask) =>
+    subtask.frontmatter.dependencies
+      .map((depNum) => {
+        const depSubtask = subtaskByNumber.get(depNum);
+        if (!depSubtask) return null;
+        return {
+          id: `${depSubtask.filename}-${subtask.filename}`,
+          source: depSubtask.filename,
+          target: subtask.filename,
+          type: "default",
+          style: { stroke: "#9ca3af", strokeWidth: 2 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#9ca3af" }
+        };
+      })
+      .filter((edge): edge is Edge => edge !== null)
+  );
+
   return (
-    <div className="dag-view">
-      <svg
-        viewBox={viewBox}
-        style={{ width: "100%", height: "100%" }}
-        role="img"
-        aria-label="Subtask dependency graph"
-      >
-        <defs>
-          <marker
-            id="arrowhead"
-            markerWidth="10"
-            markerHeight="7"
-            refX="9"
-            refY="3.5"
-            orient="auto"
-          >
-            <polygon points="0 0, 10 3.5, 0 7" fill="#9ca3af" />
-          </marker>
-        </defs>
-        {edges.map((edge) => (
-          <DAGEdge
-            key={`${edge.sourceX}-${edge.sourceY}-${edge.targetX}-${edge.targetY}`}
-            {...edge}
-          />
-        ))}
-        {nodes.map((node) => (
-          <DAGNode
-            key={node.subtask.number}
-            subtask={node.subtask}
-            x={node.x}
-            y={node.y}
-            width={node.width}
-            height={node.height}
-            hasActiveAgent={hasActiveAgent(node.subtask)}
-            isSelected={isSelected(node.subtask)}
-            onClick={() => selectSubtask(taskFolder, node.subtask.filename)}
-            onUnblock={() =>
-              setSubtaskStatus(taskFolder, node.subtask.filename, "PENDING")
-            }
-          />
-        ))}
-      </svg>
+    <div className="dag-view" style={{ width: "100%", height: "100%" }}>
+      <ReactFlowProvider>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          nodesDraggable={true}
+          nodesConnectable={false}
+          edgesUpdatable={false}
+          elementsSelectable={false}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Controls />
+          <MiniMap nodeColor={nodeColor} position="bottom-right" />
+          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+        </ReactFlow>
+      </ReactFlowProvider>
     </div>
   );
-};
-
-interface EdgeProps {
-  sourceX: number;
-  sourceY: number;
-  targetX: number;
-  targetY: number;
-}
-
-const buildEdges = (
-  subtasks: Subtask[],
-  nodeMap: Map<number, DAGNodeData>
-): EdgeProps[] => {
-  const edges: EdgeProps[] = [];
-
-  for (const subtask of subtasks) {
-    const targetNode = nodeMap.get(subtask.number);
-    if (!targetNode) continue;
-
-    for (const depNum of subtask.frontmatter.dependencies) {
-      const sourceNode = nodeMap.get(depNum);
-      if (!sourceNode) continue;
-
-      edges.push({
-        sourceX: sourceNode.x + sourceNode.width,
-        sourceY: sourceNode.y + sourceNode.height / 2,
-        targetX: targetNode.x,
-        targetY: targetNode.y + targetNode.height / 2
-      });
-    }
-  }
-
-  return edges;
-};
-
-const calculateViewBox = (nodes: DAGNodeData[]): string => {
-  if (nodes.length === 0) return "0 0 200 100";
-
-  const padding = 20;
-  let maxX = 0;
-  let maxY = 0;
-
-  for (const node of nodes) {
-    maxX = Math.max(maxX, node.x + node.width);
-    maxY = Math.max(maxY, node.y + node.height);
-  }
-
-  return `-${padding} -${padding} ${maxX + padding * 2} ${maxY + padding * 2}`;
 };

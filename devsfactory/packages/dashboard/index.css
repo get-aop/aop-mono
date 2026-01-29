@@ -224,7 +224,7 @@ p {
   min-height: 200px;
 }
 
-.dag-node-pulse rect {
+.dag-node-pulse {
   animation: pulse 2s ease-in-out infinite;
 }
 

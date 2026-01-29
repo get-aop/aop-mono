@@ -411,7 +411,42 @@ export class Orchestrator extends EventEmitter {
 
   private async runRecovery(): Promise<void> {
     await this.recoverInprogressTasksWithoutPlan();
+    await this.recoverMissingWorktrees();
     await this.detectOrphanedWorktrees();
+  }
+
+  private async recoverMissingWorktrees(): Promise<void> {
+    for (const task of this.state.tasks) {
+      if (task.frontmatter.status !== "INPROGRESS") continue;
+
+      const subtasks = this.state.subtasks[task.folder] ?? [];
+      for (const subtask of subtasks) {
+        if (subtask.frontmatter.status !== "INPROGRESS") continue;
+
+        const worktreePath = join(
+          this.config.worktreesDir,
+          `${task.folder}--${subtask.slug}`
+        );
+
+        const worktreeExists = await Bun.file(
+          join(worktreePath, ".git")
+        ).exists();
+
+        if (!worktreeExists) {
+          await createSubtaskWorktree(
+            this.getRepoRoot(),
+            task.folder,
+            subtask.slug
+          );
+          this.emit("recoveryAction", {
+            action: "recreatedMissingWorktree",
+            taskFolder: task.folder,
+            subtaskFile: subtask.filename,
+            worktreePath
+          });
+        }
+      }
+    }
   }
 
   private async recoverInprogressTasksWithoutPlan(): Promise<void> {

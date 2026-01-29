@@ -61,9 +61,13 @@ const selectTask = async (page: Page) => {
   await taskCard.click();
 };
 
+const waitForReactFlow = async (page: Page) => {
+  await page.waitForSelector(".react-flow", { timeout: 10000 });
+};
+
 test.describe("DAG View", () => {
   test.describe("Node Rendering", () => {
-    test("renders SVG nodes for each subtask", async ({ page }) => {
+    test("renders React Flow nodes for each subtask", async ({ page }) => {
       const subtasks = [
         createMockSubtask({ number: 1, status: "PENDING", dependencies: [] }),
         createMockSubtask({
@@ -81,25 +85,20 @@ test.describe("DAG View", () => {
 
       const dagView = page.locator(".dag-view");
       await expect(dagView).toBeVisible();
+      await waitForReactFlow(page);
 
-      const svg = dagView.locator("svg");
-      await expect(svg).toHaveAttribute("role", "img");
-      await expect(svg).toHaveAttribute(
-        "aria-label",
-        "Subtask dependency graph"
-      );
+      const reactFlow = dagView.locator(".react-flow");
+      await expect(reactFlow).toBeVisible();
 
-      const nodeGroups = svg.locator("g[role='button']");
-      await expect(nodeGroups).toHaveCount(3);
+      const nodes = dagView.locator(".react-flow__node");
+      await expect(nodes).toHaveCount(3);
 
       for (const subtask of subtasks) {
-        const nodeNumber = svg.locator(`text:has-text("#${subtask.number}")`);
-        await expect(nodeNumber).toBeVisible();
+        const node = dagView.locator(`.react-flow__node[data-id="${subtask.filename}"]`);
+        await expect(node).toBeVisible();
 
-        const nodeTitle = svg.locator(
-          `text:has-text("${subtask.frontmatter.title}")`
-        );
-        await expect(nodeTitle).toBeVisible();
+        await expect(node).toContainText(`#${subtask.number}`);
+        await expect(node).toContainText(subtask.frontmatter.title);
       }
     });
 
@@ -112,12 +111,10 @@ test.describe("DAG View", () => {
 
       const dagView = page.locator(".dag-view");
       await expect(dagView).toBeVisible();
+      await waitForReactFlow(page);
 
-      const svg = dagView.locator("svg");
-      await expect(svg).toBeVisible();
-
-      const nodeGroups = svg.locator("g[role='button']");
-      await expect(nodeGroups).toHaveCount(0);
+      const nodes = dagView.locator(".react-flow__node");
+      await expect(nodes).toHaveCount(0);
     });
   });
 
@@ -151,13 +148,14 @@ test.describe("DAG View", () => {
 
         const dagView = page.locator(".dag-view");
         await expect(dagView).toBeVisible();
+        await waitForReactFlow(page);
 
-        const nodeRect = dagView.locator("svg g[role='button'] rect").first();
-        await expect(nodeRect).toBeVisible();
+        const nodeContent = dagView.locator(".react-flow__node [role='button']").first();
+        await expect(nodeContent).toBeVisible();
 
         const expectedColors = STATUS_COLORS[status];
-        await expect(nodeRect).toHaveCSS("stroke", expectedColors.border);
-        await expect(nodeRect).toHaveCSS("fill", expectedColors.fill);
+        await expect(nodeContent).toHaveCSS("border-color", expectedColors.border);
+        await expect(nodeContent).toHaveCSS("background-color", expectedColors.fill);
       });
     }
 
@@ -177,15 +175,17 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
-
-      const nodeRects = page.locator(".dag-view svg g[role='button'] rect");
-      await expect(nodeRects).toHaveCount(3);
+      await waitForReactFlow(page);
 
       for (let i = 0; i < statuses.length; i++) {
-        const rect = nodeRects.nth(i);
+        const subtask = subtasks[i];
+        const nodeSelector = `.react-flow__node[data-id="${subtask.filename}"] [role='button']`;
+        const nodeContent = page.locator(nodeSelector);
+        await expect(nodeContent).toBeVisible();
+
         const expected = STATUS_COLORS[statuses[i]];
-        await expect(rect).toHaveCSS("stroke", expected.border);
-        await expect(rect).toHaveCSS("fill", expected.fill);
+        await expect(nodeContent).toHaveCSS("border-color", expected.border);
+        await expect(nodeContent).toHaveCSS("background-color", expected.fill);
       }
     });
   });
@@ -202,22 +202,13 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
       const dagView = page.locator(".dag-view");
       await expect(dagView).toBeVisible();
 
-      const edges = dagView.locator("svg path[stroke='#9ca3af']");
+      const edges = dagView.locator(".react-flow__edge");
       await expect(edges).toHaveCount(2);
-
-      for (let i = 0; i < 2; i++) {
-        const edge = edges.nth(i);
-        await expect(edge).toHaveAttribute("fill", "none");
-        await expect(edge).toHaveAttribute("stroke-width", "2");
-        await expect(edge).toHaveAttribute("marker-end", "url(#arrowhead)");
-
-        const d = await edge.getAttribute("d");
-        expect(d).toMatch(/^M \d+ \d+ Q \d+ \d+ \d+ \d+$/);
-      }
     });
 
     test("renders no edges when nodes have no dependencies", async ({
@@ -233,8 +224,9 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const edges = page.locator(".dag-view svg path[stroke='#9ca3af']");
+      const edges = page.locator(".dag-view .react-flow__edge");
       await expect(edges).toHaveCount(0);
     });
 
@@ -251,12 +243,13 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const edges = page.locator(".dag-view svg path[stroke='#9ca3af']");
+      const edges = page.locator(".dag-view .react-flow__edge");
       await expect(edges).toHaveCount(2);
     });
 
-    test("renders arrowhead marker definition", async ({ page }) => {
+    test("edges have arrow markers", async ({ page }) => {
       const subtasks = [
         createMockSubtask({ number: 1, dependencies: [] }),
         createMockSubtask({ number: 2, dependencies: [1] })
@@ -266,13 +259,15 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const marker = page.locator(".dag-view svg defs marker#arrowhead");
-      await expect(marker).toHaveCount(1);
-      await expect(marker).toHaveAttribute("orient", "auto");
+      const edges = page.locator(".dag-view .react-flow__edge");
+      await expect(edges).toHaveCount(1);
 
-      const polygon = marker.locator("polygon");
-      await expect(polygon).toHaveAttribute("fill", "#9ca3af");
+      const edgePath = page.locator(".dag-view .react-flow__edge-path").first();
+      const markerEnd = await edgePath.getAttribute("marker-end");
+      expect(markerEnd).toBeTruthy();
+      expect(markerEnd).toContain("url(");
     });
   });
 
@@ -291,10 +286,10 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const nodeGroup = page.locator(".dag-view svg g[role='button']").first();
-      await expect(nodeGroup).toHaveCSS("cursor", "pointer");
-      await expect(nodeGroup).toHaveAttribute("style", /cursor:\s*pointer/);
+      const nodeContent = page.locator(".dag-view .react-flow__node [role='button']").first();
+      await expect(nodeContent).toHaveCSS("cursor", "pointer");
     });
 
     test("nodes are keyboard accessible", async ({ page }) => {
@@ -306,10 +301,11 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const nodeGroup = page.locator(".dag-view svg g[role='button']").first();
-      await expect(nodeGroup).toHaveAttribute("role", "button");
-      await expect(nodeGroup).toHaveAttribute("tabindex", "0");
+      const nodeContent = page.locator(".dag-view .react-flow__node [role='button']").first();
+      await expect(nodeContent).toHaveAttribute("role", "button");
+      await expect(nodeContent).toHaveAttribute("tabindex", "0");
     });
 
     test("blocked nodes show unblock button", async ({ page }) => {
@@ -321,12 +317,11 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const unblockButton = page.locator(".dag-view svg .dag-node-unblock");
+      const unblockButton = page.locator(".dag-view .dag-node-unblock");
       await expect(unblockButton).toBeVisible();
-
-      const unblockText = unblockButton.locator("text");
-      await expect(unblockText).toHaveText("Unblock");
+      await expect(unblockButton).toHaveText("Unblock");
     });
 
     test("non-blocked nodes do not show unblock button", async ({ page }) => {
@@ -338,8 +333,9 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const unblockButton = page.locator(".dag-view svg .dag-node-unblock");
+      const unblockButton = page.locator(".dag-view .dag-node-unblock");
       await expect(unblockButton).toHaveCount(0);
     });
   });
@@ -357,18 +353,21 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const nodeGroups = page.locator(".dag-view svg g[role='button']");
-      await expect(nodeGroups).toHaveCount(2);
+      const nodes = page.locator(".dag-view .react-flow__node");
+      await expect(nodes).toHaveCount(2);
 
-      const transforms = await nodeGroups.evaluateAll((nodes) =>
-        nodes.map((n) => n.getAttribute("transform"))
+      const transforms = await nodes.evaluateAll((nodeElements) =>
+        nodeElements.map((n) => {
+          const style = n.getAttribute("style") || "";
+          const transformMatch = style.match(/transform:\s*translate\(([^,]+)px/);
+          return transformMatch ? Number.parseFloat(transformMatch[1]) : null;
+        })
       );
 
-      for (const transform of transforms) {
-        const match = transform?.match(/translate\((\d+),\s*(\d+)\)/);
-        expect(match).not.toBeNull();
-        const x = Number.parseInt(match![1], 10);
+      for (const x of transforms) {
+        expect(x).not.toBeNull();
         expect(x).toBe(0);
       }
     });
@@ -384,22 +383,22 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const nodeGroups = page.locator(".dag-view svg g[role='button']");
-      await expect(nodeGroups).toHaveCount(3);
+      const getNodeXPosition = async (filename: string) => {
+        const node = page.locator(`.dag-view .react-flow__node[data-id="${filename}"]`);
+        const style = await node.getAttribute("style");
+        const match = style?.match(/transform:\s*translate\(([^,]+)px/);
+        return match ? Number.parseFloat(match[1]) : 0;
+      };
 
-      const transforms = await nodeGroups.evaluateAll((nodes) =>
-        nodes.map((n) => n.getAttribute("transform"))
-      );
+      const x1 = await getNodeXPosition(subtasks[0].filename);
+      const x2 = await getNodeXPosition(subtasks[1].filename);
+      const x3 = await getNodeXPosition(subtasks[2].filename);
 
-      const xPositions = transforms.map((t) => {
-        const match = t?.match(/translate\((\d+),\s*(\d+)\)/);
-        return match ? Number.parseInt(match[1], 10) : 0;
-      });
-
-      expect(xPositions[0]).toBe(0);
-      expect(xPositions[1]).toBeGreaterThan(xPositions[0]);
-      expect(xPositions[2]).toBeGreaterThan(xPositions[1]);
+      expect(x1).toBe(0);
+      expect(x2).toBeGreaterThan(x1);
+      expect(x3).toBeGreaterThan(x2);
     });
 
     test("nodes with same dependencies appear in same column", async ({
@@ -415,19 +414,18 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const nodeGroups = page.locator(".dag-view svg g[role='button']");
-      const transforms = await nodeGroups.evaluateAll((nodes) =>
-        nodes.map((n) => n.getAttribute("transform"))
-      );
-
-      const getX = (t: string | null) => {
-        const match = t?.match(/translate\((\d+),\s*(\d+)\)/);
-        return match ? Number.parseInt(match[1], 10) : 0;
+      const getNodeXPosition = async (filename: string) => {
+        const node = page.locator(`.dag-view .react-flow__node[data-id="${filename}"]`);
+        const style = await node.getAttribute("style");
+        const match = style?.match(/transform:\s*translate\(([^,]+)px/);
+        return match ? Number.parseFloat(match[1]) : 0;
       };
 
-      const x2 = getX(transforms[1]);
-      const x3 = getX(transforms[2]);
+      const x2 = await getNodeXPosition(subtasks[1].filename);
+      const x3 = await getNodeXPosition(subtasks[2].filename);
+
       expect(x2).toBe(x3);
     });
 
@@ -442,25 +440,25 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const nodeGroups = page.locator(".dag-view svg g[role='button']");
-      const transforms = await nodeGroups.evaluateAll((nodes) =>
-        nodes.map((n) => n.getAttribute("transform"))
-      );
-
-      const getY = (t: string | null) => {
-        const match = t?.match(/translate\((\d+),\s*(\d+)\)/);
-        return match ? Number.parseInt(match[2], 10) : 0;
+      const getNodeYPosition = async (filename: string) => {
+        const node = page.locator(`.dag-view .react-flow__node[data-id="${filename}"]`);
+        const style = await node.getAttribute("style");
+        const match = style?.match(/transform:\s*translate\([^,]+px,\s*([^)]+)px\)/);
+        return match ? Number.parseFloat(match[1]) : 0;
       };
 
-      const yPositions = transforms.map(getY);
+      const yPositions = await Promise.all(
+        subtasks.map((s) => getNodeYPosition(s.filename))
+      );
 
       expect(yPositions[0]).toBe(0);
       expect(yPositions[1]).toBeGreaterThan(yPositions[0]);
       expect(yPositions[2]).toBeGreaterThan(yPositions[1]);
     });
 
-    test("viewBox adapts to DAG dimensions", async ({ page }) => {
+    test("React Flow container is present and has dimensions", async ({ page }) => {
       const subtasks = [
         createMockSubtask({ number: 1, dependencies: [] }),
         createMockSubtask({ number: 2, dependencies: [1] })
@@ -470,15 +468,15 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const svg = page.locator(".dag-view svg");
-      const viewBox = await svg.getAttribute("viewBox");
+      const reactFlow = page.locator(".dag-view .react-flow");
+      await expect(reactFlow).toBeVisible();
 
-      expect(viewBox).toMatch(/^-\d+ -\d+ \d+ \d+$/);
-
-      const [, , width, height] = viewBox!.split(" ").map(Number);
-      expect(width).toBeGreaterThan(0);
-      expect(height).toBeGreaterThan(0);
+      const boundingBox = await reactFlow.boundingBox();
+      expect(boundingBox).not.toBeNull();
+      expect(boundingBox!.width).toBeGreaterThan(0);
+      expect(boundingBox!.height).toBeGreaterThan(0);
     });
   });
 
@@ -497,20 +495,20 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
       const dagView = page.locator(".dag-view");
       await expect(dagView).toBeVisible();
 
-      const firstNode = dagView.locator("svg g[role='button']").first();
-      const firstRect = firstNode.locator("rect").first();
+      const firstNodeContent = dagView.locator(`.react-flow__node[data-id="${subtasks[0].filename}"] [role='button']`);
 
-      await expect(firstRect).toHaveCSS("stroke", STATUS_COLORS.PENDING.border);
-      await expect(firstRect).toHaveAttribute("stroke-width", "2");
+      await expect(firstNodeContent).toHaveCSS("border-color", STATUS_COLORS.PENDING.border);
+      await expect(firstNodeContent).toHaveCSS("border-width", "2px");
 
-      await firstNode.click();
+      await firstNodeContent.click();
 
-      await expect(firstRect).toHaveCSS("stroke", "rgb(59, 130, 246)");
-      await expect(firstRect).toHaveAttribute("stroke-width", "3");
+      await expect(firstNodeContent).toHaveCSS("border-color", "rgb(59, 130, 246)");
+      await expect(firstNodeContent).toHaveCSS("border-width", "3px");
     });
 
     test("clicking a different node changes selection", async ({ page }) => {
@@ -523,25 +521,22 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const nodeGroups = page.locator(".dag-view svg g[role='button']");
-      const firstNode = nodeGroups.first();
-      const secondNode = nodeGroups.nth(1);
+      const firstNodeContent = page.locator(`.dag-view .react-flow__node[data-id="${subtasks[0].filename}"] [role='button']`);
+      const secondNodeContent = page.locator(`.dag-view .react-flow__node[data-id="${subtasks[1].filename}"] [role='button']`);
 
-      await firstNode.click();
+      await firstNodeContent.click();
 
-      const firstRect = firstNode.locator("rect").first();
-      await expect(firstRect).toHaveAttribute("stroke-width", "3");
+      await expect(firstNodeContent).toHaveCSS("border-width", "3px");
 
-      await secondNode.click();
+      await secondNodeContent.click();
 
-      await expect(firstRect).toHaveAttribute("stroke-width", "2");
-
-      const secondRect = secondNode.locator("rect").first();
-      await expect(secondRect).toHaveAttribute("stroke-width", "3");
+      await expect(firstNodeContent).toHaveCSS("border-width", "2px");
+      await expect(secondNodeContent).toHaveCSS("border-width", "3px");
     });
 
-    test("selected node has blue stroke regardless of status", async ({
+    test("selected node has blue border regardless of status", async ({
       page
     }) => {
       const subtasks = [
@@ -552,15 +547,15 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const node = page.locator(".dag-view svg g[role='button']").first();
-      const rect = node.locator("rect").first();
+      const nodeContent = page.locator(`.dag-view .react-flow__node[data-id="${subtasks[0].filename}"] [role='button']`);
 
-      await expect(rect).toHaveCSS("stroke", STATUS_COLORS.DONE.border);
+      await expect(nodeContent).toHaveCSS("border-color", STATUS_COLORS.DONE.border);
 
-      await node.click();
+      await nodeContent.click();
 
-      await expect(rect).toHaveCSS("stroke", "rgb(59, 130, 246)");
+      await expect(nodeContent).toHaveCSS("border-color", "rgb(59, 130, 246)");
     });
 
     test("node is keyboard accessible for selection", async ({ page }) => {
@@ -572,15 +567,35 @@ test.describe("DAG View", () => {
       await page.goto("/");
 
       await selectTask(page);
+      await waitForReactFlow(page);
 
-      const node = page.locator(".dag-view svg g[role='button']").first();
-      const rect = node.locator("rect").first();
+      const nodeContent = page.locator(`.dag-view .react-flow__node[data-id="${subtasks[0].filename}"] [role='button']`);
 
-      await node.focus();
+      await nodeContent.focus();
       await page.keyboard.press("Enter");
 
-      await expect(rect).toHaveAttribute("stroke-width", "3");
-      await expect(rect).toHaveCSS("stroke", "rgb(59, 130, 246)");
+      await expect(nodeContent).toHaveCSS("border-width", "3px");
+      await expect(nodeContent).toHaveCSS("border-color", "rgb(59, 130, 246)");
+    });
+  });
+
+  test.describe("Pan and Zoom", () => {
+    test("nodes are draggable (nodesDraggable enabled)", async ({ page }) => {
+      const subtasks = [
+        createMockSubtask({ number: 1, status: "PENDING", dependencies: [] })
+      ];
+      const state = createStateWithSubtasks(subtasks);
+      await setupMockWebSocket(page, state);
+      await page.goto("/");
+
+      await selectTask(page);
+      await waitForReactFlow(page);
+
+      const node = page.locator(`.dag-view .react-flow__node[data-id="${subtasks[0].filename}"]`);
+      await expect(node).toBeVisible();
+
+      const hasClass = await node.evaluate((el) => el.classList.contains("draggable"));
+      expect(hasClass).toBe(true);
     });
   });
 });
