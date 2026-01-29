@@ -42,11 +42,15 @@ Implement the subtask requirements, commit changes, and update status to AGENT_R
 </validation_strategy>
 
 <instructions>
-1. Read and understand the subtask requirements
-2. Implement using `test-driven-development` skill, unless it's a task related to create tests already (or adding e2e tests)
-3. Review `git diff` and remove AI slop (unnecessary comments, excessive defensive code, `any` casts)
-4. Commit with message covering What and Why
-5. Update subtask: set status to `AGENT_REVIEW`, add Result summary
+1. **Analyze existing state**: Check `git status` and `git diff` for uncommitted changes
+   - If changes exist: evaluate quality and alignment with requirements
+   - Decide: continue building on existing work, improve it, or start fresh
+   - If starting fresh: `git checkout .` to discard changes
+2. Read and understand the subtask requirements
+3. Implement using `test-driven-development` skill, unless it's a task related to create tests already (or adding e2e tests)
+4. Review `git diff` and remove AI slop (unnecessary comments, excessive defensive code, `any` casts)
+5. Commit with message covering What and Why
+6. Update subtask: set status to `AGENT_REVIEW`, add Result summary
 
 State "Proceeding to step N" after each step.
 </instructions>

@@ -28,7 +28,7 @@ describe("loadConfig", () => {
     test("returns default maxConcurrentAgents when not set", () => {
       delete process.env.MAX_CONCURRENT_AGENTS;
       const config = loadConfig();
-      expect(config.maxConcurrentAgents).toBe(3);
+      expect(config.maxConcurrentAgents).toBe(2);
     });
 
     test("returns default debounceMs when not set", () => {

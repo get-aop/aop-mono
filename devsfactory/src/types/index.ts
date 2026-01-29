@@ -149,7 +149,7 @@ export const RetryBackoffSchema = z.object({
 });
 
 export const ConfigSchema = z.object({
-  maxConcurrentAgents: z.number().default(3),
+  maxConcurrentAgents: z.number().default(2),
   devsfactoryDir: z.string().default(".devsfactory"),
   worktreesDir: z.string().default(".worktrees"),
   debounceMs: z.number().default(100),

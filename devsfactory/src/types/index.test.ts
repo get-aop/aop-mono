@@ -473,7 +473,7 @@ describe("Config Schemas", () => {
     test("applies defaults for missing fields", () => {
       const result = ConfigSchema.parse({});
 
-      expect(result.maxConcurrentAgents).toBe(3);
+      expect(result.maxConcurrentAgents).toBe(2);
       expect(result.devsfactoryDir).toBe(".devsfactory");
       expect(result.worktreesDir).toBe(".worktrees");
     });

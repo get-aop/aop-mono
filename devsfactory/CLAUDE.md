@@ -1,3 +1,11 @@
+devsfactory is an orchestration layer that transforms Claude Code into a team of AI agents working in parallel on your codebase. You define a task, devsfactory breaks it into subtasks, and multiple agents implement them concurrently—each in isolated git worktrees to avoid conflicts.
+
+Important docs:
+
+- `README.md` - Overview of the project
+- `docs/ARCHITECTURE.md` - Technical deep-dive
+- `docs/OPERATIONS.md` - Troubleshooting guide
+
 Default to using Bun instead of Node.js.
 
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`
