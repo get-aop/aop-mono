@@ -24,24 +24,28 @@ Verify the task is complete against acceptance criteria, or create additional su
 1. Read task.md acceptance criteria
 2. Read plan.md to understand what was implemented
 3. Check implementation against each acceptance criterion (READ-ONLY verification)
-4. Mark completed criteria in task.md
+4. Mark completed criteria in task.md (check the boxes, do NOT change task.md status)
 
 If fully complete:
-- Set plan status to `AGENT_REVIEW`
+- Set plan.md status to `AGENT_REVIEW` (only plan.md, NOT task.md)
 
 If items missing:
 - Create new subtasks following existing format in plan.md
-- Keep plan status as `INPROGRESS`
+- Keep plan.md status as `INPROGRESS`
+
+IMPORTANT: The task.md status must NOT be changed by this agent. Only plan.md status changes.
 </instructions>
 
 <decision_boundaries>
-**Mark complete (AGENT_REVIEW) when:**
+**Set plan.md to AGENT_REVIEW when:**
 - All acceptance criteria verifiably met
 - Implementation matches requirements
 
-**Add subtasks when:**
+**Add subtasks (keep plan.md INPROGRESS) when:**
 - Acceptance criteria not fully met
 - Missing functionality discovered
+
+**Never modify task.md status** - only check acceptance criteria boxes.
 </decision_boundaries>
 
 <scope_restrictions>
@@ -54,8 +58,8 @@ You MUST NOT:
 - Add missing imports, exports, or dependencies
 
 You MAY ONLY modify:
-- task.md (to mark criteria as complete)
-- plan.md (to update status)
+- task.md (to mark criteria checkboxes ONLY - do NOT change the status field)
+- plan.md (to update status to AGENT_REVIEW or keep as INPROGRESS)
 - Create new subtask .md files (if items are missing)
 
 If you discover code issues during verification, create a subtask describing the fix needed - do NOT fix it yourself.
