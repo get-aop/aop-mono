@@ -415,6 +415,47 @@ Manually fix the status value in the frontmatter to use the exact correct value:
 
 ---
 
+### Dependencies Format Error
+
+**Problem:** Subtask dependencies must be numeric subtask numbers, not filenames or slugs.
+
+| Written (incorrect)                                      | Expected (correct) |
+| -------------------------------------------------------- | ------------------ |
+| `dependencies: [001-setup-auth]`                         | `dependencies: [1]` |
+| `dependencies: [001-setup-auth, 002-add-routes]`         | `dependencies: [1, 2]` |
+| `dependencies: ["1", "2"]`                               | `dependencies: [1, 2]` |
+
+**Symptoms:**
+
+- Task is INPROGRESS but subtasks with dependencies never start
+- Subtasks with `dependencies: []` work fine, but others stay PENDING forever
+- No agents spawn despite orchestrator showing "State changed" in logs
+
+**Diagnosis:**
+
+```bash
+# Check dependencies format in subtask files
+grep "^dependencies:" .devsfactory/{task-folder}/*.md
+```
+
+Look for dependencies that contain strings, filenames, or slugs instead of plain numbers.
+
+**Resolution:**
+
+Edit the subtask frontmatter to use numeric subtask numbers:
+
+```yaml
+# Before (incorrect)
+dependencies: [001-update-models, 002-create-types]
+
+# After (correct)
+dependencies: [1, 2]
+```
+
+The numbers correspond to the subtask prefix (e.g., `001-*.md` → `1`, `002-*.md` → `2`).
+
+---
+
 ## Manual Interventions
 
 ### Editing Task/Subtask Status

@@ -7,3 +7,6 @@
 [submodule "external/claude-plugins-official"]
 	path = external/claude-plugins-official
 	url = https://github.com/anthropics/claude-plugins-official
+[submodule "external/everything-claude-code"]
+	path = external/everything-claude-code
+	url = https://github.com/affaan-m/everything-claude-code

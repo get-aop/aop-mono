@@ -18,3 +18,9 @@
 IMPORTANT! After a set of changes, make sure to update existing and create new relevant tests and make sure all of them are passing.
 
 Follow the repo guidelines to run tests, builds and correct way of verifying changes. If not found, ask the user.
+
+# Git
+
+- **Never** stage, commit, or push unless explicitly asked
+- Only make code changes and let the user handle all git operations
+- Same for writing operations on external systems (eg. never create a Linear Ticket, GitHub issue, POST/PATCH to APIs), unless explicitly asked.
