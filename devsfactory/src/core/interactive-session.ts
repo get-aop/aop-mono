@@ -10,8 +10,10 @@ import {
   discoverAuthStorage,
   discoverModels,
   discoverSkills,
-  type AgentSession as PiAgentSession
+  type AgentSession as PiAgentSession,
+  type ToolDefinition
 } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import type { IOHandler } from "./interactive-io-handler";
 
 // Load auth token from our storage and set as environment variable for pi-coding-agent
@@ -72,6 +74,63 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
 
 const DEFAULT_MODEL = "claude-sonnet-4-5";
 const MAX_TURNS_DEFAULT = 50;
+
+const createAskUserQuestionTool = (ioHandler: IOHandler): ToolDefinition => ({
+  name: "AskUserQuestion",
+  label: "Ask User Question",
+  description:
+    "Ask the user a question and wait for their response. Use this when you need clarification, user preferences, or to offer choices.",
+  parameters: Type.Object({
+    questions: Type.Array(
+      Type.Object({
+        question: Type.String({ description: "The question to ask" }),
+        header: Type.String({ description: "Short header/category" }),
+        options: Type.Array(
+          Type.Object({
+            label: Type.String({ description: "Option label" }),
+            description: Type.String({ description: "Option description" })
+          })
+        ),
+        multiSelect: Type.Boolean({
+          description: "Allow multiple selections",
+          default: false
+        })
+      })
+    )
+  }),
+  async execute(_toolCallId, params, _onUpdate, _ctx, _signal) {
+    const typedParams = params as {
+      questions: Array<{
+        question: string;
+        header: string;
+        options: Array<{ label: string; description: string }>;
+        multiSelect: boolean;
+      }>;
+    };
+    const questions = typedParams.questions;
+
+    const responses: string[] = [];
+
+    for (const q of questions) {
+      const response = await ioHandler.askUser(q.question, {
+        choices: q.options,
+        multiSelect: q.multiSelect,
+        header: q.header
+      });
+      responses.push(response);
+    }
+
+    const responseText =
+      responses.length === 1
+        ? `User responded: ${responses[0]}`
+        : `User responses:\n${responses.map((r, i) => `${i + 1}. ${r}`).join("\n")}`;
+
+    return {
+      content: [{ type: "text", text: responseText }],
+      details: { responses }
+    };
+  }
+});
 
 export class InteractiveSession extends EventEmitter {
   private options: Required<
@@ -177,6 +236,9 @@ export class InteractiveSession extends EventEmitter {
         }
       }
 
+      // Create AskUserQuestion tool that uses our IOHandler
+      const askUserTool = createAskUserQuestionTool(this.options.ioHandler);
+
       // Create the agent session using pi-coding-agent's SDK
       const { session }: CreateAgentSessionResult = await createAgentSession({
         cwd: this.options.cwd,
@@ -184,7 +246,8 @@ export class InteractiveSession extends EventEmitter {
         modelRegistry,
         model,
         skills,
-        tools: codingTools
+        tools: codingTools,
+        customTools: [askUserTool]
       });
 
       this.piSession = session;
