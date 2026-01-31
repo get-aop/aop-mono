@@ -105,7 +105,7 @@ describe("global-bootstrap", () => {
       });
       expect(config.providers).toEqual({
         "claude-code": {
-          model: "claude-sonnet-4-20250514"
+          model: "claude-opus-4-5-20251101"
         }
       });
     });
@@ -156,7 +156,7 @@ describe("global-bootstrap", () => {
       expect(parsed.defaults.retryBackoff.maxMs).toBe(300000);
       expect(parsed.defaults.retryBackoff.maxAttempts).toBe(5);
       expect(parsed.providers["claude-code"].model).toBe(
-        "claude-sonnet-4-20250514"
+        "claude-opus-4-5-20251101"
       );
     });
 

@@ -73,35 +73,6 @@ Test subtask description
   await writeFile(join(taskDir, filename), subtaskContent);
 };
 
-const createLocalDevsfactory = async (
-  localDir: string,
-  taskFolder: string,
-  status: string
-) => {
-  const devsfactoryDir = join(localDir, ".devsfactory", taskFolder);
-  await mkdir(devsfactoryDir, { recursive: true });
-  const taskContent = `---
-title: Local task
-status: ${status}
-created: 2026-01-28T00:00:00Z
-priority: medium
-tags: []
-assignee: null
-dependencies: []
----
-
-## Description
-Local task description
-
-## Requirements
-Local requirements
-
-## Acceptance Criteria
-- [ ] Criterion 1
-`;
-  await writeFile(join(devsfactoryDir, "task.md"), taskContent);
-};
-
 describe("parseStatusArgs", () => {
   test("parses empty args - no project specified", () => {
     const result = parseStatusArgs([]);
@@ -273,20 +244,6 @@ describe("runStatusCommand", () => {
   });
 
   describe("context-aware behavior", () => {
-    test("shows current project if inside local project directory", async () => {
-      const localDir = join(testRootDir, "local-project");
-      await mkdir(localDir, { recursive: true });
-      await createLocalDevsfactory(localDir, "local-task", "INPROGRESS");
-
-      process.chdir(localDir);
-
-      const result = await ctx.run(() => runStatusCommand());
-
-      expect(result.success).toBe(true);
-      expect(result.output).toContain("local-task");
-      expect(result.output).toContain("INPROGRESS");
-    });
-
     test("shows current project if inside registered global project", async () => {
       const projectDir = join(testRootDir, "registered-project");
       await mkdir(projectDir, { recursive: true });

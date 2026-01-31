@@ -1344,13 +1344,14 @@ describe("Extended Frontmatter Schemas with Timing", () => {
 describe("Global Configuration Schemas", () => {
   describe("OperationModeSchema", () => {
     test("accepts valid values", () => {
-      const validModes: OperationMode[] = ["local", "global"];
+      const validModes: OperationMode[] = ["global"];
       for (const mode of validModes) {
         expect(OperationModeSchema.parse(mode)).toBe(mode);
       }
     });
 
     test("rejects invalid values", () => {
+      expect(() => OperationModeSchema.parse("local")).toThrow();
       expect(() => OperationModeSchema.parse("hybrid")).toThrow();
       expect(() => OperationModeSchema.parse("")).toThrow();
       expect(() => OperationModeSchema.parse(123)).toThrow();
@@ -1618,32 +1619,6 @@ describe("Global Configuration Schemas", () => {
   });
 
   describe("ResolvedPathsSchema", () => {
-    test("parses local mode paths", () => {
-      const input = {
-        mode: "local",
-        projectName: "my-project",
-        projectRoot: "/home/user/projects/my-project",
-        devsfactoryDir: "/home/user/projects/my-project/.devsfactory",
-        worktreesDir: "/home/user/projects/my-project/.worktrees",
-        brainstormDir: "/home/user/projects/my-project/.devsfactory/brainstorm"
-      };
-
-      const result = ResolvedPathsSchema.parse(input);
-
-      expect(result.mode).toBe("local");
-      expect(result.projectName).toBe("my-project");
-      expect(result.projectRoot).toBe("/home/user/projects/my-project");
-      expect(result.devsfactoryDir).toBe(
-        "/home/user/projects/my-project/.devsfactory"
-      );
-      expect(result.worktreesDir).toBe(
-        "/home/user/projects/my-project/.worktrees"
-      );
-      expect(result.brainstormDir).toBe(
-        "/home/user/projects/my-project/.devsfactory/brainstorm"
-      );
-    });
-
     test("parses global mode paths", () => {
       const input = {
         mode: "global",
@@ -1668,7 +1643,7 @@ describe("Global Configuration Schemas", () => {
 
     test("rejects invalid mode", () => {
       const input = {
-        mode: "hybrid",
+        mode: "local",
         projectName: "test",
         projectRoot: "/test",
         devsfactoryDir: "/test/.devsfactory",
@@ -1683,12 +1658,12 @@ describe("Global Configuration Schemas", () => {
       expect(() => ResolvedPathsSchema.parse({})).toThrow();
       expect(() =>
         ResolvedPathsSchema.parse({
-          mode: "local"
+          mode: "global"
         })
       ).toThrow();
       expect(() =>
         ResolvedPathsSchema.parse({
-          mode: "local",
+          mode: "global",
           projectName: "test",
           projectRoot: "/test"
         })
@@ -1716,18 +1691,18 @@ describe("Global Configuration Type Exports", () => {
       registered: new Date()
     };
     const resolvedPaths: ResolvedPaths = {
-      mode: "local",
+      mode: "global",
       projectName: "test",
       projectRoot: "/test",
-      devsfactoryDir: "/test/.devsfactory",
-      worktreesDir: "/test/.worktrees",
-      brainstormDir: "/test/.devsfactory/brainstorm"
+      devsfactoryDir: "/home/user/.aop/tasks/test",
+      worktreesDir: "/home/user/.aop/worktrees/test",
+      brainstormDir: "/home/user/.aop/brainstorm/test"
     };
 
     expect(mode).toBe("global");
     expect(providerConfig.model).toBe("claude-3-opus");
     expect(globalConfig.version).toBe(1);
     expect(projectConfig.name).toBe("test");
-    expect(resolvedPaths.mode).toBe("local");
+    expect(resolvedPaths.mode).toBe("global");
   });
 });

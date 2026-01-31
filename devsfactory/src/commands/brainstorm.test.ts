@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -89,26 +89,6 @@ describe("runBrainstormCommand", () => {
     }
   });
 
-  test("succeeds in local mode with .devsfactory directory", async () => {
-    const projectDir = join(TEST_DIR, "local-project");
-    const devsfactoryDir = join(projectDir, ".devsfactory");
-    await mkdir(devsfactoryDir, { recursive: true });
-
-    const originalCwd = process.cwd();
-    process.chdir(projectDir);
-
-    try {
-      const result = await runBrainstormCommand();
-
-      expect(result.success).toBe(true);
-      expect(result.projectName).toBe("local-project");
-      expect(result.brainstormDir).toBe(join(devsfactoryDir, "brainstorm"));
-      expect(result.mode).toBe("local");
-    } finally {
-      process.chdir(originalCwd);
-    }
-  });
-
   test("succeeds in global mode with registered project", async () => {
     let ctx: IsolatedGlobalDirContext | undefined;
     try {
@@ -150,27 +130,6 @@ describe("runBrainstormCommand", () => {
       );
     } finally {
       if (ctx) await ctx.cleanup();
-    }
-  });
-
-  test("creates brainstorm directory if it does not exist", async () => {
-    const projectDir = join(TEST_DIR, "new-brainstorm");
-    const devsfactoryDir = join(projectDir, ".devsfactory");
-    await mkdir(devsfactoryDir, { recursive: true });
-
-    const originalCwd = process.cwd();
-    process.chdir(projectDir);
-
-    try {
-      const result = await runBrainstormCommand();
-
-      expect(result.success).toBe(true);
-
-      const brainstormDir = join(devsfactoryDir, "brainstorm");
-      const dirStat = await stat(brainstormDir);
-      expect(dirStat.isDirectory()).toBe(true);
-    } finally {
-      process.chdir(originalCwd);
     }
   });
 });

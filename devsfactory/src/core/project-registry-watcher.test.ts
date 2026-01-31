@@ -8,7 +8,11 @@ import {
 } from "../test-helpers";
 import type { ProjectConfig } from "../types";
 
-describe("ProjectRegistryWatcher", () => {
+// Skip on CI: fs.watch with recursive:true on Linux doesn't release inotify handles
+// properly, causing directory cleanup to hang indefinitely
+const isCI = !!process.env.CI;
+
+describe.skipIf(isCI)("ProjectRegistryWatcher", () => {
   let ctx: IsolatedGlobalDirContext;
 
   beforeEach(async () => {

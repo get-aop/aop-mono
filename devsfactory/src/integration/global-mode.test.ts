@@ -206,20 +206,6 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
   });
 
   describe("Path Resolution Tests", () => {
-    test("local mode detected when .devsfactory/ exists", async () => {
-      const projectDir = join(tempDir, "local-project");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-
-      const pathResolver = await reimportPathResolver();
-      const result = await ctx.run(() => pathResolver.resolvePaths(projectDir));
-
-      expect(result).not.toBeNull();
-      expect(result!.mode).toBe("local");
-      expect(result!.projectName).toBe("local-project");
-      expect(result!.devsfactoryDir).toBe(devsfactoryDir);
-    });
-
     test("global mode detected when inside registered project", async () => {
       const repoDir = join(tempDir, "global-project");
       await createGitRepo(repoDir);
@@ -236,20 +222,6 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
       expect(result).not.toBeNull();
       expect(result!.mode).toBe("global");
       expect(result!.projectName).toBe("global-project");
-    });
-
-    test("correct paths returned for local mode", async () => {
-      const projectDir = join(tempDir, "local-paths");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-
-      const pathResolver = await reimportPathResolver();
-      const result = await ctx.run(() => pathResolver.resolvePaths(projectDir));
-
-      expect(result!.devsfactoryDir).toBe(devsfactoryDir);
-      expect(result!.worktreesDir).toBe(join(projectDir, ".worktrees"));
-      expect(result!.brainstormDir).toBe(join(devsfactoryDir, "brainstorm"));
-      expect(result!.projectRoot).toBe(projectDir);
     });
 
     test("correct paths returned for global mode", async () => {
@@ -277,65 +249,18 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
       expect(result!.projectRoot).toBe(repoDir);
     });
 
-    test("local mode takes priority over global when both conditions exist", async () => {
-      const projectDir = join(tempDir, "dual-mode");
-      await createGitRepo(projectDir);
-
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-
-      const bootstrap = await reimportGlobalBootstrap();
-      await ctx.run(() => bootstrap.ensureGlobalDir());
-
-      const init = await reimportInitCommand();
-      await ctx.run(() => init.runInitCommand(projectDir));
+    test("returns null when not in a registered project", async () => {
+      const projectDir = join(tempDir, "unregistered-project");
+      await mkdir(projectDir, { recursive: true });
 
       const pathResolver = await reimportPathResolver();
       const result = await ctx.run(() => pathResolver.resolvePaths(projectDir));
 
-      expect(result!.mode).toBe("local");
+      expect(result).toBeNull();
     });
   });
 
   describe("Task Creation Tests", () => {
-    test("aop create-task runs Claude with correct prompt in local mode", async () => {
-      const projectDir = join(tempDir, "task-local-project");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-      await createGitRepo(projectDir);
-
-      process.chdir(projectDir);
-
-      let capturedArgs: string[] = [];
-      let capturedCwd: string | undefined;
-      const mockSpawn = spyOn(Bun, "spawn").mockImplementation(((
-        args: string[],
-        options?: { cwd?: string }
-      ) => {
-        capturedArgs = args;
-        capturedCwd = options?.cwd;
-        return createMockSpawnProcess();
-      }) as unknown as typeof Bun.spawn);
-
-      try {
-        const createTask = await reimportCreateTaskCommand();
-        const result = await ctx.run(() =>
-          createTask.runCreateTaskCommand({ slug: "my-task", raw: true })
-        );
-
-        expect(result.success).toBe(true);
-        expect(mockSpawn).toHaveBeenCalled();
-
-        // Check the prompt argument (last arg to claude)
-        const promptArg = capturedArgs[capturedArgs.length - 1];
-        expect(promptArg).toContain("/create-task");
-        expect(promptArg).toContain('--slug "my-task"');
-        expect(capturedCwd).toBe(projectDir);
-      } finally {
-        mockSpawn.mockRestore();
-      }
-    });
-
     test("aop create-task runs Claude with correct prompt in global mode", async () => {
       const repoDir = join(tempDir, "task-global-project");
       await createGitRepo(repoDir);
@@ -381,12 +306,16 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
     });
 
     test("aop create-task passes description to Claude prompt", async () => {
-      const projectDir = join(tempDir, "task-desc-project");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-      await createGitRepo(projectDir);
+      const repoDir = join(tempDir, "task-desc-project");
+      await createGitRepo(repoDir);
 
-      process.chdir(projectDir);
+      const bootstrap = await reimportGlobalBootstrap();
+      await ctx.run(() => bootstrap.ensureGlobalDir());
+
+      const init = await reimportInitCommand();
+      await ctx.run(() => init.runInitCommand(repoDir));
+
+      process.chdir(repoDir);
 
       let capturedArgs: string[] = [];
       const mockSpawn = spyOn(Bun, "spawn").mockImplementation(((
@@ -443,22 +372,6 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
   });
 
   describe("Brainstorm Tests", () => {
-    test("brainstorm creates directory in local mode", async () => {
-      const projectDir = join(tempDir, "brainstorm-local");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-
-      process.chdir(projectDir);
-
-      const brainstorm = await reimportBrainstormCommand();
-      const result = await ctx.run(() => brainstorm.runBrainstormCommand());
-
-      expect(result.success).toBe(true);
-      expect(result.mode).toBe("local");
-      expect(result.brainstormDir).toBe(join(devsfactoryDir, "brainstorm"));
-      expect(await dirExists(join(devsfactoryDir, "brainstorm"))).toBe(true);
-    });
-
     test("brainstorm creates directory in global mode", async () => {
       const repoDir = join(tempDir, "brainstorm-global");
       await createGitRepo(repoDir);
@@ -482,60 +395,7 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
     });
   });
 
-  describe("Backward Compatibility Tests", () => {
-    test("existing project with .devsfactory/ works unchanged", async () => {
-      const projectDir = join(tempDir, "legacy-project");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-
-      const taskDir = join(devsfactoryDir, "existing-task");
-      await mkdir(taskDir, { recursive: true });
-      await writeFile(
-        join(taskDir, "task.md"),
-        "---\ntitle: Existing Task\nstatus: PENDING\n---\n"
-      );
-
-      const pathResolver = await reimportPathResolver();
-      const result = await ctx.run(() => pathResolver.resolvePaths(projectDir));
-
-      expect(result!.mode).toBe("local");
-      expect(result!.devsfactoryDir).toBe(devsfactoryDir);
-
-      const taskMd = await Bun.file(join(taskDir, "task.md")).text();
-      expect(taskMd).toContain("Existing Task");
-    });
-
-    test("local mode .devsfactory does not require registration", async () => {
-      const projectDir = join(tempDir, "unregistered-local");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-
-      const pathResolver = await reimportPathResolver();
-      const result = await ctx.run(() => pathResolver.resolvePaths(projectDir));
-
-      expect(result).not.toBeNull();
-      expect(result!.mode).toBe("local");
-    });
-
-    test("local mode only detected at project root (not subdirectories)", async () => {
-      const projectDir = join(tempDir, "local-subdir-project");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      const subDir = join(projectDir, "src", "components");
-      await mkdir(devsfactoryDir, { recursive: true });
-      await mkdir(subDir, { recursive: true });
-
-      const pathResolver = await reimportPathResolver();
-
-      const rootResult = await ctx.run(() =>
-        pathResolver.resolvePaths(projectDir)
-      );
-      expect(rootResult).not.toBeNull();
-      expect(rootResult!.mode).toBe("local");
-
-      const subResult = await ctx.run(() => pathResolver.resolvePaths(subDir));
-      expect(subResult).toBeNull();
-    });
-
+  describe("Subdirectory Resolution Tests", () => {
     test("subdirectory of global project resolves correctly", async () => {
       const projectDir = join(tempDir, "global-subdir-project");
       const subDir = join(projectDir, "src", "components");

@@ -13,7 +13,7 @@ export interface RunArgs {
 }
 
 export interface RunConfig {
-  mode: "local" | "global";
+  mode: "global";
   projectName: string;
   projectRoot: string;
   devsfactoryDir: string;

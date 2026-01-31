@@ -278,7 +278,7 @@ export type BrainstormSession = z.infer<typeof BrainstormSessionSchema>;
 export type BrainstormDraft = z.infer<typeof BrainstormDraftSchema>;
 
 // Global Configuration Schemas
-export const OperationModeSchema = z.enum(["local", "global"]);
+export const OperationModeSchema = z.enum(["global"]);
 
 export const ProviderConfigSchema = z.object({
   model: z.string().optional(),

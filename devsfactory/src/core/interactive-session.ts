@@ -63,6 +63,8 @@ export interface InteractiveSessionResult {
 }
 
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  "claude-opus-4-5-20251101": { input: 15 / 1_000_000, output: 75 / 1_000_000 },
+  "claude-opus-4-5": { input: 15 / 1_000_000, output: 75 / 1_000_000 },
   "claude-sonnet-4-20250514": { input: 3 / 1_000_000, output: 15 / 1_000_000 },
   "claude-sonnet-4-5": { input: 3 / 1_000_000, output: 15 / 1_000_000 },
   "claude-3-5-sonnet-20241022": {
@@ -72,7 +74,7 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   "claude-3-opus-20240229": { input: 15 / 1_000_000, output: 75 / 1_000_000 }
 };
 
-const DEFAULT_MODEL = "claude-sonnet-4-5";
+const DEFAULT_MODEL = "claude-opus-4-5-20251101";
 const MAX_TURNS_DEFAULT = 50;
 
 const createAskUserQuestionTool = (ioHandler: IOHandler): ToolDefinition => ({
@@ -141,7 +143,6 @@ export class InteractiveSession extends EventEmitter {
   private inputTokens = 0;
   private outputTokens = 0;
   private turns = 0;
-  private piSession: PiAgentSession | null = null;
 
   constructor(options: InteractiveSessionOptions) {
     super();
@@ -249,8 +250,6 @@ export class InteractiveSession extends EventEmitter {
         tools: codingTools,
         customTools: [askUserTool]
       });
-
-      this.piSession = session;
 
       this.emit("started", { model: `${model!.provider}/${model!.id}` });
 

@@ -52,7 +52,7 @@ export const getDefaultConfig = (): GlobalConfig => ({
   },
   providers: {
     "claude-code": {
-      model: "claude-sonnet-4-20250514"
+      model: "claude-opus-4-5-20251101"
     }
   }
 });

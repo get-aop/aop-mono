@@ -175,51 +175,75 @@ describe("runCreateTaskCommand", () => {
   });
 
   test("runs in raw mode when -r flag is provided", async () => {
-    const projectDir = join(TEST_DIR, "raw-mode-project");
-    const devsfactoryDir = join(projectDir, ".devsfactory");
-    await mkdir(devsfactoryDir, { recursive: true });
-    await Bun.$`git -C ${projectDir} init`.quiet();
-
-    const originalCwd = process.cwd();
-    process.chdir(projectDir);
-
-    // Mock Bun.spawn for raw mode
-    const originalSpawn = Bun.spawn;
-    const mockStdout = new ReadableStream({
-      start(controller) {
-        controller.enqueue(
-          new TextEncoder().encode(
-            '{"type":"result","subtype":"success","total_cost_usd":0.01}\n'
-          )
-        );
-        controller.close();
-      }
-    });
-    const mockStderr = new ReadableStream({
-      start(controller) {
-        controller.close();
-      }
-    });
-
-    Bun.spawn = mock(() => ({
-      stdout: mockStdout,
-      stderr: mockStderr,
-      stdin: process.stdin,
-      exited: Promise.resolve(0),
-      exitCode: 0,
-      pid: 12345
-    })) as unknown as typeof Bun.spawn;
-
+    let ctx: IsolatedGlobalDirContext | undefined;
     try {
-      const result = await runCreateTaskCommand({
-        description: "Add feature",
-        raw: true
+      ctx = await createIsolatedGlobalDir("create-task-raw-mode");
+      const projectDir = join(ctx.globalDir, "..", "raw-mode-project");
+      await mkdir(projectDir, { recursive: true });
+      await Bun.$`git -C ${projectDir} init`.quiet();
+
+      // Register the project
+      const { writeFile } = await import("node:fs/promises");
+      const projectFile = join(
+        ctx.globalDir,
+        "projects",
+        "raw-mode-project.yaml"
+      );
+      await writeFile(
+        projectFile,
+        JSON.stringify({
+          name: "raw-mode-project",
+          path: projectDir,
+          gitRemote: null,
+          registered: new Date().toISOString()
+        })
+      );
+
+      const originalCwd = process.cwd();
+      process.chdir(projectDir);
+
+      // Mock Bun.spawn for raw mode
+      const originalSpawn = Bun.spawn;
+      const mockStdout = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              '{"type":"result","subtype":"success","total_cost_usd":0.01}\n'
+            )
+          );
+          controller.close();
+        }
+      });
+      const mockStderr = new ReadableStream({
+        start(controller) {
+          controller.close();
+        }
       });
 
-      expect(result.success).toBe(true);
+      Bun.spawn = mock(() => ({
+        stdout: mockStdout,
+        stderr: mockStderr,
+        stdin: process.stdin,
+        exited: Promise.resolve(0),
+        exitCode: 0,
+        pid: 12345
+      })) as unknown as typeof Bun.spawn;
+
+      try {
+        const result = await ctx.run(() =>
+          runCreateTaskCommand({
+            description: "Add feature",
+            raw: true
+          })
+        );
+
+        expect(result.success).toBe(true);
+      } finally {
+        process.chdir(originalCwd);
+        Bun.spawn = originalSpawn;
+      }
     } finally {
-      process.chdir(originalCwd);
-      Bun.spawn = originalSpawn;
+      if (ctx) await ctx.cleanup();
     }
   });
 });

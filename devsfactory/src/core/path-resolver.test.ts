@@ -39,23 +39,6 @@ describe("PathResolver", () => {
   };
 
   describe("resolvePaths", () => {
-    test("returns local mode when .devsfactory exists in cwd", async () => {
-      const projectDir = join(testRootDir, "my-local-project");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-
-      const mod = await reimportModule();
-      const result = await runInCtx(() => mod.resolvePaths(projectDir));
-
-      expect(result).not.toBeNull();
-      expect(result!.mode).toBe("local");
-      expect(result!.projectName).toBe("my-local-project");
-      expect(result!.projectRoot).toBe(projectDir);
-      expect(result!.devsfactoryDir).toBe(devsfactoryDir);
-      expect(result!.worktreesDir).toBe(join(projectDir, ".worktrees"));
-      expect(result!.brainstormDir).toBe(join(devsfactoryDir, "brainstorm"));
-    });
-
     test("returns global mode when cwd is inside a registered project", async () => {
       const projectDir = join(testRootDir, "my-global-project");
       await mkdir(projectDir, { recursive: true });
@@ -109,20 +92,6 @@ describe("PathResolver", () => {
 
       expect(result).toBeNull();
     });
-
-    test("prioritizes local mode over global when both conditions exist", async () => {
-      const projectDir = join(testRootDir, "dual-mode-project");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-
-      await createProjectFile("test-project", projectDir);
-
-      const mod = await reimportModule();
-      const result = await runInCtx(() => mod.resolvePaths(projectDir));
-
-      expect(result).not.toBeNull();
-      expect(result!.mode).toBe("local");
-    });
   });
 
   describe("resolvePathsForProject", () => {
@@ -167,17 +136,6 @@ describe("PathResolver", () => {
   });
 
   describe("isInProjectContext", () => {
-    test("returns true when in local mode project", async () => {
-      const projectDir = join(testRootDir, "local-context-project");
-      const devsfactoryDir = join(projectDir, ".devsfactory");
-      await mkdir(devsfactoryDir, { recursive: true });
-
-      const mod = await reimportModule();
-      const result = await runInCtx(() => mod.isInProjectContext(projectDir));
-
-      expect(result).toBe(true);
-    });
-
     test("returns true when in global mode project", async () => {
       const projectDir = join(testRootDir, "global-context-project");
       await mkdir(projectDir, { recursive: true });
