@@ -6,7 +6,8 @@ export const JobTypeSchema = z.enum([
   "completing-task",
   "completion-review",
   "merge",
-  "conflict-solver"
+  "conflict-solver",
+  "migrate-worktree"
 ]);
 
 export const JobStatusSchema = z.enum([
@@ -39,6 +40,7 @@ export type Job = z.infer<typeof JobSchema>;
 export type JobResult = z.infer<typeof JobResultSchema>;
 
 export const JOB_PRIORITY: Record<JobType, number> = {
+  "migrate-worktree": 50,
   "conflict-solver": 40,
   merge: 30,
   "completion-review": 25,

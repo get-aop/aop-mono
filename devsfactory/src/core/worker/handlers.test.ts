@@ -9,6 +9,7 @@ import {
   createHandlerRegistry,
   ImplementationHandler,
   MergeHandler,
+  MigrateWorktreeHandler,
   ReviewHandler
 } from "./handlers";
 
@@ -58,10 +59,16 @@ const createMockContext = (
   return {
     registry,
     worktreesDir: "/test/.worktrees",
+    repoRoot: "/test/repo",
     spawnAgent: mock(async () => ({ pid: 12345, exitCode: 0 })),
     mergeSubtask: mock(async () => ({ success: true, commitSha: "abc123" })),
     deleteWorktree: mock(async () => {}),
+    migrateWorktree: mock(async () => ({
+      success: true,
+      branchName: "task/test-task"
+    })),
     updateSubtaskStatus: mock(async () => {}),
+    updateTaskStatus: mock(async () => {}),
     ...overrides
   } as MockContext;
 };
@@ -75,7 +82,8 @@ describe("JobHandler interface", () => {
       new MergeHandler(ctx),
       new CompletingTaskHandler(ctx),
       new CompletionReviewHandler(ctx),
-      new ConflictSolverHandler(ctx)
+      new ConflictSolverHandler(ctx),
+      new MigrateWorktreeHandler(ctx)
     ];
 
     for (const handler of handlers) {
@@ -490,6 +498,99 @@ describe("ConflictSolverHandler", () => {
   });
 });
 
+describe("MigrateWorktreeHandler", () => {
+  test("migrates worktree when executed", async () => {
+    const ctx = createMockContext();
+    const handler = new MigrateWorktreeHandler(ctx);
+    const job = createMockJob({
+      type: "migrate-worktree",
+      taskFolder: "my-task"
+    });
+
+    await handler.execute(job);
+
+    expect(ctx.migrateWorktree).toHaveBeenCalledWith(
+      "/test/.worktrees/my-task"
+    );
+  });
+
+  test("updates task status to DONE after successful migration", async () => {
+    const ctx = createMockContext({
+      migrateWorktree: mock(async () => ({
+        success: true,
+        branchName: "task/my-task"
+      }))
+    });
+    const handler = new MigrateWorktreeHandler(ctx);
+    const job = createMockJob({
+      type: "migrate-worktree",
+      taskFolder: "my-task"
+    });
+
+    await handler.execute(job);
+
+    expect(ctx.updateTaskStatus).toHaveBeenCalledWith("my-task", "DONE");
+  });
+
+  test("returns success on successful migration", async () => {
+    const ctx = createMockContext({
+      migrateWorktree: mock(async () => ({
+        success: true,
+        branchName: "task/my-task"
+      }))
+    });
+    const handler = new MigrateWorktreeHandler(ctx);
+    const job = createMockJob({
+      type: "migrate-worktree",
+      taskFolder: "my-task"
+    });
+
+    const result = await handler.execute(job);
+
+    expect(result.success).toBe(true);
+    expect(result.jobId).toBe(job.id);
+  });
+
+  test("returns failure when migration fails", async () => {
+    const ctx = createMockContext({
+      migrateWorktree: mock(async () => ({
+        success: false,
+        branchName: "",
+        error: "Failed to remove worktree"
+      }))
+    });
+    const handler = new MigrateWorktreeHandler(ctx);
+    const job = createMockJob({
+      type: "migrate-worktree",
+      taskFolder: "my-task"
+    });
+
+    const result = await handler.execute(job);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Failed to remove worktree");
+  });
+
+  test("does not update task status on migration failure", async () => {
+    const ctx = createMockContext({
+      migrateWorktree: mock(async () => ({
+        success: false,
+        branchName: "",
+        error: "Failed"
+      }))
+    });
+    const handler = new MigrateWorktreeHandler(ctx);
+    const job = createMockJob({
+      type: "migrate-worktree",
+      taskFolder: "my-task"
+    });
+
+    await handler.execute(job);
+
+    expect(ctx.updateTaskStatus).not.toHaveBeenCalled();
+  });
+});
+
 describe("createHandlerRegistry", () => {
   test("returns handlers for all job types", () => {
     const ctx = createMockContext();
@@ -508,6 +609,9 @@ describe("createHandlerRegistry", () => {
     );
     expect(registry.get("conflict-solver")).toBeInstanceOf(
       ConflictSolverHandler
+    );
+    expect(registry.get("migrate-worktree")).toBeInstanceOf(
+      MigrateWorktreeHandler
     );
   });
 

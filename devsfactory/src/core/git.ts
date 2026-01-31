@@ -292,6 +292,44 @@ export const getCurrentBranch = async (
   return result.text().trim();
 };
 
+export interface MigrateWorktreeResult {
+  success: boolean;
+  branchName: string;
+  error?: string;
+}
+
+export const migrateWorktree = async (
+  repoRoot: string,
+  worktreePath: string
+): Promise<MigrateWorktreeResult> => {
+  log.info`migrateWorktree ${{ repoRoot, worktreePath }}`;
+
+  try {
+    // Get the branch name from the worktree before removing it
+    const branchName = await getCurrentBranch(worktreePath);
+
+    // Push the branch to remote to ensure work is preserved
+    try {
+      await Bun.$`git -C ${worktreePath} push -u origin ${branchName}`.quiet();
+      log.info`Pushed branch ${branchName} to remote`;
+    } catch (error) {
+      log.warn`Failed to push to remote (may not have remote configured) ${{
+        error: error instanceof Error ? error.message : String(error)
+      }}`;
+    }
+
+    // Remove the worktree but keep the branch
+    await deleteWorktree(repoRoot, worktreePath);
+
+    log.info`Worktree migrated successfully, branch ${branchName} is available in main repo`;
+    return { success: true, branchName };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    log.error`Worktree migration failed ${{ error: errorMessage }}`;
+    return { success: false, branchName: "", error: errorMessage };
+  }
+};
+
 const findBranchWorktreeConflict = async (
   cwd: string,
   branchName: string

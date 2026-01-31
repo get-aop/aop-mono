@@ -31,7 +31,9 @@ import {
   createTaskWorktree as gitCreateTaskWorktree,
   deleteWorktree as gitDeleteWorktree,
   mergeSubtaskIntoTask as gitMergeSubtaskIntoTask,
-  type MergeResult
+  migrateWorktree as gitMigrateWorktree,
+  type MergeResult,
+  type MigrateWorktreeResult
 } from "./git";
 import { SdkAgentRunner } from "./sdk-agent-runner";
 
@@ -57,13 +59,18 @@ export interface GitOperations {
     worktreesDir?: string,
     customTaskBranch?: string
   ) => Promise<MergeResult>;
+  migrateWorktree: (
+    repoRoot: string,
+    worktreePath: string
+  ) => Promise<MigrateWorktreeResult>;
 }
 
 const defaultGitOps: GitOperations = {
   createTaskWorktree: gitCreateTaskWorktree,
   createSubtaskWorktree: gitCreateSubtaskWorktree,
   deleteWorktree: gitDeleteWorktree,
-  mergeSubtaskIntoTask: gitMergeSubtaskIntoTask
+  mergeSubtaskIntoTask: gitMergeSubtaskIntoTask,
+  migrateWorktree: gitMigrateWorktree
 };
 
 import type { AgentRegistry, RunningAgent } from "./interfaces/agent-registry";
@@ -134,6 +141,7 @@ export class Orchestrator extends EventEmitter {
     const handlerContext: HandlerContext = {
       registry: this.registry,
       worktreesDir: this.config.worktreesDir,
+      repoRoot: this.getRepoRoot(),
       spawnAgent: async (opts) => {
         const prompt = await this.getPromptForJob(
           opts.type,
@@ -174,13 +182,17 @@ export class Orchestrator extends EventEmitter {
       },
       deleteWorktree: (path) =>
         this.gitOps.deleteWorktree(this.getRepoRoot(), path),
+      migrateWorktree: (path) =>
+        this.gitOps.migrateWorktree(this.getRepoRoot(), path),
       updateSubtaskStatus: (taskFolder, subtaskFile, status) =>
         parserUpdateSubtaskStatus(
           taskFolder,
           subtaskFile,
           status,
           this.config.devsfactoryDir
-        )
+        ),
+      updateTaskStatus: (taskFolder, status) =>
+        updateTaskStatus(taskFolder, status, this.config.devsfactoryDir)
     };
 
     this.worker = new JobWorker(

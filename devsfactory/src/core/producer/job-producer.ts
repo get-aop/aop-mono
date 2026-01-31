@@ -17,6 +17,7 @@ export class JobProducer {
     log.debug(`Producing from state: ${state.tasks.length} tasks`);
     await this.processSubtasks(state);
     await this.processPlans(state);
+    await this.processReviewTasks(state);
   }
 
   private async processSubtasks(state: OrchestratorState): Promise<void> {
@@ -96,6 +97,15 @@ export class JobProducer {
           continue;
         await this.enqueueTaskJob("completing-task", task.folder);
       }
+    }
+  }
+
+  private async processReviewTasks(state: OrchestratorState): Promise<void> {
+    for (const task of state.tasks) {
+      if (task.frontmatter.status !== "REVIEW") continue;
+
+      log.info(`Task ${task.folder} is in REVIEW status, enqueueing migration`);
+      await this.enqueueTaskJob("migrate-worktree", task.folder);
     }
   }
 

@@ -66,6 +66,9 @@ const createMockGitOps = () => ({
   deleteWorktree: mock(() => Promise.resolve()),
   mergeSubtaskIntoTask: mock(() =>
     Promise.resolve({ success: true, commitSha: "abc123" })
+  ),
+  migrateWorktree: mock(() =>
+    Promise.resolve({ success: true, branchName: "task/test-task" })
   )
 });
 
@@ -621,6 +624,9 @@ describe("Orchestrator", () => {
           deleteWorktree: mock(() => Promise.resolve()),
           mergeSubtaskIntoTask: mock(() =>
             Promise.resolve({ success: true, commitSha: "abc123" })
+          ),
+          migrateWorktree: mock(() =>
+            Promise.resolve({ success: true, branchName: "task/test-task" })
           )
         };
 
@@ -866,6 +872,9 @@ describe("Orchestrator", () => {
           deleteWorktree: mock(() => Promise.resolve()),
           mergeSubtaskIntoTask: mock(() =>
             Promise.resolve({ success: true, commitSha: "abc123" })
+          ),
+          migrateWorktree: mock(() =>
+            Promise.resolve({ success: true, branchName: "task/test-task" })
           )
         };
 
@@ -1822,6 +1831,9 @@ Test
           deleteWorktree: mock(() => Promise.resolve()),
           mergeSubtaskIntoTask: mock(() =>
             Promise.resolve({ success: true, commitSha: "abc123" })
+          ),
+          migrateWorktree: mock(() =>
+            Promise.resolve({ success: true, branchName: "task/test-task" })
           )
         };
 
@@ -2367,6 +2379,9 @@ Test
         deleteWorktree: mock(() => Promise.resolve()),
         mergeSubtaskIntoTask: mock(() =>
           Promise.resolve({ success: true, commitSha: "abc123" })
+        ),
+        migrateWorktree: mock(() =>
+          Promise.resolve({ success: true, branchName: "task/test-task" })
         )
       };
 
@@ -2412,6 +2427,9 @@ Test
         deleteWorktree: mock(() => Promise.resolve()),
         mergeSubtaskIntoTask: mock(() =>
           Promise.resolve({ success: true, commitSha: "abc123" })
+        ),
+        migrateWorktree: mock(() =>
+          Promise.resolve({ success: true, branchName: "task/test-task" })
         )
       };
 
@@ -2456,7 +2474,10 @@ Test
         createTaskWorktree: mock(() => Promise.resolve("/path")),
         createSubtaskWorktree: mock(() => Promise.resolve("/path")),
         deleteWorktree: mock(() => Promise.resolve()),
-        mergeSubtaskIntoTask: mergeSubtaskMock
+        mergeSubtaskIntoTask: mergeSubtaskMock,
+        migrateWorktree: mock(() =>
+          Promise.resolve({ success: true, branchName: "task/test-task" })
+        )
       };
 
       const orchestrator = new Orchestrator(

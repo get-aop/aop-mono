@@ -8,6 +8,7 @@ export {
   ImplementationHandler,
   type JobHandler,
   MergeHandler,
+  MigrateWorktreeHandler,
   ReviewHandler,
   type SpawnResult
 } from "./handlers";

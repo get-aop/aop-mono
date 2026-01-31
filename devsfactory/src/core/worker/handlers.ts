@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import type { AgentType, SubtaskStatus } from "../../types";
-import type { MergeResult } from "../git";
+import type { AgentType, SubtaskStatus, TaskStatus } from "../../types";
+import type { MergeResult, MigrateWorktreeResult } from "../git";
 import type { AgentRegistry, RunningAgent } from "../interfaces/agent-registry";
 import type { Job, JobResult, JobType } from "../types/job";
 
@@ -12,6 +12,7 @@ export interface SpawnResult {
 export interface HandlerContext {
   registry: AgentRegistry;
   worktreesDir: string;
+  repoRoot: string;
   spawnAgent: (options: {
     type: AgentType;
     taskFolder: string;
@@ -23,11 +24,13 @@ export interface HandlerContext {
     subtaskSlug: string
   ) => Promise<MergeResult>;
   deleteWorktree: (worktreePath: string) => Promise<void>;
+  migrateWorktree: (worktreePath: string) => Promise<MigrateWorktreeResult>;
   updateSubtaskStatus: (
     taskFolder: string,
     subtaskFile: string,
     status: SubtaskStatus
   ) => Promise<void>;
+  updateTaskStatus: (taskFolder: string, status: TaskStatus) => Promise<void>;
 }
 
 export interface JobHandler {
@@ -205,6 +208,27 @@ export class ConflictSolverHandler extends BaseAgentHandler {
   }
 }
 
+export class MigrateWorktreeHandler implements JobHandler {
+  constructor(private ctx: HandlerContext) {}
+
+  async execute(job: Job): Promise<JobResult> {
+    const worktreePath = getTaskWorktreePath(
+      this.ctx.worktreesDir,
+      job.taskFolder
+    );
+
+    const result = await this.ctx.migrateWorktree(worktreePath);
+
+    if (result.success) {
+      // Update task status to DONE after successful migration
+      await this.ctx.updateTaskStatus(job.taskFolder, "DONE");
+      return { jobId: job.id, success: true };
+    }
+
+    return { jobId: job.id, success: false, error: result.error };
+  }
+}
+
 export interface HandlerRegistry {
   get(type: JobType): JobHandler | undefined;
 }
@@ -216,7 +240,8 @@ export const createHandlerRegistry = (ctx: HandlerContext): HandlerRegistry => {
     ["merge", new MergeHandler(ctx)],
     ["completing-task", new CompletingTaskHandler(ctx)],
     ["completion-review", new CompletionReviewHandler(ctx)],
-    ["conflict-solver", new ConflictSolverHandler(ctx)]
+    ["conflict-solver", new ConflictSolverHandler(ctx)],
+    ["migrate-worktree", new MigrateWorktreeHandler(ctx)]
   ]);
 
   return {

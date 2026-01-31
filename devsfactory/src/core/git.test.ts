@@ -12,7 +12,8 @@ import {
   getMainBranch,
   isGitRepo,
   listWorktrees,
-  mergeSubtaskIntoTask
+  mergeSubtaskIntoTask,
+  migrateWorktree
 } from "./git";
 
 describe("Git Worktree Manager", () => {
@@ -643,6 +644,53 @@ describe("Git Worktree Manager", () => {
         ).exists();
         expect(fileExists).toBe(true);
       });
+    });
+  });
+
+  describe("migrateWorktree", () => {
+    test("removes worktree but keeps branch available", async () => {
+      const taskFolder = "20260131-migrate-test";
+      const worktreePath = await createTaskWorktree(gitRepoDir, taskFolder);
+
+      const branchName = `task/${taskFolder}`;
+      const branchExistsBefore = await checkBranchExists(
+        gitRepoDir,
+        branchName
+      );
+      expect(branchExistsBefore).toBe(true);
+
+      const result = await migrateWorktree(gitRepoDir, worktreePath);
+
+      expect(result.success).toBe(true);
+      expect(result.branchName).toBe(branchName);
+
+      const worktreeExists = await checkWorktreeExists(
+        gitRepoDir,
+        worktreePath
+      );
+      expect(worktreeExists).toBe(false);
+
+      const branchExistsAfter = await checkBranchExists(gitRepoDir, branchName);
+      expect(branchExistsAfter).toBe(true);
+    });
+
+    test("returns branch name on success", async () => {
+      const taskFolder = "20260131-migrate-branch-name";
+      const worktreePath = await createTaskWorktree(gitRepoDir, taskFolder);
+
+      const result = await migrateWorktree(gitRepoDir, worktreePath);
+
+      expect(result.success).toBe(true);
+      expect(result.branchName).toBe(`task/${taskFolder}`);
+    });
+
+    test("returns error when worktree does not exist", async () => {
+      const nonExistentPath = join(gitRepoDir, ".worktrees", "non-existent");
+
+      const result = await migrateWorktree(gitRepoDir, nonExistentPath);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
     });
   });
 });
