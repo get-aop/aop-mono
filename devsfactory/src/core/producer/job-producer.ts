@@ -1,8 +1,11 @@
+import { getLogger } from "../../infra/logger";
 import type { OrchestratorState, Subtask } from "../../types";
 import type { AgentRegistry } from "../interfaces/agent-registry";
 import type { JobQueue } from "../interfaces/job-queue";
 import type { Job, JobType } from "../types/job";
 import { getJobKey, JOB_PRIORITY } from "../types/job";
+
+const log = getLogger("job-producer");
 
 export class JobProducer {
   constructor(
@@ -11,6 +14,7 @@ export class JobProducer {
   ) {}
 
   async produceFromState(state: OrchestratorState): Promise<void> {
+    log.debug(`Producing from state: ${state.tasks.length} tasks`);
     await this.processSubtasks(state);
     await this.processPlans(state);
   }
@@ -34,14 +38,25 @@ export class JobProducer {
     const { status } = subtask.frontmatter;
     const { filename } = subtask;
 
+    log.debug(`Processing subtask ${filename} with status ${status}`);
+
     switch (status) {
       case "PENDING":
-        if (!this.areDependenciesSatisfied(subtask, allSubtasks)) return;
+        if (!this.areDependenciesSatisfied(subtask, allSubtasks)) {
+          log.debug(`Subtask ${filename} dependencies not satisfied`);
+          return;
+        }
+        log.info(`Enqueueing implementation job for ${filename}`);
         await this.enqueueSubtaskJob("implementation", taskFolder, filename);
         break;
       case "INPROGRESS":
-        if (await this.hasRunningAgent(taskFolder, filename, "implementation"))
+        if (
+          await this.hasRunningAgent(taskFolder, filename, "implementation")
+        ) {
+          log.debug(`Subtask ${filename} already has running agent`);
           return;
+        }
+        log.info(`Enqueueing implementation job for INPROGRESS ${filename}`);
         await this.enqueueSubtaskJob("implementation", taskFolder, filename);
         break;
       case "AGENT_REVIEW":
@@ -116,7 +131,13 @@ export class JobProducer {
 
   private async enqueueIfNew(job: Job): Promise<void> {
     const key = getJobKey(job);
-    if (await this.queue.has(key)) return;
+    if (await this.queue.has(key)) {
+      log.debug(`Job ${key} already in queue`);
+      return;
+    }
+    log.info(
+      `Enqueued job: ${job.type} for ${job.taskFolder}/${job.subtaskFile ?? "task"}`
+    );
     await this.queue.enqueue(job);
   }
 

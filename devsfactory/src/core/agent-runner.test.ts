@@ -289,4 +289,144 @@ describe("AgentRunner", () => {
       // Just verify no unhandled exceptions
     });
   });
+
+  describe("global mode support (taskDir and projectRoot)", () => {
+    test("sets AOP_TASK_DIR environment variable when taskDir provided", async () => {
+      const outputs: string[] = [];
+      runner.on("output", (data: { agentId: string; line: string }) => {
+        outputs.push(data.line);
+      });
+
+      const taskDir = "/home/user/.aop/tasks/my-project";
+      const process = await runner.spawn({
+        type: "implementation",
+        taskFolder: "test-task",
+        prompt: "test",
+        cwd: tempDir,
+        taskDir,
+        provider: new TestProvider(["sh", "-c", "echo $AOP_TASK_DIR"])
+      });
+
+      await new Promise<void>((resolve) => {
+        runner.on("completed", (data: { agentId: string }) => {
+          if (data.agentId === process.id) resolve();
+        });
+      });
+
+      expect(outputs).toContain(taskDir);
+    });
+
+    test("sets AOP_PROJECT_ROOT environment variable when projectRoot provided", async () => {
+      const outputs: string[] = [];
+      runner.on("output", (data: { agentId: string; line: string }) => {
+        outputs.push(data.line);
+      });
+
+      const projectRoot = "/home/user/projects/my-project";
+      const process = await runner.spawn({
+        type: "implementation",
+        taskFolder: "test-task",
+        prompt: "test",
+        cwd: tempDir,
+        projectRoot,
+        provider: new TestProvider(["sh", "-c", "echo $AOP_PROJECT_ROOT"])
+      });
+
+      await new Promise<void>((resolve) => {
+        runner.on("completed", (data: { agentId: string }) => {
+          if (data.agentId === process.id) resolve();
+        });
+      });
+
+      expect(outputs).toContain(projectRoot);
+    });
+
+    test("sets both AOP_TASK_DIR and AOP_PROJECT_ROOT when both provided", async () => {
+      const outputs: string[] = [];
+      runner.on("output", (data: { agentId: string; line: string }) => {
+        outputs.push(data.line);
+      });
+
+      const taskDir = "/home/user/.aop/tasks/my-project";
+      const projectRoot = "/home/user/projects/my-project";
+      const process = await runner.spawn({
+        type: "implementation",
+        taskFolder: "test-task",
+        prompt: "test",
+        cwd: tempDir,
+        taskDir,
+        projectRoot,
+        provider: new TestProvider([
+          "sh",
+          "-c",
+          "echo TASK:$AOP_TASK_DIR && echo ROOT:$AOP_PROJECT_ROOT"
+        ])
+      });
+
+      await new Promise<void>((resolve) => {
+        runner.on("completed", (data: { agentId: string }) => {
+          if (data.agentId === process.id) resolve();
+        });
+      });
+
+      expect(outputs).toContain(`TASK:${taskDir}`);
+      expect(outputs).toContain(`ROOT:${projectRoot}`);
+    });
+
+    test("does not set AOP_TASK_DIR when taskDir not provided (backward compatible)", async () => {
+      const outputs: string[] = [];
+      runner.on("output", (data: { agentId: string; line: string }) => {
+        outputs.push(data.line);
+      });
+
+      const process = await runner.spawn({
+        type: "implementation",
+        taskFolder: "test-task",
+        prompt: "test",
+        cwd: tempDir,
+        provider: new TestProvider([
+          "sh",
+          "-c",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: Shell variable expansion syntax
+          "echo TASK:${AOP_TASK_DIR:-unset}"
+        ])
+      });
+
+      await new Promise<void>((resolve) => {
+        runner.on("completed", (data: { agentId: string }) => {
+          if (data.agentId === process.id) resolve();
+        });
+      });
+
+      expect(outputs).toContain("TASK:unset");
+    });
+
+    test("does not set AOP_PROJECT_ROOT when projectRoot not provided (backward compatible)", async () => {
+      const outputs: string[] = [];
+      runner.on("output", (data: { agentId: string; line: string }) => {
+        outputs.push(data.line);
+      });
+
+      const process = await runner.spawn({
+        type: "implementation",
+        taskFolder: "test-task",
+        prompt: "test",
+        cwd: tempDir,
+        provider: new TestProvider([
+          "sh",
+          "-c",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: Shell variable expansion syntax
+          "echo ROOT:${AOP_PROJECT_ROOT:-unset}"
+        ])
+      });
+
+      await new Promise<void>((resolve) => {
+        runner.on("completed", (data: { agentId: string }) => {
+          if (data.agentId === process.id) resolve();
+        });
+      });
+
+      expect(outputs).toContain("ROOT:unset");
+    });
+  });
 });

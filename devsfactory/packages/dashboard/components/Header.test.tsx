@@ -48,13 +48,13 @@ describe("Header with store", () => {
 
   test("shows debug mode as off by default", () => {
     const { container } = renderWithStore();
-    const button = container.querySelector("button");
+    const button = container.querySelector(".debug-toggle");
     expect(button?.className).not.toContain("active");
   });
 
   test("toggles debug mode on click", () => {
     const { container } = renderWithStore();
-    const button = container.querySelector("button");
+    const button = container.querySelector(".debug-toggle");
 
     fireEvent.click(button!);
     expect(store.getState().debugMode).toBe(true);
@@ -66,7 +66,7 @@ describe("Header with store", () => {
   test("shows debug button as active when debug mode is on", () => {
     store.getState().toggleDebugMode();
     const { container } = renderWithStore();
-    const button = container.querySelector("button");
+    const button = container.querySelector(".debug-toggle");
     expect(button?.className).toContain("active");
   });
 });

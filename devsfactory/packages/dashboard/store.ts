@@ -5,6 +5,7 @@ import type {
   BrainstormDraft,
   BrainstormMessage,
   Plan,
+  ProjectListItem,
   ServerEvent,
   Subtask,
   SubtaskPreview,
@@ -60,7 +61,21 @@ export interface BrainstormActions {
   deleteDraft(sessionId: string): Promise<void>;
 }
 
-export interface DashboardStore extends BrainstormActions {
+export interface ProjectState {
+  projects: ProjectListItem[];
+  projectsLoading: boolean;
+  projectsError: string | null;
+  currentProject: string | null;
+  isGlobalMode: boolean;
+}
+
+export interface ProjectActions {
+  loadProjects(): Promise<void>;
+  selectProject(projectName: string): void;
+  selectAllProjects(): void;
+}
+
+export interface DashboardStore extends BrainstormActions, ProjectActions {
   tasks: Task[];
   plans: Record<string, Plan>;
   subtasks: Record<string, Subtask[]>;
@@ -78,6 +93,7 @@ export interface DashboardStore extends BrainstormActions {
   subtaskLogsLoading: boolean;
 
   brainstorm: BrainstormState;
+  project: ProjectState;
 
   updateFromServer: (event: ServerEvent) => void;
   selectTask: (folder: string | null) => void;
@@ -114,6 +130,7 @@ export interface DashboardStoreInitialState {
   subtaskLogs?: string[];
   subtaskLogsLoading?: boolean;
   brainstorm?: Partial<BrainstormState>;
+  project?: Partial<ProjectState>;
 }
 
 const MAX_OUTPUT_LINES = 1000;
@@ -132,6 +149,14 @@ const defaultBrainstormState: BrainstormState = {
   isModalOpen: false,
   currentStep: "drafts",
   error: null
+};
+
+const defaultProjectState: ProjectState = {
+  projects: [],
+  projectsLoading: false,
+  projectsError: null,
+  currentProject: null,
+  isGlobalMode: false
 };
 
 export const createDashboardStore = (
@@ -160,6 +185,56 @@ export const createDashboardStore = (
     brainstorm: {
       ...defaultBrainstormState,
       ...initialState?.brainstorm
+    },
+
+    project: {
+      ...defaultProjectState,
+      ...initialState?.project
+    },
+
+    loadProjects: async () => {
+      set((state) => ({
+        project: { ...state.project, projectsLoading: true, projectsError: null }
+      }));
+
+      try {
+        const { projects, isGlobalMode } = await client.fetchProjects();
+        set((state) => ({
+          project: {
+            ...state.project,
+            projects,
+            isGlobalMode,
+            projectsLoading: false
+          }
+        }));
+      } catch (error) {
+        set((state) => ({
+          project: {
+            ...state.project,
+            projectsLoading: false,
+            projectsError:
+              error instanceof Error ? error.message : "Failed to load projects"
+          }
+        }));
+      }
+    },
+
+    selectProject: (projectName) => {
+      set((state) => ({
+        project: { ...state.project, currentProject: projectName },
+        selectedTask: null,
+        selectedSubtask: null,
+        subtaskLogs: []
+      }));
+    },
+
+    selectAllProjects: () => {
+      set((state) => ({
+        project: { ...state.project, currentProject: null },
+        selectedTask: null,
+        selectedSubtask: null,
+        subtaskLogs: []
+      }));
     },
 
     selectTask: (folder) =>

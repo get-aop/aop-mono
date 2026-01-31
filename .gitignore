@@ -7,3 +7,4 @@ tmp/
 
 **/*.local*
 .aop
+link-claude.sh

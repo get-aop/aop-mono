@@ -11,6 +11,8 @@ export interface SpawnOptions {
   subtaskFile?: string;
   prompt: string;
   cwd: string;
+  taskDir?: string;
+  projectRoot?: string;
   provider: LLMProvider;
   extraArgs?: string[];
   logsDir?: string;
@@ -35,8 +37,17 @@ export class AgentRunner extends EventEmitter {
       extraArgs: options.extraArgs
     });
 
+    const env: Record<string, string | undefined> = { ...process.env };
+    if (options.taskDir) {
+      env.AOP_TASK_DIR = options.taskDir;
+    }
+    if (options.projectRoot) {
+      env.AOP_PROJECT_ROOT = options.projectRoot;
+    }
+
     const subprocess = Bun.spawn(command, {
       cwd: options.cwd,
+      env,
       stdout: "pipe",
       stderr: "pipe"
     });

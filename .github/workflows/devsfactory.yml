@@ -60,6 +60,9 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 

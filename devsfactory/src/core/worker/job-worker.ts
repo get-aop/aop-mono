@@ -1,7 +1,10 @@
 import { EventEmitter } from "node:events";
+import { getLogger } from "../../infra/logger";
 import type { AgentRegistryEmitter } from "../interfaces/agent-registry";
 import type { JobQueueEmitter } from "../interfaces/job-queue";
 import type { HandlerRegistry } from "./handlers";
+
+const log = getLogger("job-worker");
 
 export interface JobWorkerConfig {
   maxConcurrentAgents: number;
@@ -53,13 +56,26 @@ export class JobWorker extends EventEmitter {
   private async processNext(): Promise<void> {
     if (!this.running) return;
 
-    if (this.processing >= this.config.maxConcurrentAgents) return;
+    if (this.processing >= this.config.maxConcurrentAgents) {
+      log.debug(
+        `At max capacity (${this.processing}/${this.config.maxConcurrentAgents})`
+      );
+      return;
+    }
 
     const job = await this.queue.dequeue();
-    if (!job) return;
+    if (!job) {
+      log.debug("No jobs in queue");
+      return;
+    }
+
+    log.info(
+      `Processing job: ${job.type} for ${job.taskFolder}/${job.subtaskFile ?? "task"}`
+    );
 
     const handler = this.handlers.get(job.type);
     if (!handler) {
+      log.error(`No handler for job type: ${job.type}`);
       await this.queue.ack(job.id);
       return;
     }
@@ -67,6 +83,7 @@ export class JobWorker extends EventEmitter {
     this.processing++;
     const startedAt = Date.now();
     try {
+      log.info(`Executing handler for ${job.type}`);
       const result = await handler.execute(job);
 
       if (result.success) {

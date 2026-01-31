@@ -7,7 +7,7 @@ export const NewTaskButton = () => {
   );
 
   return (
-    <button type="button" className="new-task-button" onClick={openModal}>
+    <button type="button" className="create-task-button" onClick={openModal}>
       + New Task
       {hasActiveDrafts && <span className="draft-indicator" />}
     </button>

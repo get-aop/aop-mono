@@ -11,6 +11,10 @@ import {
   type BrainstormSessionStatus,
   BrainstormSessionStatusSchema,
   ConfigSchema,
+  type GlobalConfig,
+  GlobalConfigSchema,
+  type OperationMode,
+  OperationModeSchema,
   OrchestratorStateSchema,
   PhaseTimingsSchema,
   PlanFrontmatterSchema,
@@ -19,6 +23,12 @@ import {
   PlanStatusSchema,
   type Priority,
   PrioritySchema,
+  type ProjectConfig,
+  ProjectConfigSchema,
+  type ProviderConfig,
+  ProviderConfigSchema,
+  type ResolvedPaths,
+  ResolvedPathsSchema,
   SubtaskFrontmatterSchema,
   SubtaskPreviewSchema,
   SubtaskReferenceSchema,
@@ -1328,5 +1338,396 @@ describe("Extended Frontmatter Schemas with Timing", () => {
       expect(result.timing?.durationMs).toBeNull();
       expect(result.timing?.phases.implementation).toBeNull();
     });
+  });
+});
+
+describe("Global Configuration Schemas", () => {
+  describe("OperationModeSchema", () => {
+    test("accepts valid values", () => {
+      const validModes: OperationMode[] = ["local", "global"];
+      for (const mode of validModes) {
+        expect(OperationModeSchema.parse(mode)).toBe(mode);
+      }
+    });
+
+    test("rejects invalid values", () => {
+      expect(() => OperationModeSchema.parse("hybrid")).toThrow();
+      expect(() => OperationModeSchema.parse("")).toThrow();
+      expect(() => OperationModeSchema.parse(123)).toThrow();
+    });
+  });
+
+  describe("ProviderConfigSchema", () => {
+    test("parses with all fields", () => {
+      const input = {
+        model: "claude-3-opus",
+        apiKey: "sk-test-key",
+        env: {
+          CUSTOM_VAR: "value1",
+          ANOTHER_VAR: "value2"
+        }
+      };
+
+      const result = ProviderConfigSchema.parse(input);
+
+      expect(result.model).toBe("claude-3-opus");
+      expect(result.apiKey).toBe("sk-test-key");
+      expect(result.env).toEqual({
+        CUSTOM_VAR: "value1",
+        ANOTHER_VAR: "value2"
+      });
+    });
+
+    test("parses with only model", () => {
+      const input = {
+        model: "gpt-4"
+      };
+
+      const result = ProviderConfigSchema.parse(input);
+
+      expect(result.model).toBe("gpt-4");
+      expect(result.apiKey).toBeUndefined();
+      expect(result.env).toBeUndefined();
+    });
+
+    test("parses with empty object", () => {
+      const result = ProviderConfigSchema.parse({});
+
+      expect(result.model).toBeUndefined();
+      expect(result.apiKey).toBeUndefined();
+      expect(result.env).toBeUndefined();
+    });
+
+    test("parses with only env", () => {
+      const input = {
+        env: { API_ENDPOINT: "https://example.com" }
+      };
+
+      const result = ProviderConfigSchema.parse(input);
+
+      expect(result.env).toEqual({ API_ENDPOINT: "https://example.com" });
+    });
+  });
+
+  describe("GlobalConfigSchema", () => {
+    test("parses with all fields", () => {
+      const input = {
+        version: 1,
+        defaults: {
+          maxConcurrentAgents: 5,
+          debounceMs: 200
+        },
+        providers: {
+          claude: {
+            model: "claude-3-opus",
+            apiKey: "sk-test"
+          },
+          openai: {
+            model: "gpt-4"
+          }
+        }
+      };
+
+      const result = GlobalConfigSchema.parse(input);
+
+      expect(result.version).toBe(1);
+      expect(result.defaults.maxConcurrentAgents).toBe(5);
+      expect(result.defaults.debounceMs).toBe(200);
+      expect(result.providers.claude?.model).toBe("claude-3-opus");
+      expect(result.providers.openai?.model).toBe("gpt-4");
+    });
+
+    test("applies default version of 1", () => {
+      const input = {
+        defaults: {},
+        providers: {}
+      };
+
+      const result = GlobalConfigSchema.parse(input);
+
+      expect(result.version).toBe(1);
+    });
+
+    test("applies empty defaults for missing fields", () => {
+      const input = {
+        version: 1
+      };
+
+      const result = GlobalConfigSchema.parse(input);
+
+      expect(result.defaults).toEqual({});
+      expect(result.providers).toEqual({});
+    });
+
+    test("parses with partial defaults from ConfigSchema", () => {
+      const input = {
+        version: 1,
+        defaults: {
+          maxConcurrentAgents: 10,
+          retryBackoff: {
+            initialMs: 5000,
+            maxMs: 600000,
+            maxAttempts: 10
+          }
+        },
+        providers: {}
+      };
+
+      const result = GlobalConfigSchema.parse(input);
+
+      expect(result.defaults.maxConcurrentAgents).toBe(10);
+      expect(result.defaults.retryBackoff?.initialMs).toBe(5000);
+      expect(result.defaults.retryBackoff?.maxMs).toBe(600000);
+      expect(result.defaults.retryBackoff?.maxAttempts).toBe(10);
+    });
+
+    test("parses empty object with all defaults", () => {
+      const result = GlobalConfigSchema.parse({});
+
+      expect(result.version).toBe(1);
+      expect(result.defaults).toEqual({});
+      expect(result.providers).toEqual({});
+    });
+
+    test("validates version is a number", () => {
+      expect(() =>
+        GlobalConfigSchema.parse({
+          version: "1"
+        })
+      ).toThrow();
+    });
+  });
+
+  describe("ProjectConfigSchema", () => {
+    test("parses with all fields", () => {
+      const input = {
+        name: "my-project",
+        path: "/home/user/projects/my-project",
+        gitRemote: "git@github.com:user/my-project.git",
+        registered: "2026-01-28T10:00:00Z",
+        settings: {
+          maxConcurrentAgents: 2,
+          dashboardPort: 3001
+        },
+        providers: {
+          claude: {
+            apiKey: "project-specific-key"
+          }
+        }
+      };
+
+      const result = ProjectConfigSchema.parse(input);
+
+      expect(result.name).toBe("my-project");
+      expect(result.path).toBe("/home/user/projects/my-project");
+      expect(result.gitRemote).toBe("git@github.com:user/my-project.git");
+      expect(result.registered).toBeInstanceOf(Date);
+      expect(result.settings?.maxConcurrentAgents).toBe(2);
+      expect(result.providers?.claude?.apiKey).toBe("project-specific-key");
+    });
+
+    test("parses with required fields only", () => {
+      const input = {
+        name: "minimal-project",
+        path: "/home/user/minimal",
+        gitRemote: null,
+        registered: "2026-01-28T10:00:00Z"
+      };
+
+      const result = ProjectConfigSchema.parse(input);
+
+      expect(result.name).toBe("minimal-project");
+      expect(result.path).toBe("/home/user/minimal");
+      expect(result.gitRemote).toBeNull();
+      expect(result.registered).toBeInstanceOf(Date);
+      expect(result.settings).toBeUndefined();
+      expect(result.providers).toBeUndefined();
+    });
+
+    test("coerces date from ISO string", () => {
+      const input = {
+        name: "date-test",
+        path: "/test",
+        gitRemote: null,
+        registered: "2026-06-15T14:30:00Z"
+      };
+
+      const result = ProjectConfigSchema.parse(input);
+
+      expect(result.registered).toBeInstanceOf(Date);
+      expect(result.registered.toISOString()).toBe("2026-06-15T14:30:00.000Z");
+    });
+
+    test("accepts Date object directly for registered", () => {
+      const date = new Date("2026-01-28T10:00:00Z");
+      const input = {
+        name: "date-object-test",
+        path: "/test",
+        gitRemote: null,
+        registered: date
+      };
+
+      const result = ProjectConfigSchema.parse(input);
+
+      expect(result.registered.getTime()).toBe(date.getTime());
+    });
+
+    test("accepts null gitRemote", () => {
+      const input = {
+        name: "no-remote",
+        path: "/local/project",
+        gitRemote: null,
+        registered: "2026-01-28T10:00:00Z"
+      };
+
+      const result = ProjectConfigSchema.parse(input);
+
+      expect(result.gitRemote).toBeNull();
+    });
+
+    test("rejects missing required fields", () => {
+      expect(() => ProjectConfigSchema.parse({})).toThrow();
+      expect(() =>
+        ProjectConfigSchema.parse({
+          name: "incomplete"
+        })
+      ).toThrow();
+      expect(() =>
+        ProjectConfigSchema.parse({
+          name: "incomplete",
+          path: "/test"
+        })
+      ).toThrow();
+    });
+
+    test("parses with partial settings - overrides are applied", () => {
+      const input = {
+        name: "partial-settings",
+        path: "/test",
+        gitRemote: "https://github.com/user/repo",
+        registered: "2026-01-28T10:00:00Z",
+        settings: {
+          debounceMs: 500
+        }
+      };
+
+      const result = ProjectConfigSchema.parse(input);
+
+      expect(result.settings?.debounceMs).toBe(500);
+    });
+  });
+
+  describe("ResolvedPathsSchema", () => {
+    test("parses local mode paths", () => {
+      const input = {
+        mode: "local",
+        projectName: "my-project",
+        projectRoot: "/home/user/projects/my-project",
+        devsfactoryDir: "/home/user/projects/my-project/.devsfactory",
+        worktreesDir: "/home/user/projects/my-project/.worktrees",
+        brainstormDir: "/home/user/projects/my-project/.devsfactory/brainstorm"
+      };
+
+      const result = ResolvedPathsSchema.parse(input);
+
+      expect(result.mode).toBe("local");
+      expect(result.projectName).toBe("my-project");
+      expect(result.projectRoot).toBe("/home/user/projects/my-project");
+      expect(result.devsfactoryDir).toBe(
+        "/home/user/projects/my-project/.devsfactory"
+      );
+      expect(result.worktreesDir).toBe(
+        "/home/user/projects/my-project/.worktrees"
+      );
+      expect(result.brainstormDir).toBe(
+        "/home/user/projects/my-project/.devsfactory/brainstorm"
+      );
+    });
+
+    test("parses global mode paths", () => {
+      const input = {
+        mode: "global",
+        projectName: "my-project",
+        projectRoot: "/home/user/projects/my-project",
+        devsfactoryDir: "/home/user/.aop/tasks/my-project",
+        worktreesDir: "/home/user/.aop/worktrees/my-project",
+        brainstormDir: "/home/user/.aop/brainstorm/my-project"
+      };
+
+      const result = ResolvedPathsSchema.parse(input);
+
+      expect(result.mode).toBe("global");
+      expect(result.projectName).toBe("my-project");
+      expect(result.projectRoot).toBe("/home/user/projects/my-project");
+      expect(result.devsfactoryDir).toBe("/home/user/.aop/tasks/my-project");
+      expect(result.worktreesDir).toBe("/home/user/.aop/worktrees/my-project");
+      expect(result.brainstormDir).toBe(
+        "/home/user/.aop/brainstorm/my-project"
+      );
+    });
+
+    test("rejects invalid mode", () => {
+      const input = {
+        mode: "hybrid",
+        projectName: "test",
+        projectRoot: "/test",
+        devsfactoryDir: "/test/.devsfactory",
+        worktreesDir: "/test/.worktrees",
+        brainstormDir: "/test/.devsfactory/brainstorm"
+      };
+
+      expect(() => ResolvedPathsSchema.parse(input)).toThrow();
+    });
+
+    test("rejects missing required fields", () => {
+      expect(() => ResolvedPathsSchema.parse({})).toThrow();
+      expect(() =>
+        ResolvedPathsSchema.parse({
+          mode: "local"
+        })
+      ).toThrow();
+      expect(() =>
+        ResolvedPathsSchema.parse({
+          mode: "local",
+          projectName: "test",
+          projectRoot: "/test"
+        })
+      ).toThrow();
+    });
+  });
+});
+
+describe("Global Configuration Type Exports", () => {
+  test("exported global config types are correctly inferred", () => {
+    const mode: OperationMode = "global";
+    const providerConfig: ProviderConfig = {
+      model: "claude-3-opus",
+      apiKey: "test-key"
+    };
+    const globalConfig: GlobalConfig = {
+      version: 1,
+      defaults: { maxConcurrentAgents: 5 },
+      providers: { claude: providerConfig }
+    };
+    const projectConfig: ProjectConfig = {
+      name: "test",
+      path: "/test",
+      gitRemote: null,
+      registered: new Date()
+    };
+    const resolvedPaths: ResolvedPaths = {
+      mode: "local",
+      projectName: "test",
+      projectRoot: "/test",
+      devsfactoryDir: "/test/.devsfactory",
+      worktreesDir: "/test/.worktrees",
+      brainstormDir: "/test/.devsfactory/brainstorm"
+    };
+
+    expect(mode).toBe("global");
+    expect(providerConfig.model).toBe("claude-3-opus");
+    expect(globalConfig.version).toBe(1);
+    expect(projectConfig.name).toBe("test");
+    expect(resolvedPaths.mode).toBe("local");
   });
 });

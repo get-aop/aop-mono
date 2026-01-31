@@ -17,7 +17,10 @@ export type LogCategory =
   | "merge"
   | "state"
   | "git"
-  | "e2e";
+  | "e2e"
+  | "sdk-agent-runner"
+  | "job-producer"
+  | "job-worker";
 
 const LOG_MODE = process.env.LOG_MODE ?? "pretty";
 const DEBUG = process.env.DEBUG === "true" || process.env.DEBUG === "1";

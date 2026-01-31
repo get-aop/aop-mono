@@ -74,6 +74,7 @@ export const TaskFrontmatterSchema = z.object({
   tags: z.array(z.string()).default([]),
   assignee: z.string().nullable().default(null),
   dependencies: z.array(z.string()).default([]),
+  branch: z.string().optional(),
   startedAt: z.coerce.date().nullable().default(null),
   completedAt: z.coerce.date().nullable().default(null),
   durationMs: z.number().nullable().default(null)
@@ -152,6 +153,8 @@ export const ConfigSchema = z.object({
   maxConcurrentAgents: z.number().default(2),
   devsfactoryDir: z.string().default(".devsfactory"),
   worktreesDir: z.string().default(".worktrees"),
+  projectRoot: z.string().optional(),
+  dashboardPort: z.number().default(3001),
   debounceMs: z.number().default(100),
   retryBackoff: RetryBackoffSchema.default({
     initialMs: 2000,
@@ -273,3 +276,43 @@ export type TaskPreview = z.infer<typeof TaskPreviewSchema>;
 export type SubtaskPreview = z.infer<typeof SubtaskPreviewSchema>;
 export type BrainstormSession = z.infer<typeof BrainstormSessionSchema>;
 export type BrainstormDraft = z.infer<typeof BrainstormDraftSchema>;
+
+// Global Configuration Schemas
+export const OperationModeSchema = z.enum(["local", "global"]);
+
+export const ProviderConfigSchema = z.object({
+  model: z.string().optional(),
+  apiKey: z.string().optional(),
+  env: z.record(z.string(), z.string()).optional()
+});
+
+export const GlobalConfigSchema = z.object({
+  version: z.number().default(1),
+  defaults: ConfigSchema.partial().default({}),
+  providers: z.record(z.string(), ProviderConfigSchema).default({})
+});
+
+export const ProjectConfigSchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  gitRemote: z.string().nullable(),
+  registered: z.coerce.date(),
+  settings: ConfigSchema.partial().optional(),
+  providers: z.record(z.string(), ProviderConfigSchema).optional()
+});
+
+export const ResolvedPathsSchema = z.object({
+  mode: OperationModeSchema,
+  projectName: z.string(),
+  projectRoot: z.string(),
+  devsfactoryDir: z.string(),
+  worktreesDir: z.string(),
+  brainstormDir: z.string()
+});
+
+// Global Configuration Inferred Types
+export type OperationMode = z.infer<typeof OperationModeSchema>;
+export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
+export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
+export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
+export type ResolvedPaths = z.infer<typeof ResolvedPathsSchema>;

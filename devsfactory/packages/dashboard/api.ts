@@ -1,6 +1,7 @@
 import type {
   BrainstormDraft,
   OrchestratorState,
+  ProjectListItem,
   SubtaskPreview,
   SubtaskStatus,
   TaskStatus
@@ -12,6 +13,11 @@ export interface ApproveOptions {
 
 export interface ApiClient {
   baseUrl: string;
+  fetchProjects(): Promise<{
+    projects: ProjectListItem[];
+    isGlobalMode: boolean;
+  }>;
+  fetchProjectTasks(projectName: string): Promise<OrchestratorState>;
   fetchState(): Promise<OrchestratorState>;
   updateTaskStatus(folder: string, status: TaskStatus): Promise<void>;
   updateSubtaskStatus(
@@ -57,6 +63,16 @@ export const createApiClient = (
 
   return {
     baseUrl,
+
+    fetchProjects: () =>
+      request<{ projects: ProjectListItem[]; isGlobalMode: boolean }>(
+        "/api/projects"
+      ),
+
+    fetchProjectTasks: (projectName) =>
+      request<OrchestratorState>(
+        `/api/projects/${encodeURIComponent(projectName)}/state`
+      ),
 
     fetchState: () => request<OrchestratorState>("/api/state"),
 

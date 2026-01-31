@@ -12,6 +12,7 @@ const createConfig = (overrides: Partial<Config> = {}): Config => ({
   maxConcurrentAgents: 3,
   devsfactoryDir: ".devsfactory",
   worktreesDir: ".worktrees",
+  dashboardPort: 3001,
   debounceMs: 50,
   retryBackoff: { initialMs: 2000, maxMs: 300000, maxAttempts: 5 },
   ignorePatterns: [".git", "*.swp", "*.tmp", "*~", ".DS_Store"],

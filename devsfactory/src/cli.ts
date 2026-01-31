@@ -1,20 +1,23 @@
 #!/usr/bin/env bun
-import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
-  formatJobCompletedMessage,
-  formatSubtaskCompletedMessage,
-  formatSubtaskStartMessage
-} from "./cli-log-formatter";
+  parseAuthArgs,
+  runAuthCommand,
+  runAuthStatus,
+  runAuthWithToken
+} from "./commands/auth";
+import {
+  parseCreateTaskArgs,
+  runCreateTaskCommand
+} from "./commands/create-task";
+import { parseInitArgs, runInitCommand } from "./commands/init";
+import { parseProjectsArgs, runProjectsCommand } from "./commands/projects";
+import { parseRunArgs, runStart, runStatus, runStop } from "./commands/run";
 import { parseStatsArgs, runStatsCommand } from "./commands/stats";
-import { AgentRunner } from "./core/agent-runner";
-import { DashboardServer } from "./core/dashboard-server";
-import { Orchestrator } from "./core/orchestrator";
-import { renderSummaryTable } from "./core/summary-table";
-import { generateTaskSummary } from "./core/timing";
-import { configureLogger, getLogger } from "./infra/logger";
-import { parseStreamJson } from "./providers/claude";
-import type { AgentProcess, Config, Subtask, Task } from "./types";
+import { parseStatusArgs, runStatusCommand } from "./commands/status";
+import { parseSysDebugArgs, runSysDebugCommand } from "./commands/sys-debug";
+import { ensureGlobalDir } from "./core/global-bootstrap";
+import { resolvePaths } from "./core/path-resolver";
 
 const VERSION = "0.1.0";
 
@@ -22,59 +25,82 @@ const HELP_TEXT = `
 aop - Agent Orchestration Platform
 
 USAGE
-  aop [options]
+  aop [command] [options]
 
 DESCRIPTION
-  Starts the orchestrator daemon that watches the .devsfactory directory
-  for task definitions, manages git worktrees, and spawns Claude agents
-  to implement tasks.
+  A CLI tool that orchestrates AI agents to implement software tasks.
+  Tasks are defined as markdown files, and agents work in git worktrees
+  to implement them autonomously.
 
 OPTIONS
   -h, --help      Show this help message
   -v, --version   Show version number
 
+COMMANDS
+  auth                     Set up Anthropic API authentication
+  auth status              Check authentication status
+  run                      Start AOP orchestrator (default)
+  run stop                 Stop AOP containers
+  run status               Show AOP container status
+  init [path]              Register a git repository with AOP
+  projects                 List all registered projects
+  projects remove <name>   Unregister a project
+  status [project]         Show status of tasks across projects
+  stats <task-folder>      Export timing statistics as JSON
+  create-task <desc>       Create a new task via Claude Code
+  sys-debug <desc>         Debug an issue via Claude Code
+
 ENVIRONMENT VARIABLES
-  DEVSFACTORY_DIR       Task definitions directory (default: .devsfactory)
-  WORKTREES_DIR         Git worktrees directory (default: .worktrees)
-  MAX_CONCURRENT_AGENTS Maximum parallel agents (default: 2)
   DASHBOARD_PORT        Dashboard server port (default: 3001)
-  DEBOUNCE_MS           File watcher debounce in ms (default: 100)
-  RETRY_INITIAL_MS      Initial retry backoff in ms (default: 2000)
-  RETRY_MAX_MS          Maximum retry backoff in ms (default: 300000)
-  RETRY_MAX_ATTEMPTS    Maximum retry attempts (default: 5)
-  DEBUG                 Enable debug logging (set to "true" or "1")
-  LOG_MODE              Log format: "pretty" or "json" (default: pretty)
+  MAX_CONCURRENT_AGENTS Maximum parallel agents (default: 2)
 
 SETUP
-  1. Run 'aop' from your project root (creates .devsfactory if needed)
-  2. Add task definitions as markdown files (see documentation)
-  3. Optionally create a .env file with configuration
-
-COMMANDS
-  stats <task-folder>   Export timing statistics as JSON
+  1. Install aop globally: bun install -g aop
+  2. Run 'aop auth' to set up Anthropic API authentication
+  3. Run 'aop run' to start the orchestrator (requires Docker)
+  4. Go to your project directory and run 'aop init'
+  5. Run 'aop create-task "your task description"' to create a task
 
 EXAMPLES
-  # Start orchestrator with defaults
-  aop
+  # Start AOP orchestrator
+  aop run
 
-  # Start with custom config
-  MAX_CONCURRENT_AGENTS=4 DEBUG=true aop
+  # Stop AOP
+  aop run stop
 
-  # Using .env file
-  echo "MAX_CONCURRENT_AGENTS=4" > .env
-  aop
+  # Check AOP status
+  aop run status
 
-  # Export timing stats for a task
-  aop stats my-task-folder
+  # Register current repository
+  aop init
+
+  # Create a new task
+  aop create-task "Add user authentication with JWT"
+
+  # View status of all projects
+  aop status
 
 DOCUMENTATION
   https://github.com/anthropics/devsfactory
 `;
 
+const COMMANDS = [
+  "auth",
+  "init",
+  "projects",
+  "status",
+  "run",
+  "stats",
+  "create-task",
+  "sys-debug"
+] as const;
+
+type Command = (typeof COMMANDS)[number];
+
 interface ParsedArgs {
   help: boolean;
   version: boolean;
-  command?: string;
+  command?: Command;
   commandArgs: string[];
   error?: string;
 }
@@ -97,8 +123,8 @@ const parseArgs = (args: string[]): ParsedArgs => {
       result.version = true;
       return result;
     }
-    if (arg === "stats") {
-      result.command = "stats";
+    if (COMMANDS.includes(arg as Command)) {
+      result.command = arg as Command;
       result.commandArgs = args.slice(i + 1);
       return result;
     }
@@ -109,34 +135,6 @@ const parseArgs = (args: string[]): ParsedArgs => {
   }
 
   return result;
-};
-
-const parseEnvConfig = (): Config => {
-  const cwd = process.cwd();
-
-  const devsfactoryDir = join(
-    cwd,
-    process.env.DEVSFACTORY_DIR ?? ".devsfactory"
-  );
-  const worktreesDir = join(cwd, process.env.WORKTREES_DIR ?? ".worktrees");
-  const maxConcurrentAgents = Number(process.env.MAX_CONCURRENT_AGENTS ?? 2);
-  const debounceMs = Number(process.env.DEBOUNCE_MS ?? 100);
-  const retryInitialMs = Number(process.env.RETRY_INITIAL_MS ?? 2000);
-  const retryMaxMs = Number(process.env.RETRY_MAX_MS ?? 300000);
-  const retryMaxAttempts = Number(process.env.RETRY_MAX_ATTEMPTS ?? 5);
-
-  return {
-    maxConcurrentAgents,
-    devsfactoryDir,
-    worktreesDir,
-    debounceMs,
-    retryBackoff: {
-      initialMs: retryInitialMs,
-      maxMs: retryMaxMs,
-      maxAttempts: retryMaxAttempts
-    },
-    ignorePatterns: [".git", "*.swp", "*.tmp", "*~", ".DS_Store"]
-  };
 };
 
 const openBrowser = async (url: string): Promise<void> => {
@@ -154,35 +152,6 @@ const openBrowser = async (url: string): Promise<void> => {
   }
 };
 
-const isInsideGitRepo = async (): Promise<boolean> => {
-  try {
-    const result = await Bun.$`git rev-parse --is-inside-work-tree`.quiet();
-    return result.text().trim() === "true";
-  } catch {
-    return false;
-  }
-};
-
-const validateEnvironment = async (
-  config: Config
-): Promise<{ errors: string[]; shouldCreateDir: boolean }> => {
-  const errors: string[] = [];
-
-  // Check if we're in a git repository first (works from any subdirectory or worktree)
-  const inGitRepo = await isInsideGitRepo();
-  if (!inGitRepo) {
-    errors.push(
-      "Not a git repository. The orchestrator requires git for worktree management.\n" +
-        "  Initialize with: git init"
-    );
-  }
-
-  const shouldCreateDir =
-    errors.length === 0 && !existsSync(config.devsfactoryDir);
-
-  return { errors, shouldCreateDir };
-};
-
 const showHelp = () => {
   console.log(HELP_TEXT.trim());
 };
@@ -196,12 +165,189 @@ const showError = (message: string) => {
   console.error("Run 'aop --help' for usage information.");
 };
 
-const handleStatsCommand = async (commandArgs: string[]) => {
-  const cwd = process.cwd();
-  const devsfactoryDir = join(
-    cwd,
-    process.env.DEVSFACTORY_DIR ?? ".devsfactory"
+const handleAuthCommand = async (commandArgs: string[]) => {
+  const authArgs = parseAuthArgs(commandArgs);
+
+  if (authArgs.help) {
+    console.log(
+      `
+aop auth - Set up Anthropic API authentication
+
+USAGE
+  aop auth [options]
+  aop auth <token>
+  aop auth status
+
+OPTIONS
+  -h, --help          Show this help message
+  -t, --token <tok>   Store a token directly (skip browser flow)
+
+SUBCOMMANDS
+  status    Check authentication status
+
+DESCRIPTION
+  Sets up authentication for the Anthropic API using Claude's setup-token flow.
+  This opens a browser window to authenticate and stores the token locally.
+
+  The token is stored in ~/.claude-agi/auth.json and automatically used
+  by commands like 'aop create-task'.
+
+  You can also pass a token directly if you already have one.
+
+EXAMPLES
+  aop auth                      # Set up via browser
+  aop auth sk-ant-oat01-xxx     # Store token directly
+  aop auth status               # Check if authenticated
+`.trim()
+    );
+    process.exit(0);
+  }
+
+  if (authArgs.error) {
+    showError(authArgs.error);
+    process.exit(1);
+  }
+
+  if (authArgs.status) {
+    const result = await runAuthStatus();
+    if (result.success) {
+      console.log(result.message);
+      process.exit(0);
+    } else {
+      showError(result.error!);
+      process.exit(1);
+    }
+  }
+
+  if (authArgs.token) {
+    const result = await runAuthWithToken(authArgs.token);
+    if (result.success) {
+      console.log(result.message);
+      process.exit(0);
+    } else {
+      showError(result.error!);
+      process.exit(1);
+    }
+  }
+
+  const result = await runAuthCommand();
+  if (result.success) {
+    console.log(result.message);
+    process.exit(0);
+  } else {
+    showError(result.error!);
+    process.exit(1);
+  }
+};
+
+const handleInitCommand = async (commandArgs: string[]) => {
+  const initArgs = parseInitArgs(commandArgs);
+
+  if (initArgs.help) {
+    console.log(
+      `
+aop init - Register a git repository with AOP
+
+USAGE
+  aop init [path]
+
+ARGUMENTS
+  path    Path to the git repository (default: current directory)
+
+EXAMPLES
+  aop init              # Register current directory
+  aop init /path/to/repo  # Register specific repository
+`.trim()
+    );
+    process.exit(0);
+  }
+
+  if (initArgs.error) {
+    showError(initArgs.error);
+    process.exit(1);
+  }
+
+  const result = await runInitCommand(initArgs.path);
+  if (result.success) {
+    console.log(result.message);
+    process.exit(0);
+  } else {
+    showError(result.error!);
+    process.exit(1);
+  }
+};
+
+const handleProjectsCommand = async (commandArgs: string[]) => {
+  const projectsArgs = parseProjectsArgs(commandArgs);
+
+  if (projectsArgs.error) {
+    showError(projectsArgs.error);
+    process.exit(1);
+  }
+
+  const result = await runProjectsCommand(
+    projectsArgs.subcommand,
+    projectsArgs.projectName
   );
+  if (result.success) {
+    console.log(result.output);
+    process.exit(0);
+  } else {
+    showError(result.error!);
+    process.exit(1);
+  }
+};
+
+const handleStatusCommand = async (commandArgs: string[]) => {
+  const statusArgs = parseStatusArgs(commandArgs);
+
+  if (statusArgs.help) {
+    console.log(
+      `
+aop status - Show status of tasks across projects
+
+USAGE
+  aop status [project]
+
+ARGUMENTS
+  project    Project name (optional). If omitted:
+             - Shows current project if in a project directory
+             - Shows all projects summary otherwise
+
+DESCRIPTION
+  Displays task status for one or more projects. Shows task counts
+  grouped by status (PENDING, INPROGRESS, DONE).
+
+  When viewing a single project, shows detailed task list with
+  progress information for tasks in progress.
+
+EXAMPLES
+  aop status              # Show all projects or current project
+  aop status my-project   # Show detailed status for my-project
+`.trim()
+    );
+    process.exit(0);
+  }
+
+  if (statusArgs.error) {
+    showError(statusArgs.error);
+    process.exit(1);
+  }
+
+  const result = await runStatusCommand(statusArgs.projectName);
+  if (result.success) {
+    console.log(result.output);
+    process.exit(0);
+  } else {
+    showError(result.error!);
+    process.exit(1);
+  }
+};
+
+const handleStatsCommand = async (commandArgs: string[]) => {
+  const paths = await resolvePaths();
+  const devsfactoryDir =
+    paths?.devsfactoryDir ?? join(process.cwd(), ".devsfactory");
 
   const statsArgs = parseStatsArgs(commandArgs);
   if (statsArgs.error) {
@@ -219,7 +365,218 @@ const handleStatsCommand = async (commandArgs: string[]) => {
   }
 };
 
+const handleCreateTaskCommand = async (commandArgs: string[]) => {
+  const createTaskArgs = parseCreateTaskArgs(commandArgs);
+
+  if (createTaskArgs.help) {
+    console.log(
+      `
+aop create-task - Create a new task via Claude Code
+
+USAGE
+  aop create-task <description> [options]
+
+ARGUMENTS
+  description    Task description (can be very detailed, use quotes)
+
+OPTIONS
+  -p, --project <name>   Project name (default: auto-detect from cwd)
+  -s, --slug <name>      Slug for the task folder name
+  -d, --debug            Enable Claude debug mode (shows detailed output)
+  -r, --raw              Show raw Claude JSON output (for debugging)
+  -h, --help             Show this help message
+
+DESCRIPTION
+  Spawns Claude Code and runs the /create-task skill with your description.
+  Claude will brainstorm requirements and break the task into subtasks.
+
+EXAMPLES
+  aop create-task "Add user authentication with JWT"
+  aop create-task "Fix the login bug where users get logged out" -p my-project
+  aop create-task "Implement dark mode" --slug dark-mode
+  aop create-task "Debug issue" --debug
+  aop create-task "Test" --raw  # See raw Claude output
+`.trim()
+    );
+    process.exit(0);
+  }
+
+  if (createTaskArgs.error) {
+    showError(createTaskArgs.error);
+    process.exit(1);
+  }
+
+  const result = await runCreateTaskCommand(createTaskArgs);
+  if (result.success) {
+    if (result.message) {
+      console.log(result.message);
+    }
+    process.exit(0);
+  } else {
+    showError(result.error!);
+    process.exit(1);
+  }
+};
+
+const handleSysDebugCommand = async (commandArgs: string[]) => {
+  const sysDebugArgs = parseSysDebugArgs(commandArgs);
+
+  if (sysDebugArgs.help) {
+    console.log(
+      `
+aop sys-debug - Debug an issue via Claude Code
+
+USAGE
+  aop sys-debug <description> [options]
+
+ARGUMENTS
+  description    Bug or issue description (can be very detailed, use quotes)
+
+OPTIONS
+  -p, --project <name>   Project name (default: auto-detect from cwd)
+  -d, --debug            Enable Claude debug mode (shows detailed output)
+  -h, --help             Show this help message
+
+DESCRIPTION
+  Spawns Claude Code and runs the /systematic-debugging skill with your
+  description. Claude will systematically investigate and debug the issue.
+
+EXAMPLES
+  aop sys-debug "Tests are failing with timeout errors"
+  aop sys-debug "Login page crashes on submit" -p my-project
+  aop sys-debug "Memory leak in the dashboard component"
+  aop sys-debug "API returns 500" --debug
+`.trim()
+    );
+    process.exit(0);
+  }
+
+  if (sysDebugArgs.error) {
+    showError(sysDebugArgs.error);
+    process.exit(1);
+  }
+
+  const result = await runSysDebugCommand(sysDebugArgs);
+  if (result.success) {
+    if (result.message) {
+      console.log(result.message);
+    }
+    process.exit(0);
+  } else {
+    showError(result.error!);
+    process.exit(1);
+  }
+};
+
+const dispatchCommand = async (
+  command: Command | undefined,
+  commandArgs: string[]
+): Promise<void> => {
+  switch (command) {
+    case "auth":
+      return handleAuthCommand(commandArgs);
+    case "init":
+      return handleInitCommand(commandArgs);
+    case "projects":
+      return handleProjectsCommand(commandArgs);
+    case "status":
+      return handleStatusCommand(commandArgs);
+    case "stats":
+      return handleStatsCommand(commandArgs);
+    case "create-task":
+      return handleCreateTaskCommand(commandArgs);
+    case "sys-debug":
+      return handleSysDebugCommand(commandArgs);
+    case "run":
+    case undefined:
+      return handleRunCommand(commandArgs);
+  }
+};
+
+const RUN_HELP_TEXT = `
+aop run - Start AOP orchestrator
+
+USAGE
+  aop run [options]
+  aop run stop
+  aop run status
+
+OPTIONS
+  -h, --help  Show this help message
+
+SUBCOMMANDS
+  stop     Stop AOP containers
+  status   Show AOP container status
+
+DESCRIPTION
+  Starts the AOP orchestrator in a Docker container.
+
+  After starting, go to your project directory, run 'aop init' to register it,
+  then use 'aop create-task' to create tasks for the AI agents.
+
+EXAMPLES
+  aop run          # Start AOP
+  aop run stop     # Stop AOP
+  aop run status   # Check status
+`.trim();
+
+const handleRunCommand = async (commandArgs: string[]) => {
+  const runArgs = parseRunArgs(commandArgs);
+
+  if (runArgs.help) {
+    console.log(RUN_HELP_TEXT);
+    process.exit(0);
+  }
+
+  if (runArgs.error) {
+    showError(runArgs.error);
+    process.exit(1);
+  }
+
+  if (runArgs.stop) {
+    const result = await runStop();
+    if (result.success) {
+      console.log(result.message);
+      process.exit(0);
+    } else {
+      showError(result.error!);
+      process.exit(1);
+    }
+  }
+
+  if (runArgs.status) {
+    const result = await runStatus();
+    if (result.success) {
+      console.log(result.message);
+      process.exit(0);
+    } else {
+      showError(result.error!);
+      process.exit(1);
+    }
+  }
+
+  const options = {
+    dashboardPort: Number(process.env.DASHBOARD_PORT ?? 3001),
+    maxConcurrentAgents: Number(process.env.MAX_CONCURRENT_AGENTS ?? 2)
+  };
+
+  const result = await runStart(options, (message) => console.log(message));
+
+  if (result.success) {
+    console.log(`\n${result.message}`);
+    if (result.dashboardUrl) {
+      openBrowser(result.dashboardUrl);
+    }
+    process.exit(0);
+  } else {
+    showError(result.error!);
+    process.exit(1);
+  }
+};
+
 const main = async () => {
+  await ensureGlobalDir();
+
   const args = process.argv.slice(2);
   const { help, version, command, commandArgs, error } = parseArgs(args);
 
@@ -238,215 +595,7 @@ const main = async () => {
     process.exit(0);
   }
 
-  if (command === "stats") {
-    await handleStatsCommand(commandArgs);
-    return;
-  }
-
-  const config = parseEnvConfig();
-  const { errors: validationErrors, shouldCreateDir } =
-    await validateEnvironment(config);
-
-  if (validationErrors.length > 0) {
-    console.error("Configuration errors:\n");
-    for (const err of validationErrors) {
-      console.error(`  - ${err}\n`);
-    }
-    console.error("Run 'aop --help' for setup instructions.");
-    process.exit(1);
-  }
-
-  if (shouldCreateDir) {
-    mkdirSync(config.devsfactoryDir, { recursive: true });
-  }
-
-  await configureLogger();
-  const log = getLogger("orchestrator");
-
-  if (shouldCreateDir) {
-    log.info(
-      `Created ${process.env.DEVSFACTORY_DIR ?? ".devsfactory"} directory`
-    );
-  }
-  const agentLog = getLogger("agent");
-
-  log.info("Starting orchestrator", {
-    devsfactoryDir: config.devsfactoryDir,
-    worktreesDir: config.worktreesDir,
-    maxConcurrentAgents: config.maxConcurrentAgents
-  });
-
-  // Create agent runner to capture Claude output
-  const agentRunner = new AgentRunner();
-  const agentMetadata = new Map<
-    string,
-    { type: string; taskFolder: string; subtaskFile?: string }
-  >();
-
-  agentRunner.on(
-    "started",
-    (data: { agentId: string; process: AgentProcess }) => {
-      const { agentId, process: agent } = data;
-      agentMetadata.set(agentId, {
-        type: agent.type,
-        taskFolder: agent.taskFolder,
-        subtaskFile: agent.subtaskFile
-      });
-      log.info("Agent started", {
-        agentType: agent.type,
-        task: agent.taskFolder,
-        subtask: agent.subtaskFile,
-        agentId: agentId.slice(-8),
-        pid: agent.pid
-      });
-    }
-  );
-
-  agentRunner.on("output", (data: { agentId: string; line: string }) => {
-    const meta = agentMetadata.get(data.agentId);
-    const prettified = parseStreamJson(data.line);
-    if (prettified) {
-      agentLog.info("Agent output", {
-        agentType: meta?.type ?? "unknown",
-        subtask: meta?.subtaskFile,
-        agentId: data.agentId.slice(-8),
-        output: prettified
-      });
-    }
-  });
-
-  agentRunner.on("completed", (data: { agentId: string; exitCode: number }) => {
-    const meta = agentMetadata.get(data.agentId);
-    if (data.exitCode === 0) {
-      log.info("Agent completed", {
-        agentType: meta?.type ?? "unknown",
-        subtask: meta?.subtaskFile,
-        agentId: data.agentId.slice(-8)
-      });
-    } else {
-      log.warn("Agent completed with error", {
-        agentType: meta?.type ?? "unknown",
-        subtask: meta?.subtaskFile,
-        agentId: data.agentId.slice(-8),
-        exitCode: data.exitCode
-      });
-    }
-    agentMetadata.delete(data.agentId);
-  });
-
-  const orchestrator = new Orchestrator(config, agentRunner);
-
-  // Start dashboard server
-  const dashboardPort = Number(process.env.DASHBOARD_PORT ?? 3001);
-  const dashboardServer = new DashboardServer(orchestrator, {
-    port: dashboardPort,
-    devsfactoryDir: config.devsfactoryDir
-  });
-  await dashboardServer.start();
-  const dashboardUrl = `http://localhost:${dashboardServer.port}`;
-  log.info(`Dashboard available at ${dashboardUrl}`);
-  openBrowser(dashboardUrl);
-
-  orchestrator.on("stateChanged", () => {
-    const state = orchestrator.getState();
-    log.debug("State changed", {
-      tasks: state.tasks.length,
-      activePlans: Object.keys(state.plans).length
-    });
-  });
-
-  orchestrator.on("recoveryAction", (data) => {
-    log.warn("Recovery action", data);
-  });
-
-  orchestrator.on(
-    "subtaskStarted",
-    (data: {
-      taskFolder: string;
-      subtaskNumber: number;
-      subtaskTotal: number;
-      subtaskTitle: string;
-    }) => {
-      log.info(
-        formatSubtaskStartMessage(
-          data.subtaskNumber,
-          data.subtaskTotal,
-          data.subtaskTitle
-        ),
-        { taskFolder: data.taskFolder }
-      );
-    }
-  );
-
-  orchestrator.on(
-    "subtaskCompleted",
-    (data: {
-      taskFolder: string;
-      subtaskNumber: number;
-      subtaskTotal: number;
-      subtaskTitle: string;
-      durationMs: number;
-    }) => {
-      log.info(
-        formatSubtaskCompletedMessage(
-          data.subtaskNumber,
-          data.subtaskTotal,
-          data.subtaskTitle,
-          data.durationMs
-        ),
-        { taskFolder: data.taskFolder, durationMs: data.durationMs }
-      );
-    }
-  );
-
-  orchestrator.on(
-    "workerJobCompleted",
-    (data: {
-      jobId: string;
-      job: { type: string; taskFolder: string; subtaskFile?: string };
-      durationMs: number;
-    }) => {
-      log.info(formatJobCompletedMessage(data.job.type, data.durationMs), {
-        jobId: data.jobId,
-        taskFolder: data.job.taskFolder,
-        subtask: data.job.subtaskFile
-      });
-    }
-  );
-
-  orchestrator.on("workerJobFailed", (data) => {
-    log.error(`Job failed: ${data.error}`, data);
-  });
-
-  orchestrator.on("workerJobRetrying", (data) => {
-    log.warn(
-      `Job retrying (attempt ${data.attempt}, next in ${data.nextRetryMs}ms)`,
-      data
-    );
-  });
-
-  orchestrator.on(
-    "taskCompleted",
-    ({ task, subtasks }: { task: Task; subtasks: Subtask[] }) => {
-      const summary = generateTaskSummary(task, subtasks);
-      const table = renderSummaryTable(summary);
-      console.log(`\n${table}\n`);
-    }
-  );
-
-  const shutdown = async () => {
-    log.info("Shutting down...");
-    await dashboardServer.stop();
-    await orchestrator.stop();
-    log.info("Orchestrator stopped");
-    process.exit(0);
-  };
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-
-  await orchestrator.start();
-  log.info("Orchestrator running. Press Ctrl+C to stop.");
+  await dispatchCommand(command, commandArgs);
 };
 
 main().catch((err) => {

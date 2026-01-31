@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AgentRunner } from "../src/core/agent-runner";
 import {
   createTaskWorktree,
   deleteWorktree,
@@ -9,6 +8,7 @@ import {
 } from "../src/core/git";
 import type { RunningAgent } from "../src/core/interfaces/agent-registry";
 import { Orchestrator } from "../src/core/orchestrator";
+import { SdkAgentRunner } from "../src/core/sdk-agent-runner";
 import { configureLogger, getLogger } from "../src/infra/logger";
 import { ClaudeProvider, parseStreamJson } from "../src/providers/claude";
 import { createTestDir } from "../src/test-helpers";
@@ -62,6 +62,7 @@ const createConfig = (repo: TestRepo): Config => ({
   maxConcurrentAgents: 2,
   devsfactoryDir: repo.devsfactoryDir,
   worktreesDir: repo.worktreesDir,
+  dashboardPort: 3001,
   debounceMs: 50,
   retryBackoff: { initialMs: 1000, maxMs: 5000, maxAttempts: 5 },
   ignorePatterns: [".git", "*.swp", "*.tmp", "*~", ".DS_Store"]
@@ -442,8 +443,8 @@ describe.skipIf(!!process.env.CI)("Orchestrator E2E Tests", () => {
     test(
       "runs full orchestrator flow with diamond deps until REVIEW",
       async () => {
-        // Create custom AgentRunner to capture output
-        const agentRunner = new AgentRunner();
+        // Create custom SdkAgentRunner to capture output
+        const agentRunner = new SdkAgentRunner();
 
         // Store agent outputs: agentId -> { type, taskFolder, subtaskFile, lines[] }
         const agentOutputs = new Map<

@@ -33,11 +33,11 @@ describe("JobType", () => {
 describe("JOB_PRIORITY", () => {
   test("maps all job types to priority values", () => {
     expect(JOB_PRIORITY["conflict-solver"]).toBe(40);
-    expect(JOB_PRIORITY["merge"]).toBe(30);
+    expect(JOB_PRIORITY.merge).toBe(30);
     expect(JOB_PRIORITY["completion-review"]).toBe(25);
-    expect(JOB_PRIORITY["review"]).toBe(20);
+    expect(JOB_PRIORITY.review).toBe(20);
     expect(JOB_PRIORITY["completing-task"]).toBe(15);
-    expect(JOB_PRIORITY["implementation"]).toBe(10);
+    expect(JOB_PRIORITY.implementation).toBe(10);
   });
 
   test("has priority for every job type", () => {
@@ -49,20 +49,18 @@ describe("JOB_PRIORITY", () => {
   });
 
   test("priorities are ordered correctly", () => {
-    expect(JOB_PRIORITY["conflict-solver"]).toBeGreaterThan(
-      JOB_PRIORITY["merge"]
-    );
-    expect(JOB_PRIORITY["merge"]).toBeGreaterThan(
+    expect(JOB_PRIORITY["conflict-solver"]).toBeGreaterThan(JOB_PRIORITY.merge);
+    expect(JOB_PRIORITY.merge).toBeGreaterThan(
       JOB_PRIORITY["completion-review"]
     );
     expect(JOB_PRIORITY["completion-review"]).toBeGreaterThan(
-      JOB_PRIORITY["review"]
+      JOB_PRIORITY.review
     );
-    expect(JOB_PRIORITY["review"]).toBeGreaterThan(
+    expect(JOB_PRIORITY.review).toBeGreaterThan(
       JOB_PRIORITY["completing-task"]
     );
     expect(JOB_PRIORITY["completing-task"]).toBeGreaterThan(
-      JOB_PRIORITY["implementation"]
+      JOB_PRIORITY.implementation
     );
   });
 });

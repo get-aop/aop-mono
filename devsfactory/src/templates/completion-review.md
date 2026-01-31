@@ -28,7 +28,7 @@ Perform final code review of the complete task and prepare for PR or block if is
 If attempts remain:
 - Document findings in the current attempt section
 - If approved:
-  - Set plan status and task status to `REVIEW`
+  - Set plan status to `REVIEW` and task status to `REVIEW`
   - Write PR title and description in task.md under "Implemented PR Description"
 - If issues found:
   - Set plan status to `INPROGRESS`
@@ -40,7 +40,7 @@ If no attempts remain:
 </instructions>
 
 <decision_boundaries>
-**Approve (set task and plan status to REVIEW) when:**
+**Approve (set task status to REVIEW, plan status to REVIEW) when:**
 - Implementation meets all acceptance criteria
 - Code quality is acceptable
 - No security or performance issues

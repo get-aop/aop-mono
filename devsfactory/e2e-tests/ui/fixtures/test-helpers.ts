@@ -345,7 +345,7 @@ export const mockBrainstormConfirmApi = async (page: Page): Promise<void> => {
 
 export const mockBrainstormApproveApi = async (
   page: Page,
-  response: { taskFolder: string } = { taskFolder: "new-task" }
+  response: { taskFolder: string } = { taskFolder: "create-task" }
 ): Promise<void> => {
   await page.route("**/api/brainstorm/*/approve", async (route: Route) => {
     await route.fulfill({

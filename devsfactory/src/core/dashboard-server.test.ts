@@ -103,7 +103,9 @@ describe("DashboardServer", () => {
         const response = await fetch(
           `http://localhost:${server.port}/api/state`
         );
-        expect(response.headers.get("access-control-allow-origin")).toBe("*");
+        expect(response.headers.get("access-control-allow-origin")).toBe(
+          "http://localhost:3001"
+        );
       } finally {
         await server.stop();
       }
@@ -1662,6 +1664,420 @@ describe("Brainstorm API endpoints", () => {
         expect((taskCreatedEvent as { taskFolder: string }).taskFolder).toBe(
           "my-feature"
         );
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+});
+
+describe("Multi-project API endpoints", () => {
+  describe("GET /api/projects", () => {
+    test("returns list of all registered projects", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockProjects = [
+        {
+          name: "project-a",
+          path: "/home/user/project-a",
+          gitRemote: "git@github.com:user/project-a.git",
+          registered: new Date("2026-01-15")
+        },
+        {
+          name: "project-b",
+          path: "/home/user/project-b",
+          gitRemote: null,
+          registered: new Date("2026-01-20")
+        }
+      ];
+
+      const mockListProjects = mock(() => Promise.resolve(mockProjects));
+      const mockScanProject = mock(() =>
+        Promise.resolve({ tasks: [], plans: {}, subtasks: {} })
+      );
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        listProjects: mockListProjects,
+        scanProject: mockScanProject
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/projects`
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          projects: Array<{
+            name: string;
+            path: string;
+            registered: string;
+            taskCount: number;
+          }>;
+        };
+        expect(body.projects).toHaveLength(2);
+        expect(body.projects[0]!.name).toBe("project-a");
+        expect(body.projects[0]!.taskCount).toBe(0);
+        expect(body.projects[1]!.name).toBe("project-b");
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 500 when listProjects not configured", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const server = new DashboardServer(orchestrator, { port: 0 });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/projects`
+        );
+        expect(response.status).toBe(500);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toContain("not configured");
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("GET /api/projects/:name", () => {
+    test("returns project details and state", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockProject = {
+        name: "my-project",
+        path: "/home/user/my-project",
+        gitRemote: "git@github.com:user/my-project.git",
+        registered: new Date("2026-01-15")
+      };
+
+      const mockState = {
+        tasks: [
+          {
+            folder: "task-1",
+            frontmatter: {
+              title: "Task 1",
+              status: "PENDING" as const,
+              created: new Date(),
+              priority: "medium" as const,
+              tags: [],
+              assignee: null,
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
+            },
+            description: "Test task",
+            requirements: "",
+            acceptanceCriteria: []
+          }
+        ],
+        plans: {},
+        subtasks: {}
+      };
+
+      const mockGetProject = mock(() => Promise.resolve(mockProject));
+      const mockScanProject = mock(() => Promise.resolve(mockState));
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        getProject: mockGetProject,
+        scanProject: mockScanProject
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/projects/my-project`
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          project: typeof mockProject;
+          state: typeof mockState;
+        };
+        expect(body.project.name).toBe("my-project");
+        expect(body.state.tasks).toHaveLength(1);
+        expect(mockGetProject).toHaveBeenCalledWith("my-project");
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 404 when project not found", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockGetProject = mock(() => Promise.resolve(null));
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        getProject: mockGetProject
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/projects/nonexistent`
+        );
+        expect(response.status).toBe(404);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toContain("not found");
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("GET /api/projects/:name/tasks", () => {
+    test("returns tasks for a specific project", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockProject = {
+        name: "my-project",
+        path: "/home/user/my-project",
+        gitRemote: null,
+        registered: new Date()
+      };
+
+      const mockScanResult = {
+        tasks: [
+          {
+            folder: "task-1",
+            frontmatter: {
+              title: "Task 1",
+              status: "PENDING" as const,
+              created: new Date(),
+              priority: "medium" as const,
+              tags: [],
+              assignee: null,
+              dependencies: [],
+              startedAt: null,
+              completedAt: null,
+              durationMs: null
+            },
+            description: "Test",
+            requirements: "",
+            acceptanceCriteria: []
+          }
+        ],
+        plans: {
+          "task-1": {
+            folder: "task-1",
+            frontmatter: {
+              status: "INPROGRESS" as const,
+              task: "task-1",
+              created: new Date()
+            },
+            subtasks: []
+          }
+        },
+        subtasks: {}
+      };
+
+      const mockGetProject = mock(() => Promise.resolve(mockProject));
+      const mockScanProject = mock(() => Promise.resolve(mockScanResult));
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        getProject: mockGetProject,
+        scanProject: mockScanProject
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/projects/my-project/tasks`
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as typeof mockScanResult;
+        expect(body.tasks).toHaveLength(1);
+        expect(body.tasks[0]!.folder).toBe("task-1");
+        expect(body.plans["task-1"]).toBeDefined();
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 404 when project not found", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockGetProject = mock(() => Promise.resolve(null));
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        getProject: mockGetProject
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/projects/nonexistent/tasks`
+        );
+        expect(response.status).toBe(404);
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("GET /api/tasks (aggregate)", () => {
+    test("returns tasks aggregated across all projects", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const mockProjects = [
+        {
+          name: "project-a",
+          path: "/a",
+          gitRemote: null,
+          registered: new Date()
+        },
+        {
+          name: "project-b",
+          path: "/b",
+          gitRemote: null,
+          registered: new Date()
+        }
+      ];
+
+      const mockScanResults = {
+        "project-a": {
+          tasks: [
+            {
+              folder: "task-a1",
+              frontmatter: {
+                title: "Task A1",
+                status: "PENDING" as const,
+                created: new Date(),
+                priority: "high" as const,
+                tags: [],
+                assignee: null,
+                dependencies: [],
+                startedAt: null,
+                completedAt: null,
+                durationMs: null
+              },
+              description: "",
+              requirements: "",
+              acceptanceCriteria: []
+            }
+          ],
+          plans: {},
+          subtasks: {}
+        },
+        "project-b": {
+          tasks: [
+            {
+              folder: "task-b1",
+              frontmatter: {
+                title: "Task B1",
+                status: "INPROGRESS" as const,
+                created: new Date(),
+                priority: "medium" as const,
+                tags: [],
+                assignee: null,
+                dependencies: [],
+                startedAt: null,
+                completedAt: null,
+                durationMs: null
+              },
+              description: "",
+              requirements: "",
+              acceptanceCriteria: []
+            }
+          ],
+          plans: {},
+          subtasks: {}
+        }
+      };
+
+      const mockListProjects = mock(() => Promise.resolve(mockProjects));
+      const mockScanProject = mock((name: string) =>
+        Promise.resolve(mockScanResults[name as keyof typeof mockScanResults])
+      );
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        listProjects: mockListProjects,
+        scanProject: mockScanProject
+      });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/tasks`
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          projects: Record<string, { tasks: unknown[] }>;
+        };
+        expect(body.projects["project-a"]!.tasks).toHaveLength(1);
+        expect(body.projects["project-b"]!.tasks).toHaveLength(1);
+      } finally {
+        await server.stop();
+      }
+    });
+
+    test("returns 500 when listProjects not configured", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const server = new DashboardServer(orchestrator, { port: 0 });
+      await server.start();
+
+      try {
+        const response = await fetch(
+          `http://localhost:${server.port}/api/tasks`
+        );
+        expect(response.status).toBe(500);
+      } finally {
+        await server.stop();
+      }
+    });
+  });
+
+  describe("WebSocket project context", () => {
+    test("includes projectName in state updates when configured", async () => {
+      const { DashboardServer } = await import("./dashboard-server");
+      const orchestrator = createMockOrchestrator(emptyState);
+
+      const server = new DashboardServer(orchestrator, {
+        port: 0,
+        currentProjectName: "my-project"
+      });
+      await server.start();
+
+      try {
+        const ws = new WebSocket(`ws://localhost:${server.port}/api/events`);
+        const messages: unknown[] = [];
+
+        await new Promise<void>((resolve, reject) => {
+          ws.onmessage = (event) => {
+            messages.push(JSON.parse(event.data as string));
+            resolve();
+          };
+          ws.onerror = reject;
+          setTimeout(() => reject(new Error("timeout")), 1000);
+        });
+
+        ws.close();
+        expect(messages).toHaveLength(1);
+        const stateMessage = messages[0] as {
+          type: string;
+          data: unknown;
+          projectName?: string;
+        };
+        expect(stateMessage.type).toBe("state");
+        expect(stateMessage.projectName).toBe("my-project");
       } finally {
         await server.stop();
       }

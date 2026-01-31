@@ -8,14 +8,24 @@ import {
   type BrainstormDraft,
   type BrainstormSession,
   type OrchestratorState,
+  type Plan,
+  type ProjectConfig,
+  type Subtask,
   type SubtaskPreview,
   SubtaskPreviewSchema,
   type SubtaskStatus,
   SubtaskStatusSchema,
+  type Task,
   type TaskPreview,
   type TaskStatus,
   TaskStatusSchema
 } from "../types";
+
+export interface ProjectScanResult {
+  tasks: Task[];
+  plans: Record<string, Plan>;
+  subtasks: Record<string, Subtask[]>;
+}
 
 export interface OrchestratorLike extends EventEmitter {
   getState(): OrchestratorState;
@@ -62,12 +72,24 @@ export interface DashboardServerOptions {
     taskPreview: TaskPreview,
     subtasks?: SubtaskPreview[]
   ) => Promise<{ taskFolder: string }>;
+  listProjects?: () => Promise<ProjectConfig[]>;
+  getProject?: (name: string) => Promise<ProjectConfig | null>;
+  scanProject?: (projectName: string) => Promise<ProjectScanResult>;
+  currentProjectName?: string;
 }
 
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "http://localhost:3001",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type"
+  "Access-Control-Allow-Headers": "Content-Type",
+  Vary: "Origin"
+};
+
+const getCorsHeaders = (origin?: string | null): Record<string, string> => {
+  if (origin && /^https?:\/\/localhost(:\d+)?$/.test(origin)) {
+    return { ...CORS_HEADERS, "Access-Control-Allow-Origin": origin };
+  }
+  return CORS_HEADERS;
 };
 
 const UpdateTaskStatusBodySchema = z.object({ status: TaskStatusSchema });
@@ -131,7 +153,15 @@ export class DashboardServer {
             open: (ws: ServerWebSocket<WebSocketData>) => {
               this.connectedClients.add(ws);
               const state = this.orchestrator.getState();
-              ws.send(JSON.stringify({ type: "state", data: state }));
+              const message: {
+                type: string;
+                data: OrchestratorState;
+                projectName?: string;
+              } = { type: "state", data: state };
+              if (this.options.currentProjectName) {
+                message.projectName = this.options.currentProjectName;
+              }
+              ws.send(JSON.stringify(message));
             },
             message: () => {},
             close: (ws: ServerWebSocket<WebSocketData>) => {
@@ -175,7 +205,15 @@ export class DashboardServer {
 
   private subscribeToOrchestratorEvents(): void {
     const stateHandler: EventHandler = () => {
-      this.broadcast({ type: "state", data: this.orchestrator.getState() });
+      const message: {
+        type: string;
+        data: OrchestratorState;
+        projectName?: string;
+      } = { type: "state", data: this.orchestrator.getState() };
+      if (this.options.currentProjectName) {
+        message.projectName = this.options.currentProjectName;
+      }
+      this.broadcast(message);
     };
     this.orchestrator.on("stateChanged", stateHandler);
     this.eventHandlers.push({ event: "stateChanged", handler: stateHandler });
@@ -273,6 +311,8 @@ export class DashboardServer {
     server: Server<WebSocketData>
   ): Response | Promise<Response> | undefined {
     const url = new URL(req.url);
+    const origin = req.headers.get("Origin");
+    const corsHeaders = getCorsHeaders(origin);
 
     if (url.pathname === "/api/events") {
       const upgraded = server.upgrade(req, {
@@ -281,14 +321,14 @@ export class DashboardServer {
       if (upgraded) return undefined;
       return new Response("WebSocket upgrade failed", {
         status: 400,
-        headers: CORS_HEADERS
+        headers: corsHeaders
       });
     }
 
     if (req.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
-        headers: CORS_HEADERS
+        headers: corsHeaders
       });
     }
 
@@ -299,38 +339,48 @@ export class DashboardServer {
     const taskStatusMatch = url.pathname.match(
       /^\/api\/tasks\/([^/]+)\/status$/
     );
-    if (taskStatusMatch && req.method === "POST") {
-      return this.handleUpdateTaskStatus(req, taskStatusMatch[1]!);
+    if (taskStatusMatch?.[1] && req.method === "POST") {
+      return this.handleUpdateTaskStatus(
+        req,
+        decodeURIComponent(taskStatusMatch[1])
+      );
     }
 
     const subtaskStatusMatch = url.pathname.match(
       /^\/api\/subtasks\/([^/]+)\/([^/]+)\/status$/
     );
-    if (subtaskStatusMatch && req.method === "POST") {
+    if (
+      subtaskStatusMatch?.[1] &&
+      subtaskStatusMatch[2] &&
+      req.method === "POST"
+    ) {
       return this.handleUpdateSubtaskStatus(
         req,
-        subtaskStatusMatch[1]!,
-        subtaskStatusMatch[2]!
+        decodeURIComponent(subtaskStatusMatch[1]),
+        decodeURIComponent(subtaskStatusMatch[2])
       );
     }
 
     const createPrMatch = url.pathname.match(
       /^\/api\/tasks\/([^/]+)\/create-pr$/
     );
-    if (createPrMatch && req.method === "POST") {
-      return this.handleCreatePr(createPrMatch[1]!);
+    if (createPrMatch?.[1] && req.method === "POST") {
+      return this.handleCreatePr(decodeURIComponent(createPrMatch[1]));
     }
 
     const diffMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/diff$/);
-    if (diffMatch && req.method === "GET") {
-      return this.handleGetDiff(diffMatch[1]!);
+    if (diffMatch?.[1] && req.method === "GET") {
+      return this.handleGetDiff(decodeURIComponent(diffMatch[1]));
     }
 
     const logsMatch = url.pathname.match(
       /^\/api\/tasks\/([^/]+)\/subtasks\/([^/]+)\/logs$/
     );
-    if (logsMatch && req.method === "GET") {
-      return this.handleGetSubtaskLogs(logsMatch[1]!, logsMatch[2]!);
+    if (logsMatch?.[1] && logsMatch[2] && req.method === "GET") {
+      return this.handleGetSubtaskLogs(
+        decodeURIComponent(logsMatch[1]),
+        decodeURIComponent(logsMatch[2])
+      );
     }
 
     // Brainstorm API endpoints
@@ -345,39 +395,70 @@ export class DashboardServer {
     const brainstormMessageMatch = url.pathname.match(
       /^\/api\/brainstorm\/([^/]+)\/message$/
     );
-    if (brainstormMessageMatch && req.method === "POST") {
-      return this.handleBrainstormMessage(req, brainstormMessageMatch[1]!);
+    if (brainstormMessageMatch?.[1] && req.method === "POST") {
+      return this.handleBrainstormMessage(
+        req,
+        decodeURIComponent(brainstormMessageMatch[1])
+      );
     }
 
     const brainstormEndMatch = url.pathname.match(
       /^\/api\/brainstorm\/([^/]+)\/end$/
     );
-    if (brainstormEndMatch && req.method === "POST") {
-      return this.handleEndBrainstorm(brainstormEndMatch[1]!);
+    if (brainstormEndMatch?.[1] && req.method === "POST") {
+      return this.handleEndBrainstorm(
+        decodeURIComponent(brainstormEndMatch[1])
+      );
     }
 
     const brainstormApproveMatch = url.pathname.match(
       /^\/api\/brainstorm\/([^/]+)\/approve$/
     );
-    if (brainstormApproveMatch && req.method === "POST") {
-      return this.handleApproveBrainstorm(req, brainstormApproveMatch[1]!);
+    if (brainstormApproveMatch?.[1] && req.method === "POST") {
+      return this.handleApproveBrainstorm(
+        req,
+        decodeURIComponent(brainstormApproveMatch[1])
+      );
     }
 
     const draftResumeMatch = url.pathname.match(
       /^\/api\/brainstorm\/drafts\/([^/]+)\/resume$/
     );
-    if (draftResumeMatch && req.method === "POST") {
-      return this.handleResumeDraft(draftResumeMatch[1]!);
+    if (draftResumeMatch?.[1] && req.method === "POST") {
+      return this.handleResumeDraft(decodeURIComponent(draftResumeMatch[1]));
     }
 
     const draftDeleteMatch = url.pathname.match(
       /^\/api\/brainstorm\/drafts\/([^/]+)$/
     );
-    if (draftDeleteMatch && req.method === "DELETE") {
-      return this.handleDeleteDraft(draftDeleteMatch[1]!);
+    if (draftDeleteMatch?.[1] && req.method === "DELETE") {
+      return this.handleDeleteDraft(decodeURIComponent(draftDeleteMatch[1]));
     }
 
-    return new Response("Not Found", { status: 404, headers: CORS_HEADERS });
+    // Multi-project API endpoints
+    if (url.pathname === "/api/projects" && req.method === "GET") {
+      return this.handleListProjects();
+    }
+
+    if (url.pathname === "/api/tasks" && req.method === "GET") {
+      return this.handleGetAllTasks();
+    }
+
+    const projectTasksMatch = url.pathname.match(
+      /^\/api\/projects\/([^/]+)\/tasks$/
+    );
+    if (projectTasksMatch?.[1] && req.method === "GET") {
+      return this.handleGetProjectTasks(
+        decodeURIComponent(projectTasksMatch[1])
+      );
+    }
+
+    const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+    if (projectMatch?.[1] && req.method === "GET") {
+      return this.handleGetProject(decodeURIComponent(projectMatch[1]));
+    }
+
+    return new Response("Not Found", { status: 404, headers: corsHeaders });
   }
 
   private handleGetState(): Response {
@@ -664,6 +745,104 @@ export class DashboardServer {
       });
 
       return jsonResponse({ success: true, taskFolder: result.taskFolder });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleListProjects(): Promise<Response> {
+    try {
+      if (!this.options.listProjects) {
+        return errorResponse("Project listing not configured");
+      }
+
+      const projects = await this.options.listProjects();
+      const projectsWithTaskCount = await Promise.all(
+        projects.map(async (project) => {
+          let taskCount = 0;
+          if (this.options.scanProject) {
+            const scanResult = await this.options.scanProject(project.name);
+            taskCount = scanResult.tasks.length;
+          }
+          return {
+            name: project.name,
+            path: project.path,
+            registered: project.registered,
+            taskCount
+          };
+        })
+      );
+
+      return jsonResponse({ projects: projectsWithTaskCount });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleGetProject(name: string): Promise<Response> {
+    try {
+      if (!this.options.getProject) {
+        return errorResponse("Project retrieval not configured");
+      }
+
+      const project = await this.options.getProject(name);
+      if (!project) {
+        return jsonResponse({ error: `Project '${name}' not found` }, 404);
+      }
+
+      let state: ProjectScanResult = { tasks: [], plans: {}, subtasks: {} };
+      if (this.options.scanProject) {
+        state = await this.options.scanProject(name);
+      }
+
+      return jsonResponse({ project, state });
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleGetProjectTasks(name: string): Promise<Response> {
+    try {
+      if (!this.options.getProject) {
+        return errorResponse("Project retrieval not configured");
+      }
+
+      const project = await this.options.getProject(name);
+      if (!project) {
+        return jsonResponse({ error: `Project '${name}' not found` }, 404);
+      }
+
+      if (!this.options.scanProject) {
+        return jsonResponse({ tasks: [], plans: {}, subtasks: {} });
+      }
+
+      const result = await this.options.scanProject(name);
+      return jsonResponse(result);
+    } catch (err) {
+      return errorResponse(err);
+    }
+  }
+
+  private async handleGetAllTasks(): Promise<Response> {
+    try {
+      if (!this.options.listProjects) {
+        return errorResponse("Project listing not configured");
+      }
+
+      const projects = await this.options.listProjects();
+      const projectsData: Record<string, ProjectScanResult> = {};
+
+      for (const project of projects) {
+        if (this.options.scanProject) {
+          projectsData[project.name] = await this.options.scanProject(
+            project.name
+          );
+        } else {
+          projectsData[project.name] = { tasks: [], plans: {}, subtasks: {} };
+        }
+      }
+
+      return jsonResponse({ projects: projectsData });
     } catch (err) {
       return errorResponse(err);
     }

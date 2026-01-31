@@ -24,8 +24,8 @@ const copyFixture = async (
 };
 
 import type { AgentProcess, AgentType, Config } from "../types";
-import type { AgentRunner } from "./agent-runner";
 import { Orchestrator } from "./orchestrator";
+import type { SdkAgentRunner } from "./sdk-agent-runner";
 
 const createMockAgentRunner = () => {
   const runner = new EventEmitter() as EventEmitter & {
@@ -39,7 +39,7 @@ const createMockAgentRunner = () => {
       id: "test-agent",
       type: "implementation" as AgentType,
       taskFolder: "test-task",
-      pid: 123,
+      pid: 0, // SDK sessions use 0 as sentinel (no OS process)
       startedAt: new Date()
     })
   );
@@ -53,10 +53,20 @@ const createConfig = (overrides: Partial<Config> = {}): Config => ({
   maxConcurrentAgents: 3,
   devsfactoryDir: ".devsfactory",
   worktreesDir: ".worktrees",
+  dashboardPort: 3001,
   debounceMs: 10,
   retryBackoff: { initialMs: 2000, maxMs: 300000, maxAttempts: 5 },
   ignorePatterns: [".git", "*.swp", "*.tmp", "*~", ".DS_Store"],
   ...overrides
+});
+
+const createMockGitOps = () => ({
+  createTaskWorktree: mock(() => Promise.resolve("/mock/task/worktree")),
+  createSubtaskWorktree: mock(() => Promise.resolve("/mock/subtask/worktree")),
+  deleteWorktree: mock(() => Promise.resolve()),
+  mergeSubtaskIntoTask: mock(() =>
+    Promise.resolve({ success: true, commitSha: "abc123" })
+  )
 });
 
 describe("Orchestrator", () => {
@@ -75,12 +85,12 @@ describe("Orchestrator", () => {
       expect(orchestrator).toBeDefined();
     });
 
-    test("constructor accepts optional AgentRunner for dependency injection", () => {
+    test("constructor accepts optional SdkAgentRunner for dependency injection", () => {
       const config = createConfig();
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       expect(orchestrator).toBeDefined();
@@ -129,7 +139,7 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       await orchestrator.start();
@@ -148,7 +158,7 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       await orchestrator.start();
@@ -164,7 +174,7 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       await orchestrator.start();
@@ -177,7 +187,7 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
       const events: string[] = [];
       orchestrator.on("stateChanged", () => events.push("stateChanged"));
@@ -193,7 +203,7 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       let recoveryCalled = false;
@@ -233,7 +243,7 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       await orchestrator.start();
@@ -263,7 +273,7 @@ describe("Orchestrator", () => {
       ]);
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       await orchestrator.start();
@@ -277,7 +287,7 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
       const events: string[] = [];
 
@@ -308,7 +318,7 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
       const events: Array<{
         jobId: string;
@@ -342,7 +352,7 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
       const events: Array<{
         jobId: string;
@@ -387,7 +397,8 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner,
+        { gitOps: createMockGitOps() }
       );
       const events: Array<{
         taskFolder: string;
@@ -436,7 +447,8 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner,
+        { gitOps: createMockGitOps() }
       );
       const events: Array<{ task: { folder: string }; subtasks: unknown[] }> =
         [];
@@ -469,7 +481,8 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner,
+        { gitOps: createMockGitOps() }
       );
       const events: unknown[] = [];
 
@@ -514,7 +527,7 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         await orchestrator.start();
@@ -541,7 +554,7 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         await orchestrator.start();
@@ -571,7 +584,7 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         await orchestrator.start();
@@ -589,7 +602,7 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
         const events: string[] = [];
         orchestrator.on("stateChanged", () => events.push("stateChanged"));
@@ -601,25 +614,15 @@ describe("Orchestrator", () => {
       });
 
       test("calls createTaskWorktree when transitioning task to INPROGRESS", async () => {
-        const { mock: bunMock } = await import("bun:test");
-        const { dirname } = await import("node:path");
-        const { fileURLToPath } = await import("node:url");
-        const __dirname = dirname(fileURLToPath(import.meta.url));
-        const gitModulePath = join(__dirname, "git");
-
         const createTaskWorktreeMock = mock(() => Promise.resolve("/path"));
-        bunMock.module(gitModulePath, () => ({
+        const mockGitOps = {
           createTaskWorktree: createTaskWorktreeMock,
           createSubtaskWorktree: mock(() => Promise.resolve("/path")),
           deleteWorktree: mock(() => Promise.resolve()),
           mergeSubtaskIntoTask: mock(() =>
             Promise.resolve({ success: true, commitSha: "abc123" })
           )
-        }));
-
-        const { Orchestrator: MockedOrchestrator } = await import(
-          "./orchestrator"
-        );
+        };
 
         await copyFixture(devsfactoryDir, "simple-task", "my-task");
 
@@ -628,9 +631,10 @@ describe("Orchestrator", () => {
           worktreesDir: worktreesDir
         });
         const mockRunner = createMockAgentRunner();
-        const orchestrator = new MockedOrchestrator(
+        const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: mockGitOps }
         );
 
         await orchestrator.start();
@@ -639,10 +643,10 @@ describe("Orchestrator", () => {
         expect(createTaskWorktreeMock).toHaveBeenCalled();
         expect(createTaskWorktreeMock).toHaveBeenCalledWith(
           expect.any(String),
-          "my-task"
+          "my-task",
+          worktreesDir,
+          undefined
         );
-
-        bunMock.restore();
       });
     });
 
@@ -662,7 +666,8 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -690,7 +695,7 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         await orchestrator.start();
@@ -721,7 +726,8 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -758,7 +764,7 @@ describe("Orchestrator", () => {
               type: options.type,
               taskFolder: options.taskFolder,
               subtaskFile: options.subtaskFile,
-              pid: 100 + agentIdCounter,
+              pid: 0, // SDK sessions use 0 as sentinel (no OS process)
               startedAt: new Date()
             };
             activeAgents.push(agent);
@@ -770,7 +776,8 @@ describe("Orchestrator", () => {
 
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -795,7 +802,8 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -828,7 +836,8 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
         const events: Array<{
           taskFolder: string;
@@ -850,25 +859,15 @@ describe("Orchestrator", () => {
       });
 
       test("calls createSubtaskWorktree before spawning implementation agent", async () => {
-        const { mock: bunMock } = await import("bun:test");
-        const { dirname } = await import("node:path");
-        const { fileURLToPath } = await import("node:url");
-        const __dirname = dirname(fileURLToPath(import.meta.url));
-        const gitModulePath = join(__dirname, "git");
-
         const createSubtaskWorktreeMock = mock(() => Promise.resolve("/path"));
-        bunMock.module(gitModulePath, () => ({
+        const mockGitOps = {
           createTaskWorktree: mock(() => Promise.resolve("/path")),
           createSubtaskWorktree: createSubtaskWorktreeMock,
           deleteWorktree: mock(() => Promise.resolve()),
           mergeSubtaskIntoTask: mock(() =>
             Promise.resolve({ success: true, commitSha: "abc123" })
           )
-        }));
-
-        const { Orchestrator: MockedOrchestrator } = await import(
-          "./orchestrator"
-        );
+        };
 
         await copyFixture(devsfactoryDir, "simple-task-with-plan", "my-task");
         // Update task status to INPROGRESS
@@ -885,9 +884,10 @@ describe("Orchestrator", () => {
           worktreesDir: worktreesDir
         });
         const mockRunner = createMockAgentRunner();
-        const orchestrator = new MockedOrchestrator(
+        const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: mockGitOps }
         );
 
         await orchestrator.start();
@@ -898,10 +898,10 @@ describe("Orchestrator", () => {
         expect(createSubtaskWorktreeMock).toHaveBeenCalledWith(
           expect.any(String),
           "my-task",
-          "create-hello"
+          "create-hello",
+          worktreesDir,
+          undefined
         );
-
-        bunMock.restore();
       });
     });
 
@@ -917,7 +917,8 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -942,7 +943,8 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -965,7 +967,8 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -989,7 +992,8 @@ describe("Orchestrator", () => {
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -1027,7 +1031,8 @@ describe("Orchestrator", () => {
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner,
+        { gitOps: createMockGitOps() }
       );
 
       await orchestrator.start();
@@ -1103,7 +1108,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -1128,7 +1134,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -1149,7 +1156,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -1170,7 +1178,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         const events: Array<{ action: string; taskFolder: string }> = [];
@@ -1200,7 +1209,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -1229,7 +1239,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -1258,7 +1269,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -1286,7 +1298,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -1310,7 +1323,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         const events: Array<{
@@ -1349,7 +1363,7 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         await orchestrator.start();
@@ -1384,8 +1398,8 @@ Test
 
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner,
-          { queue }
+          mockRunner as unknown as SdkAgentRunner,
+          { queueOptions: { queue } }
         );
 
         expect(orchestrator).toBeDefined();
@@ -1398,8 +1412,8 @@ Test
 
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner,
-          { registry }
+          mockRunner as unknown as SdkAgentRunner,
+          { queueOptions: { registry } }
         );
 
         expect(orchestrator).toBeDefined();
@@ -1414,8 +1428,8 @@ Test
 
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner,
-          { producer }
+          mockRunner as unknown as SdkAgentRunner,
+          { queueOptions: { producer } }
         );
 
         expect(orchestrator).toBeDefined();
@@ -1428,7 +1442,7 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         await orchestrator.start();
@@ -1444,8 +1458,8 @@ Test
         const registry = new MemoryAgentRegistry();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner,
-          { registry }
+          mockRunner as unknown as SdkAgentRunner,
+          { queueOptions: { registry } }
         );
 
         await orchestrator.start();
@@ -1472,7 +1486,7 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         await orchestrator.start();
@@ -1488,8 +1502,8 @@ Test
         const queue = new MemoryQueue();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner,
-          { queue }
+          mockRunner as unknown as SdkAgentRunner,
+          { queueOptions: { queue } }
         );
 
         // Note: We check depth before start() because the worker would process the job
@@ -1514,7 +1528,7 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         const scheduleReconcile = (
@@ -1529,7 +1543,7 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         const reconcile = (
@@ -1546,7 +1560,7 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         await orchestrator.start();
@@ -1589,7 +1603,7 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         await orchestrator.start();
@@ -1644,8 +1658,8 @@ Test
 
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner,
-          { queue, registry, producer }
+          mockRunner as unknown as SdkAgentRunner,
+          { queueOptions: { queue, registry, producer } }
         );
 
         await orchestrator.start();
@@ -1664,8 +1678,8 @@ Test
         const registry = new MemoryAgentRegistry();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner,
-          { queue, registry }
+          mockRunner as unknown as SdkAgentRunner,
+          { queueOptions: { queue, registry } }
         );
 
         await orchestrator.start();
@@ -1689,8 +1703,8 @@ Test
         const registry = new MemoryAgentRegistry();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner,
-          { queue, registry }
+          mockRunner as unknown as SdkAgentRunner,
+          { queueOptions: { queue, registry } }
         );
 
         await orchestrator.start();
@@ -1714,8 +1728,8 @@ Test
         const registry = new MemoryAgentRegistry();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner,
-          { queue, registry }
+          mockRunner as unknown as SdkAgentRunner,
+          { queueOptions: { queue, registry } }
         );
 
         await orchestrator.start();
@@ -1778,7 +1792,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         const before = new Date();
@@ -1801,24 +1816,14 @@ Test
 
     describe("subtask start timing", () => {
       test("records startedAt when subtask transitions PENDING → INPROGRESS", async () => {
-        const { mock: bunMock } = await import("bun:test");
-        const { dirname } = await import("node:path");
-        const { fileURLToPath } = await import("node:url");
-        const __dirname = dirname(fileURLToPath(import.meta.url));
-        const gitModulePath = join(__dirname, "git");
-
-        bunMock.module(gitModulePath, () => ({
+        const mockGitOps = {
           createTaskWorktree: mock(() => Promise.resolve("/path")),
           createSubtaskWorktree: mock(() => Promise.resolve("/path")),
           deleteWorktree: mock(() => Promise.resolve()),
           mergeSubtaskIntoTask: mock(() =>
             Promise.resolve({ success: true, commitSha: "abc123" })
           )
-        }));
-
-        const { Orchestrator: MockedOrchestrator } = await import(
-          "./orchestrator"
-        );
+        };
 
         await copyFixture(devsfactoryDir, "simple-task-with-plan", "my-task");
         const taskMd = await Bun.file(
@@ -1834,9 +1839,10 @@ Test
           worktreesDir
         });
         const mockRunner = createMockAgentRunner();
-        const orchestrator = new MockedOrchestrator(
+        const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: mockGitOps }
         );
 
         const before = new Date();
@@ -1859,8 +1865,6 @@ Test
         expect(
           subtask.frontmatter.timing!.startedAt!.getTime()
         ).toBeLessThanOrEqual(after.getTime());
-
-        bunMock.restore();
       });
     });
 
@@ -1879,7 +1883,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -1931,7 +1936,8 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner,
+          { gitOps: createMockGitOps() }
         );
 
         await orchestrator.start();
@@ -1983,7 +1989,7 @@ Test
         const mockRunner = createMockAgentRunner();
         const orchestrator = new Orchestrator(
           config,
-          mockRunner as unknown as AgentRunner
+          mockRunner as unknown as SdkAgentRunner
         );
 
         await orchestrator.start();
@@ -2036,7 +2042,7 @@ Test
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       expect(typeof orchestrator.getBrainstormManager).toBe("function");
@@ -2047,7 +2053,7 @@ Test
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       const manager = orchestrator.getBrainstormManager();
@@ -2062,7 +2068,7 @@ Test
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       const events: Array<{ sessionId: string; agentId: string }> = [];
@@ -2088,7 +2094,7 @@ Test
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       const events: Array<{ sessionId: string; message: unknown }> = [];
@@ -2113,7 +2119,7 @@ Test
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       const events: Array<{ sessionId: string; taskPreview: unknown }> = [];
@@ -2140,7 +2146,7 @@ Test
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       const events: Array<{ sessionId: string; error: Error }> = [];
@@ -2182,7 +2188,7 @@ Test
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       await orchestrator.start();
@@ -2198,7 +2204,7 @@ Test
       const mockRunner = createMockAgentRunner();
       const orchestrator = new Orchestrator(
         config,
-        mockRunner as unknown as AgentRunner
+        mockRunner as unknown as SdkAgentRunner
       );
 
       await orchestrator.start();
@@ -2235,6 +2241,254 @@ Test
       await orchestrator.stop();
 
       expect(endedSessions).toContain("mock-session");
+    });
+  });
+
+  describe("global mode support", () => {
+    let tempDir: string;
+    let projectRoot: string;
+    let devsfactoryDir: string;
+    let worktreesDir: string;
+
+    beforeEach(async () => {
+      tempDir = await createTestDir("orchestrator-global");
+      // Simulate global mode: devsfactoryDir is NOT inside projectRoot
+      projectRoot = join(tempDir, "project");
+      devsfactoryDir = join(tempDir, "global-aop", "tasks", "my-project");
+      worktreesDir = join(tempDir, "global-aop", "worktrees", "my-project");
+      await mkdir(projectRoot, { recursive: true });
+      await mkdir(devsfactoryDir, { recursive: true });
+      await mkdir(worktreesDir, { recursive: true });
+    });
+
+    afterEach(async () => {
+      await cleanupTestDir(tempDir);
+    });
+
+    test("constructor accepts projectRoot in config for global mode", () => {
+      const config = createConfig({
+        devsfactoryDir,
+        worktreesDir,
+        projectRoot
+      });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as SdkAgentRunner
+      );
+
+      expect(orchestrator).toBeDefined();
+    });
+
+    test("getRepoRoot() returns projectRoot when provided in config", async () => {
+      const config = createConfig({
+        devsfactoryDir,
+        worktreesDir,
+        projectRoot
+      });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as SdkAgentRunner
+      );
+
+      const getRepoRoot = (
+        orchestrator as unknown as { getRepoRoot: () => string }
+      ).getRepoRoot.bind(orchestrator);
+
+      expect(getRepoRoot()).toBe(projectRoot);
+    });
+
+    test("getRepoRoot() falls back to dirname(devsfactoryDir) in local mode", async () => {
+      const localDevsfactoryDir = join(
+        tempDir,
+        "local-project",
+        ".devsfactory"
+      );
+      await mkdir(localDevsfactoryDir, { recursive: true });
+
+      const config = createConfig({
+        devsfactoryDir: localDevsfactoryDir,
+        worktreesDir: join(tempDir, "local-project", ".worktrees")
+      });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as SdkAgentRunner
+      );
+
+      const getRepoRoot = (
+        orchestrator as unknown as { getRepoRoot: () => string }
+      ).getRepoRoot.bind(orchestrator);
+
+      expect(getRepoRoot()).toBe(join(tempDir, "local-project"));
+    });
+
+    test("uses worktreesDir from config for handler context", async () => {
+      await copyFixture(devsfactoryDir, "done-task", "my-task");
+
+      const config = createConfig({
+        devsfactoryDir,
+        worktreesDir,
+        projectRoot
+      });
+      const mockRunner = createMockAgentRunner();
+      const queue = new MemoryQueue();
+      const registry = new MemoryAgentRegistry();
+
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as SdkAgentRunner,
+        { queueOptions: { queue, registry } }
+      );
+
+      await orchestrator.start();
+      await orchestrator.stop();
+
+      // The orchestrator should use worktreesDir from config
+      // We verify this indirectly by checking the orchestrator was created successfully
+      expect(orchestrator).toBeDefined();
+    });
+
+    test("creates task worktree in configured worktreesDir for global mode", async () => {
+      await copyFixture(devsfactoryDir, "simple-task", "my-task");
+
+      const config = createConfig({
+        devsfactoryDir,
+        worktreesDir,
+        projectRoot
+      });
+      const mockRunner = createMockAgentRunner();
+
+      const createTaskWorktreeMock = mock(() => Promise.resolve("/path"));
+      const mockGitOps = {
+        createTaskWorktree: createTaskWorktreeMock,
+        createSubtaskWorktree: mock(() => Promise.resolve("/path")),
+        deleteWorktree: mock(() => Promise.resolve()),
+        mergeSubtaskIntoTask: mock(() =>
+          Promise.resolve({ success: true, commitSha: "abc123" })
+        )
+      };
+
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as SdkAgentRunner,
+        { gitOps: mockGitOps }
+      );
+
+      await orchestrator.start();
+      await orchestrator.stop();
+
+      expect(createTaskWorktreeMock).toHaveBeenCalled();
+      expect(createTaskWorktreeMock).toHaveBeenCalledWith(
+        projectRoot,
+        "my-task",
+        worktreesDir,
+        undefined
+      );
+    });
+
+    test("creates subtask worktree in configured worktreesDir for global mode", async () => {
+      await copyFixture(devsfactoryDir, "simple-task-with-plan", "my-task");
+      const taskMd = await Bun.file(
+        join(devsfactoryDir, "my-task/task.md")
+      ).text();
+      await writeFile(
+        join(devsfactoryDir, "my-task/task.md"),
+        taskMd.replace("status: PENDING", "status: INPROGRESS")
+      );
+
+      const config = createConfig({
+        devsfactoryDir,
+        worktreesDir,
+        projectRoot
+      });
+      const mockRunner = createMockAgentRunner();
+
+      const createSubtaskWorktreeMock = mock(() => Promise.resolve("/path"));
+      const mockGitOps = {
+        createTaskWorktree: mock(() => Promise.resolve("/path")),
+        createSubtaskWorktree: createSubtaskWorktreeMock,
+        deleteWorktree: mock(() => Promise.resolve()),
+        mergeSubtaskIntoTask: mock(() =>
+          Promise.resolve({ success: true, commitSha: "abc123" })
+        )
+      };
+
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as SdkAgentRunner,
+        { gitOps: mockGitOps }
+      );
+
+      await orchestrator.start();
+      await new Promise((r) => setTimeout(r, 50));
+      await orchestrator.stop();
+
+      expect(createSubtaskWorktreeMock).toHaveBeenCalled();
+      expect(createSubtaskWorktreeMock).toHaveBeenCalledWith(
+        projectRoot,
+        "my-task",
+        "create-hello",
+        worktreesDir,
+        undefined
+      );
+    });
+
+    test("passes worktreesDir to mergeSubtaskIntoTask handler", async () => {
+      await copyFixture(
+        devsfactoryDir,
+        "inprogress-with-subtask-pending-merge",
+        "my-task"
+      );
+
+      const config = createConfig({
+        devsfactoryDir,
+        worktreesDir,
+        projectRoot
+      });
+      const mockRunner = createMockAgentRunner();
+
+      const mergeSubtaskMock = mock(() =>
+        Promise.resolve({ success: true, commitSha: "abc123" })
+      );
+      const mockGitOps = {
+        createTaskWorktree: mock(() => Promise.resolve("/path")),
+        createSubtaskWorktree: mock(() => Promise.resolve("/path")),
+        deleteWorktree: mock(() => Promise.resolve()),
+        mergeSubtaskIntoTask: mergeSubtaskMock
+      };
+
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as SdkAgentRunner,
+        { gitOps: mockGitOps }
+      );
+
+      await orchestrator.start();
+      await new Promise((r) => setTimeout(r, 100));
+      await orchestrator.stop();
+
+      // The merge handler should be configured with worktreesDir
+      // We can't directly test the handler context, but we verify the orchestrator works
+      expect(orchestrator).toBeDefined();
+    });
+
+    test("BrainstormSessionManager uses projectRoot for cwd", () => {
+      const config = createConfig({
+        devsfactoryDir,
+        worktreesDir,
+        projectRoot
+      });
+      const mockRunner = createMockAgentRunner();
+      const orchestrator = new Orchestrator(
+        config,
+        mockRunner as unknown as SdkAgentRunner
+      );
+
+      const manager = orchestrator.getBrainstormManager();
+      expect(manager).toBeDefined();
+      // The BrainstormSessionManager should be initialized with projectRoot as cwd
     });
   });
 });

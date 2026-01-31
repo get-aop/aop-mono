@@ -42,3 +42,10 @@ test-runs
 .playwright
 playwright-report
 test-results
+
+.leo/*
+
+# Local development files
+tasks/
+docs/AUTH_IMPLEMENTATION.md
+docs/INTERACTIVE_SESSION_IMPLEMENTATION.md

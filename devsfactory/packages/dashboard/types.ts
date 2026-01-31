@@ -1,3 +1,10 @@
+export interface ProjectListItem {
+  name: string;
+  path: string;
+  registered: Date;
+  taskCount: number;
+}
+
 export type TaskStatus =
   | "DRAFT"
   | "BACKLOG"
@@ -149,9 +156,34 @@ export interface BrainstormDraft {
   updatedAt: Date;
 }
 
+// MCP Ask User Types
+export interface AskUserOption {
+  label: string;
+  description: string;
+}
+
+export interface AskUserQuestion {
+  question: string;
+  header: string;
+  options: AskUserOption[];
+  multiSelect?: boolean;
+}
+
+export interface AskUserRequest {
+  type: "askUser";
+  questionId: string;
+  questions: AskUserQuestion[];
+}
+
+export interface AskUserResponse {
+  type: "askUserResponse";
+  questionId: string;
+  answers: Record<string, string>;
+}
+
 export type ServerEvent =
-  | { type: "state"; data: OrchestratorState }
-  | { type: "taskChanged"; task: Task }
+  | { type: "state"; data: OrchestratorState; projectName?: string }
+  | { type: "taskChanged"; task: Task; projectName?: string }
   | { type: "subtaskChanged"; taskFolder: string; subtask: Subtask }
   | {
       type: "agentStarted";
@@ -180,4 +212,5 @@ export type ServerEvent =
       subtaskPreviews: SubtaskPreview[];
     }
   | { type: "taskCreated"; sessionId: string; taskFolder: string }
-  | { type: "brainstormError"; sessionId: string; error: string };
+  | { type: "brainstormError"; sessionId: string; error: string }
+  | AskUserRequest;

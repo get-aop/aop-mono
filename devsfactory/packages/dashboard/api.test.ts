@@ -297,7 +297,7 @@ describe("api client", () => {
       const subtasks: SubtaskPreview[] = [
         { title: "Setup", description: "Set up project", dependencies: [] }
       ];
-      const response = { taskFolder: "my-new-task" };
+      const response = { taskFolder: "my-create-task" };
       mockFetch = mock(() =>
         Promise.resolve(new Response(JSON.stringify(response), { status: 200 }))
       );
@@ -377,6 +377,66 @@ describe("api client", () => {
       const [url, options] = mockFetch.mock.calls[0];
       expect(url).toBe("http://test:3000/api/brainstorm/drafts/draft-1");
       expect(options.method).toBe("DELETE");
+    });
+  });
+
+  describe("fetchProjects", () => {
+    test("fetches projects from /api/projects", async () => {
+      const response = {
+        projects: [
+          { name: "proj-1", path: "/p1", registered: "2024-01-01", taskCount: 3 },
+          { name: "proj-2", path: "/p2", registered: "2024-01-02", taskCount: 5 }
+        ],
+        isGlobalMode: true
+      };
+      mockFetch = mock(() =>
+        Promise.resolve(new Response(JSON.stringify(response), { status: 200 }))
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = createApiClient("http://test:3000");
+      const result = await client.fetchProjects();
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toBe("http://test:3000/api/projects");
+      expect(result.projects).toHaveLength(2);
+      expect(result.isGlobalMode).toBe(true);
+    });
+  });
+
+  describe("fetchProjectTasks", () => {
+    test("fetches project state from /api/projects/:name/state", async () => {
+      const mockState: OrchestratorState = {
+        tasks: [],
+        plans: {},
+        subtasks: {}
+      };
+      mockFetch = mock(() =>
+        Promise.resolve(new Response(JSON.stringify(mockState), { status: 200 }))
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = createApiClient("http://test:3000");
+      const result = await client.fetchProjectTasks("my-project");
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toBe("http://test:3000/api/projects/my-project/state");
+      expect(result).toEqual(mockState);
+    });
+
+    test("encodes project name in URL", async () => {
+      mockFetch = mock(() =>
+        Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = createApiClient("http://test:3000");
+      await client.fetchProjectTasks("my project");
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toBe("http://test:3000/api/projects/my%20project/state");
     });
   });
 });

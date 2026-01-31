@@ -1002,7 +1002,7 @@ describe("JobProducer", () => {
 
       const job = await queue.peek();
       expect(job?.type).toBe("implementation");
-      expect(job?.priority).toBe(JOB_PRIORITY["implementation"]);
+      expect(job?.priority).toBe(JOB_PRIORITY.implementation);
       expect(job?.priority).toBe(10);
     });
 
@@ -1054,7 +1054,7 @@ describe("JobProducer", () => {
 
       const job = await queue.peek();
       expect(job?.type).toBe("review");
-      expect(job?.priority).toBe(JOB_PRIORITY["review"]);
+      expect(job?.priority).toBe(JOB_PRIORITY.review);
       expect(job?.priority).toBe(20);
     });
 
@@ -1106,7 +1106,7 @@ describe("JobProducer", () => {
 
       const job = await queue.peek();
       expect(job?.type).toBe("merge");
-      expect(job?.priority).toBe(JOB_PRIORITY["merge"]);
+      expect(job?.priority).toBe(JOB_PRIORITY.merge);
       expect(job?.priority).toBe(30);
     });
 

@@ -1,6 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import ksuid from "ksuid";
+import { runWithGlobalDir } from "./core/global-bootstrap";
 
 const TEST_RUNS_DIR = join(import.meta.dir, "..", "test-runs");
 
@@ -31,4 +32,29 @@ export const createTestGitRepo = async (prefix: string): Promise<string> => {
   await Bun.$`git -C ${testDir} add .`.quiet();
   await Bun.$`git -C ${testDir} commit -m "Initial commit"`.quiet();
   return testDir;
+};
+
+export interface IsolatedGlobalDirContext {
+  globalDir: string;
+  cleanup: () => Promise<void>;
+  run: <T>(fn: () => T | Promise<T>) => T | Promise<T>;
+}
+
+export const createIsolatedGlobalDir = async (
+  prefix: string
+): Promise<IsolatedGlobalDirContext> => {
+  const testDir = await createTestDir(prefix);
+  const globalDir = join(testDir, ".aop");
+  await mkdir(join(globalDir, "projects"), { recursive: true });
+  await mkdir(join(globalDir, "tasks"), { recursive: true });
+  await mkdir(join(globalDir, "brainstorm"), { recursive: true });
+  await mkdir(join(globalDir, "worktrees"), { recursive: true });
+
+  return {
+    globalDir,
+    cleanup: async () => {
+      await cleanupTestDir(testDir);
+    },
+    run: <T>(fn: () => T | Promise<T>) => runWithGlobalDir(globalDir, fn)
+  };
 };

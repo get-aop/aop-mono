@@ -79,9 +79,9 @@ describe("LogStorage", () => {
     });
 
     test("creates parent directories if they don't exist", async () => {
-      await storage.append("new-task", "001-subtask.md", "log line");
+      await storage.append("create-task", "001-subtask.md", "log line");
 
-      const logPath = storage.getLogPath("new-task", "001-subtask.md");
+      const logPath = storage.getLogPath("create-task", "001-subtask.md");
       const exists = await Bun.file(logPath).exists();
       expect(exists).toBe(true);
     });

@@ -1,2 +1,8 @@
 [test]
 root = "./src"
+
+# Lower memory usage for CI environments
+smol = true
+
+# Default timeout for tests (30 seconds)
+timeout = 30000

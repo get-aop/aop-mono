@@ -60,18 +60,22 @@ export const getMainBranch = async (cwd: string): Promise<string> => {
 };
 
 export const createTaskWorktree = async (
-  cwd: string,
-  taskFolder: string
+  repoRoot: string,
+  taskFolder: string,
+  worktreesDir?: string,
+  customBranch?: string
 ): Promise<string> => {
-  const branchName = `task/${taskFolder}`;
-  const worktreePath = join(cwd, ".worktrees", taskFolder);
+  const branchName = customBranch ?? `task/${taskFolder}`;
+  const worktreePath = worktreesDir
+    ? join(worktreesDir, taskFolder)
+    : join(repoRoot, ".worktrees", taskFolder);
 
-  const worktrees = await listWorktrees(cwd);
+  const worktrees = await listWorktrees(repoRoot);
   if (worktrees.includes(worktreePath)) {
     return worktreePath;
   }
 
-  const branchConflict = await findBranchWorktreeConflict(cwd, branchName);
+  const branchConflict = await findBranchWorktreeConflict(repoRoot, branchName);
   if (branchConflict) {
     throw new Error(
       `Branch '${branchName}' is already checked out in worktree '${branchConflict}'. ` +
@@ -82,7 +86,7 @@ export const createTaskWorktree = async (
   // Check if branch already exists
   let branchExists = false;
   try {
-    await Bun.$`git -C ${cwd} rev-parse --verify ${branchName}`.quiet();
+    await Bun.$`git -C ${repoRoot} rev-parse --verify ${branchName}`.quiet();
     branchExists = true;
   } catch {
     // Branch doesn't exist
@@ -91,31 +95,37 @@ export const createTaskWorktree = async (
   if (branchExists) {
     // Fetch latest changes from remote if available
     try {
-      await Bun.$`git -C ${cwd} fetch origin ${branchName}:${branchName}`.quiet();
+      await Bun.$`git -C ${repoRoot} fetch origin ${branchName}:${branchName}`.quiet();
     } catch {
       // Branch might not exist on remote, or no remote configured - continue with local state
     }
     // Branch exists, create worktree without -b flag
-    await Bun.$`git -C ${cwd} worktree add ${worktreePath} ${branchName}`.quiet();
+    await Bun.$`git -C ${repoRoot} worktree add ${worktreePath} ${branchName}`.quiet();
   } else {
     // Create new branch with worktree
-    await Bun.$`git -C ${cwd} worktree add -b ${branchName} ${worktreePath}`.quiet();
+    await Bun.$`git -C ${repoRoot} worktree add -b ${branchName} ${worktreePath}`.quiet();
   }
 
   return worktreePath;
 };
 
 export const createSubtaskWorktree = async (
-  cwd: string,
+  repoRoot: string,
   taskFolder: string,
-  subtaskSlug: string
+  subtaskSlug: string,
+  worktreesDir?: string,
+  customTaskBranch?: string
 ): Promise<string> => {
-  const taskBranch = `task/${taskFolder}`;
-  const subtaskBranch = `task/${taskFolder}--${subtaskSlug}`;
-  const worktreePath = join(cwd, ".worktrees", `${taskFolder}--${subtaskSlug}`);
+  const taskBranch = customTaskBranch ?? `task/${taskFolder}`;
+  const subtaskBranch = customTaskBranch
+    ? `${customTaskBranch}--${subtaskSlug}`
+    : `task/${taskFolder}--${subtaskSlug}`;
+  const worktreePath = worktreesDir
+    ? join(worktreesDir, `${taskFolder}--${subtaskSlug}`)
+    : join(repoRoot, ".worktrees", `${taskFolder}--${subtaskSlug}`);
 
   return ensureWorktree({
-    cwd,
+    cwd: repoRoot,
     worktreePath,
     branchName: subtaskBranch,
     sourceBranch: taskBranch
@@ -123,15 +133,21 @@ export const createSubtaskWorktree = async (
 };
 
 export const mergeSubtaskIntoTask = async (
-  cwd: string,
+  repoRoot: string,
   taskFolder: string,
-  subtaskSlug: string
+  subtaskSlug: string,
+  worktreesDir?: string,
+  customTaskBranch?: string
 ): Promise<MergeResult> => {
-  const taskWorktreePath = join(cwd, ".worktrees", taskFolder);
-  const subtaskBranch = `task/${taskFolder}--${subtaskSlug}`;
+  const taskWorktreePath = worktreesDir
+    ? join(worktreesDir, taskFolder)
+    : join(repoRoot, ".worktrees", taskFolder);
+  const subtaskBranch = customTaskBranch
+    ? `${customTaskBranch}--${subtaskSlug}`
+    : `task/${taskFolder}--${subtaskSlug}`;
 
   log.info`mergeSubtaskIntoTask ${{
-    cwd,
+    repoRoot,
     taskFolder,
     subtaskSlug,
     taskWorktreePath,
@@ -179,11 +195,25 @@ export const deleteWorktree = async (
   worktreePath: string
 ): Promise<void> => {
   log.info`deleteWorktree ${{ cwd, worktreePath }}`;
+
+  // First try git worktree remove
   try {
     await Bun.$`git -C ${cwd} worktree remove ${worktreePath} --force`.quiet();
     log.info`Worktree deleted successfully`;
+    return;
   } catch (error) {
-    log.warn`Worktree deletion failed (may not exist) ${{
+    log.warn`git worktree remove failed, trying fallback ${{
+      error: error instanceof Error ? error.message : String(error)
+    }}`;
+  }
+
+  // Fallback: remove directory and prune
+  try {
+    await Bun.$`rm -rf ${worktreePath}`.quiet();
+    await Bun.$`git -C ${cwd} worktree prune`.quiet();
+    log.info`Worktree deleted via fallback (rm + prune)`;
+  } catch (error) {
+    log.error`Worktree deletion failed completely ${{
       error: error instanceof Error ? error.message : String(error)
     }}`;
   }

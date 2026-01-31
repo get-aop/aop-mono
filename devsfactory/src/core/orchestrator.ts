@@ -24,15 +24,48 @@ import type {
   Subtask,
   Task
 } from "../types";
-import { AgentRunner } from "./agent-runner";
 import { BrainstormSessionManager } from "./brainstorm-session-manager";
 import { cleanupOldDrafts } from "./draft-storage";
 import {
-  createSubtaskWorktree,
-  createTaskWorktree,
-  deleteWorktree,
-  mergeSubtaskIntoTask
+  createSubtaskWorktree as gitCreateSubtaskWorktree,
+  createTaskWorktree as gitCreateTaskWorktree,
+  deleteWorktree as gitDeleteWorktree,
+  mergeSubtaskIntoTask as gitMergeSubtaskIntoTask,
+  type MergeResult
 } from "./git";
+import { SdkAgentRunner } from "./sdk-agent-runner";
+
+export interface GitOperations {
+  createTaskWorktree: (
+    repoRoot: string,
+    taskFolder: string,
+    worktreesDir?: string,
+    customBranch?: string
+  ) => Promise<string>;
+  createSubtaskWorktree: (
+    repoRoot: string,
+    taskFolder: string,
+    subtaskSlug: string,
+    worktreesDir?: string,
+    customTaskBranch?: string
+  ) => Promise<string>;
+  deleteWorktree: (repoRoot: string, worktreePath: string) => Promise<void>;
+  mergeSubtaskIntoTask: (
+    repoRoot: string,
+    taskFolder: string,
+    subtaskSlug: string,
+    worktreesDir?: string,
+    customTaskBranch?: string
+  ) => Promise<MergeResult>;
+}
+
+const defaultGitOps: GitOperations = {
+  createTaskWorktree: gitCreateTaskWorktree,
+  createSubtaskWorktree: gitCreateSubtaskWorktree,
+  deleteWorktree: gitDeleteWorktree,
+  mergeSubtaskIntoTask: gitMergeSubtaskIntoTask
+};
+
 import type { AgentRegistry, RunningAgent } from "./interfaces/agent-registry";
 import type { JobQueue } from "./interfaces/job-queue";
 import { MemoryQueue } from "./local/memory-queue";
@@ -49,6 +82,11 @@ export interface OrchestratorQueueOptions {
   producer?: JobProducer;
 }
 
+export interface OrchestratorOptions {
+  queueOptions?: OrchestratorQueueOptions;
+  gitOps?: GitOperations;
+}
+
 interface AgentContext {
   taskFolder: string;
   subtaskFile?: string;
@@ -57,7 +95,7 @@ interface AgentContext {
 export class Orchestrator extends EventEmitter {
   private config: Config;
   private watcher: DevsfactoryWatcher;
-  private agentRunner: AgentRunner;
+  private agentRunner: SdkAgentRunner;
   private state: OrchestratorState;
   private provider: LLMProvider;
   private queue: JobQueue & EventEmitter;
@@ -67,6 +105,7 @@ export class Orchestrator extends EventEmitter {
   private logStorage: LogStorage;
   private brainstormManager: BrainstormSessionManager;
   private runningAgents = new Map<string, AgentContext>();
+  private gitOps: GitOperations;
   private reconciling = false;
   private reconcileQueued = false;
   private reconcilePromise: Promise<void> | null = null;
@@ -75,16 +114,18 @@ export class Orchestrator extends EventEmitter {
 
   constructor(
     config: Config,
-    agentRunner?: AgentRunner,
-    queueOptions?: OrchestratorQueueOptions
+    agentRunner?: SdkAgentRunner,
+    options?: OrchestratorOptions
   ) {
     super();
     this.config = config;
-    this.agentRunner = agentRunner ?? new AgentRunner();
+    this.agentRunner = agentRunner ?? new SdkAgentRunner();
+    this.gitOps = options?.gitOps ?? defaultGitOps;
     this.watcher = new DevsfactoryWatcher(config);
     this.provider = createProvider("claude");
     this.logStorage = new LogStorage(this.getRepoRoot());
 
+    const queueOptions = options?.queueOptions;
     this.queue = queueOptions?.queue ?? new MemoryQueue();
     this.registry = queueOptions?.registry ?? new MemoryAgentRegistry();
     this.producer =
@@ -101,14 +142,38 @@ export class Orchestrator extends EventEmitter {
         );
         const agentProcess = await this.agentRunner.spawn({
           ...opts,
-          prompt,
-          provider: this.provider
+          prompt
         });
         return this.waitForAgentExit(agentProcess);
       },
-      mergeSubtask: (taskFolder, subtaskSlug) =>
-        mergeSubtaskIntoTask(this.getRepoRoot(), taskFolder, subtaskSlug),
-      deleteWorktree: (path) => deleteWorktree(this.getRepoRoot(), path),
+      mergeSubtask: async (taskFolder, subtaskSlug) => {
+        const task = this.state.tasks.find((t) => t.folder === taskFolder);
+
+        // Ensure task worktree exists before merging
+        const taskWorktreePath = join(this.config.worktreesDir, taskFolder);
+        const taskWorktreeExists = await Bun.file(
+          join(taskWorktreePath, ".git")
+        ).exists();
+
+        if (!taskWorktreeExists) {
+          await this.gitOps.createTaskWorktree(
+            this.getRepoRoot(),
+            taskFolder,
+            this.config.worktreesDir,
+            task?.frontmatter.branch
+          );
+        }
+
+        return this.gitOps.mergeSubtaskIntoTask(
+          this.getRepoRoot(),
+          taskFolder,
+          subtaskSlug,
+          this.config.worktreesDir,
+          task?.frontmatter.branch
+        );
+      },
+      deleteWorktree: (path) =>
+        this.gitOps.deleteWorktree(this.getRepoRoot(), path),
       updateSubtaskStatus: (taskFolder, subtaskFile, status) =>
         parserUpdateSubtaskStatus(
           taskFolder,
@@ -130,7 +195,7 @@ export class Orchestrator extends EventEmitter {
 
     this.brainstormManager = new BrainstormSessionManager({
       provider: this.provider,
-      cwd: dirname(this.config.devsfactoryDir)
+      cwd: this.getRepoRoot()
     });
 
     this.setupBrainstormEventForwarding();
@@ -419,6 +484,44 @@ export class Orchestrator extends EventEmitter {
     for (const task of this.state.tasks) {
       if (task.frontmatter.status !== "INPROGRESS") continue;
 
+      // Recover missing task worktree first
+      const taskWorktreePath = join(this.config.worktreesDir, task.folder);
+      const taskWorktreeExists = await Bun.file(
+        join(taskWorktreePath, ".git")
+      ).exists();
+
+      if (!taskWorktreeExists) {
+        try {
+          await this.gitOps.createTaskWorktree(
+            this.getRepoRoot(),
+            task.folder,
+            this.config.worktreesDir,
+            task.frontmatter.branch
+          );
+          this.emit("recoveryAction", {
+            action: "recreatedMissingTaskWorktree",
+            taskFolder: task.folder,
+            worktreePath: taskWorktreePath
+          });
+        } catch (error) {
+          // Task worktree creation failed (e.g., branch already checked out elsewhere)
+          // Mark task as BLOCKED so it doesn't keep failing
+          await updateTaskStatus(
+            task.folder,
+            "BLOCKED",
+            this.config.devsfactoryDir
+          );
+          task.frontmatter.status = "BLOCKED";
+          this.emit("recoveryAction", {
+            action: "taskBlockedMissingWorktree",
+            taskFolder: task.folder,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          continue;
+        }
+      }
+
+      // Then recover missing subtask worktrees
       const subtasks = this.state.subtasks[task.folder] ?? [];
       for (const subtask of subtasks) {
         if (subtask.frontmatter.status !== "INPROGRESS") continue;
@@ -433,10 +536,12 @@ export class Orchestrator extends EventEmitter {
         ).exists();
 
         if (!worktreeExists) {
-          await createSubtaskWorktree(
+          await this.gitOps.createSubtaskWorktree(
             this.getRepoRoot(),
             task.folder,
-            subtask.slug
+            subtask.slug,
+            this.config.worktreesDir,
+            task.frontmatter.branch
           );
           this.emit("recoveryAction", {
             action: "recreatedMissingWorktree",
@@ -480,7 +585,12 @@ export class Orchestrator extends EventEmitter {
         const taskFolder = this.extractTaskFolder(worktreeName);
         const task = this.state.tasks.find((t) => t.folder === taskFolder);
 
-        if (task && task.frontmatter.status !== "BLOCKED") {
+        // Don't block DONE tasks - they just need worktree cleanup
+        if (
+          task &&
+          task.frontmatter.status !== "BLOCKED" &&
+          task.frontmatter.status !== "DONE"
+        ) {
           await updateTaskStatus(
             taskFolder,
             "BLOCKED",
@@ -552,7 +662,12 @@ export class Orchestrator extends EventEmitter {
         this.config.devsfactoryDir
       );
       task.frontmatter.status = "INPROGRESS";
-      await createTaskWorktree(this.getRepoRoot(), task.folder);
+      await this.gitOps.createTaskWorktree(
+        this.getRepoRoot(),
+        task.folder,
+        this.config.worktreesDir,
+        task.frontmatter.branch
+      );
     }
   }
 
@@ -578,10 +693,12 @@ export class Orchestrator extends EventEmitter {
           this.config.devsfactoryDir
         );
         subtask.frontmatter.status = "INPROGRESS";
-        await createSubtaskWorktree(
+        await this.gitOps.createSubtaskWorktree(
           this.getRepoRoot(),
           task.folder,
-          subtask.slug
+          subtask.slug,
+          this.config.worktreesDir,
+          task.frontmatter.branch
         );
 
         this.subtaskStartTimes.set(
@@ -624,7 +741,7 @@ export class Orchestrator extends EventEmitter {
   }
 
   private getRepoRoot(): string {
-    return dirname(this.config.devsfactoryDir);
+    return this.config.projectRoot ?? dirname(this.config.devsfactoryDir);
   }
 
   private async getPromptForJob(

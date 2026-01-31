@@ -4,7 +4,12 @@ status: BACKLOG
 created: {DATE}
 priority: {PRIORITY}
 tags: []
+assignee: null
 dependencies: []
+branch: {BRANCH}
+startedAt: null
+completedAt: null
+durationMs: null
 ---
 
 # {TITLE}

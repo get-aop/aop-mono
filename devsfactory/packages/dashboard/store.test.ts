@@ -184,11 +184,11 @@ describe("DashboardStore", () => {
     });
 
     test("handles taskChanged event - adds new task", () => {
-      const newTask = createMockTask("new-task");
+      const newTask = createMockTask("create-task");
       store.getState().updateFromServer({ type: "taskChanged", task: newTask });
 
       expect(store.getState().tasks).toHaveLength(1);
-      expect(store.getState().tasks[0].folder).toBe("new-task");
+      expect(store.getState().tasks[0].folder).toBe("create-task");
     });
 
     test("handles subtaskChanged event - updates existing subtask", () => {
@@ -233,11 +233,11 @@ describe("DashboardStore", () => {
       const newSubtask = createMockSubtask(1);
       store.getState().updateFromServer({
         type: "subtaskChanged",
-        taskFolder: "new-task",
+        taskFolder: "create-task",
         subtask: newSubtask
       });
 
-      expect(store.getState().subtasks["new-task"]).toHaveLength(1);
+      expect(store.getState().subtasks["create-task"]).toHaveLength(1);
     });
 
     test("handles agentStarted event", () => {
@@ -882,7 +882,7 @@ describe("DashboardStore", () => {
       originalFetch = globalThis.fetch;
       mockFetch = mock(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ taskFolder: "my-new-task" }), {
+          new Response(JSON.stringify({ taskFolder: "my-create-task" }), {
             status: 200
           })
         )
@@ -1150,7 +1150,7 @@ describe("DashboardStore", () => {
       store.getState().updateFromServer({
         type: "taskCreated",
         sessionId: "session-1",
-        taskFolder: "my-new-task"
+        taskFolder: "my-create-task"
       });
 
       const state = store.getState().brainstorm;
@@ -1347,5 +1347,105 @@ describe("DashboardStore", () => {
 
       expect(store.getState().brainstorm.streamingMessage).toBeNull();
     });
+  });
+});
+
+describe("Project State", () => {
+  let store: ReturnType<typeof createDashboardStore>;
+
+  beforeEach(() => {
+    store = createDashboardStore();
+  });
+
+  test("initializes with default project state", () => {
+    const state = store.getState();
+    expect(state.project.projects).toEqual([]);
+    expect(state.project.isGlobalMode).toBe(false);
+    expect(state.project.currentProject).toBeNull();
+    expect(state.project.projectsLoading).toBe(false);
+    expect(state.project.projectsError).toBeNull();
+  });
+
+  test("can be initialized with custom project state", () => {
+    store = createDashboardStore(undefined, {
+      project: {
+        projects: [{ name: "test", path: "/test", registered: new Date(), taskCount: 2 }],
+        isGlobalMode: true,
+        currentProject: "test",
+        projectsLoading: false,
+        projectsError: null
+      }
+    });
+
+    const state = store.getState();
+    expect(state.project.projects).toHaveLength(1);
+    expect(state.project.isGlobalMode).toBe(true);
+    expect(state.project.currentProject).toBe("test");
+  });
+
+  test("selectProject updates currentProject", () => {
+    store.getState().selectProject("my-project");
+    expect(store.getState().project.currentProject).toBe("my-project");
+  });
+
+  test("selectProject clears selectedTask and selectedSubtask", () => {
+    store = createDashboardStore(undefined, {
+      selectedTask: "task-1",
+      selectedSubtask: { taskFolder: "task-1", subtaskFile: "001-sub.md" }
+    });
+
+    store.getState().selectProject("my-project");
+
+    expect(store.getState().selectedTask).toBeNull();
+    expect(store.getState().selectedSubtask).toBeNull();
+  });
+
+  test("selectAllProjects sets currentProject to null", () => {
+    store = createDashboardStore(undefined, {
+      project: {
+        projects: [],
+        isGlobalMode: true,
+        currentProject: "some-project",
+        projectsLoading: false,
+        projectsError: null
+      }
+    });
+
+    store.getState().selectAllProjects();
+    expect(store.getState().project.currentProject).toBeNull();
+  });
+
+  test("loadProjects sets loading state", async () => {
+    const mockClient = {
+      fetchProjects: mock(async () => ({
+        projects: [{ name: "p1", path: "/p1", registered: new Date(), taskCount: 1 }],
+        isGlobalMode: true
+      }))
+    };
+
+    store = createDashboardStore(mockClient as any);
+    const loadPromise = store.getState().loadProjects();
+
+    expect(store.getState().project.projectsLoading).toBe(true);
+
+    await loadPromise;
+
+    expect(store.getState().project.projectsLoading).toBe(false);
+    expect(store.getState().project.projects).toHaveLength(1);
+    expect(store.getState().project.isGlobalMode).toBe(true);
+  });
+
+  test("loadProjects handles errors", async () => {
+    const mockClient = {
+      fetchProjects: mock(async () => {
+        throw new Error("Network error");
+      })
+    };
+
+    store = createDashboardStore(mockClient as any);
+    await store.getState().loadProjects();
+
+    expect(store.getState().project.projectsLoading).toBe(false);
+    expect(store.getState().project.projectsError).toBe("Network error");
   });
 });

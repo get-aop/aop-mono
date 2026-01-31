@@ -41,9 +41,99 @@ body {
   border-bottom: 1px solid var(--color-border);
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .header-title {
   font-size: 1.25rem;
   font-weight: 600;
+}
+
+/* Project Switcher */
+.project-switcher {
+  position: relative;
+}
+
+.project-switcher-current {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.project-switcher-current:hover {
+  border-color: var(--color-text-muted);
+}
+
+.project-switcher-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-switcher-arrow {
+  font-size: 0.625rem;
+  color: var(--color-text-muted);
+}
+
+.project-switcher-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.25rem;
+  min-width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  list-style: none;
+}
+
+.project-switcher-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.project-switcher-item:hover {
+  background-color: var(--color-bg);
+}
+
+.project-switcher-item.selected {
+  background-color: rgba(59, 130, 246, 0.2);
+}
+
+.project-switcher-item-name {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-count-badge {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  background-color: var(--color-border);
+  color: var(--color-text-muted);
+  border-radius: 9999px;
 }
 
 .header-controls {
@@ -666,7 +756,7 @@ p {
 }
 
 /* New Task Button */
-.new-task-button {
+.create-task-button {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -681,7 +771,7 @@ p {
   transition: opacity 0.2s;
 }
 
-.new-task-button:hover {
+.create-task-button:hover {
   opacity: 0.9;
 }
 

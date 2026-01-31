@@ -495,4 +495,154 @@ describe("Git Worktree Manager", () => {
       expect(firstPath).toBe(secondPath);
     });
   });
+
+  describe("configurable worktreesDir (global mode)", () => {
+    let customWorktreesDir: string;
+
+    beforeAll(async () => {
+      customWorktreesDir = join(tempDir, "custom-worktrees");
+      await Bun.$`mkdir -p ${customWorktreesDir}`;
+    });
+
+    describe("createTaskWorktree with worktreesDir", () => {
+      test("creates worktree in custom directory when worktreesDir provided", async () => {
+        const taskFolder = "20260129-custom-dir-task";
+        const worktreePath = await createTaskWorktree(
+          gitRepoDir,
+          taskFolder,
+          customWorktreesDir
+        );
+
+        expect(worktreePath).toBe(join(customWorktreesDir, taskFolder));
+
+        const worktrees = await listWorktrees(gitRepoDir);
+        expect(worktrees).toContain(worktreePath);
+
+        const branch = await getCurrentBranch(worktreePath);
+        expect(branch).toBe(`task/${taskFolder}`);
+      });
+
+      test("uses default .worktrees when worktreesDir not provided", async () => {
+        const taskFolder = "20260129-default-dir-task";
+        const worktreePath = await createTaskWorktree(gitRepoDir, taskFolder);
+
+        expect(worktreePath).toBe(join(gitRepoDir, ".worktrees", taskFolder));
+      });
+    });
+
+    describe("createSubtaskWorktree with worktreesDir", () => {
+      test("creates subtask worktree in custom directory when worktreesDir provided", async () => {
+        const taskFolder = "20260129-custom-subtask-parent";
+        const subtaskSlug = "001-custom-subtask";
+
+        await createTaskWorktree(gitRepoDir, taskFolder, customWorktreesDir);
+
+        const worktreePath = await createSubtaskWorktree(
+          gitRepoDir,
+          taskFolder,
+          subtaskSlug,
+          customWorktreesDir
+        );
+
+        expect(worktreePath).toBe(
+          join(customWorktreesDir, `${taskFolder}--${subtaskSlug}`)
+        );
+
+        const worktrees = await listWorktrees(gitRepoDir);
+        expect(worktrees).toContain(worktreePath);
+
+        const branch = await getCurrentBranch(worktreePath);
+        expect(branch).toBe(`task/${taskFolder}--${subtaskSlug}`);
+      });
+
+      test("uses default .worktrees when worktreesDir not provided", async () => {
+        const taskFolder = "20260129-default-subtask-parent";
+        const subtaskSlug = "001-default-subtask";
+
+        await createTaskWorktree(gitRepoDir, taskFolder);
+
+        const worktreePath = await createSubtaskWorktree(
+          gitRepoDir,
+          taskFolder,
+          subtaskSlug
+        );
+
+        expect(worktreePath).toBe(
+          join(gitRepoDir, ".worktrees", `${taskFolder}--${subtaskSlug}`)
+        );
+      });
+    });
+
+    describe("mergeSubtaskIntoTask with worktreesDir", () => {
+      test("merges subtask using custom worktree directory", async () => {
+        const taskFolder = "20260129-custom-merge-test";
+        const subtaskSlug = "001-custom-mergeable";
+
+        const taskWorktreePath = await createTaskWorktree(
+          gitRepoDir,
+          taskFolder,
+          customWorktreesDir
+        );
+
+        const subtaskWorktreePath = await createSubtaskWorktree(
+          gitRepoDir,
+          taskFolder,
+          subtaskSlug,
+          customWorktreesDir
+        );
+
+        await Bun.$`touch ${subtaskWorktreePath}/custom-merge-file.txt`;
+        await Bun.$`git -C ${subtaskWorktreePath} add .`;
+        await Bun.$`git -C ${subtaskWorktreePath} commit -m "Add custom merge file"`;
+
+        const result = await mergeSubtaskIntoTask(
+          gitRepoDir,
+          taskFolder,
+          subtaskSlug,
+          customWorktreesDir
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.commitSha).toBeDefined();
+
+        const fileExists = await Bun.file(
+          join(taskWorktreePath, "custom-merge-file.txt")
+        ).exists();
+        expect(fileExists).toBe(true);
+      });
+
+      test("uses default .worktrees when worktreesDir not provided", async () => {
+        const taskFolder = "20260129-default-merge-test";
+        const subtaskSlug = "001-default-mergeable";
+
+        const taskWorktreePath = await createTaskWorktree(
+          gitRepoDir,
+          taskFolder
+        );
+
+        const subtaskWorktreePath = await createSubtaskWorktree(
+          gitRepoDir,
+          taskFolder,
+          subtaskSlug
+        );
+
+        await Bun.$`touch ${subtaskWorktreePath}/default-merge-file.txt`;
+        await Bun.$`git -C ${subtaskWorktreePath} add .`;
+        await Bun.$`git -C ${subtaskWorktreePath} commit -m "Add default merge file"`;
+
+        const result = await mergeSubtaskIntoTask(
+          gitRepoDir,
+          taskFolder,
+          subtaskSlug
+        );
+
+        expect(result.success).toBe(true);
+
+        const fileExists = await Bun.file(
+          join(taskWorktreePath, "default-merge-file.txt")
+        ).exists();
+        expect(fileExists).toBe(true);
+      });
+    });
+  });
 });

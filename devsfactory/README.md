@@ -48,16 +48,15 @@ devsfactory is an orchestration layer that transforms Claude Code into a team of
 
 **The workflow:**
 
-1. Create a task using your agent (eg Claude Code), like so:
-   - `/new-task gh issue #123`
-   - `/new-task add user authentication`
-   - the `/new-task` skill will brainstorm with you to define the task and plan teh subtasks.
-   - you can also use the interactive dashboard brainstorming session to do this!
-2. Run `aop` — the orchestrator starts watching for tasks
-3. Agents implement subtasks in parallel (respecting dependencies)
-4. Each subtask goes through: Implementation → Review → Merge
-5. When all subtasks are done, a completion review verifies acceptance criteria
-6. Task moves to REVIEW status, ready for human approval and PR
+1. **Create a task** using one of these methods:
+   - CLI: `aop create-task "add user authentication"`
+   - Claude Code skill: `/create-task add user authentication`
+   - Dashboard: Open `http://localhost:3001` and click "New Task"
+2. **Run the orchestrator**: `aop run` — starts watching for tasks
+3. **Agents implement** subtasks in parallel (respecting dependencies)
+4. **Each subtask** goes through: Implementation → Review → Merge
+5. **Completion review** verifies acceptance criteria when all subtasks are done
+6. **Task moves to REVIEW** status, ready for human approval and PR
 
 ## Quick Start
 
@@ -81,26 +80,43 @@ bun install
 bun link
 ```
 
-### Start the Orchestrator
+### Register Your Project
 
 ```bash
-# From your project root (must be a git repository)
-aop
+# Navigate to your project (must be a git repository)
+cd /path/to/my-project
+
+# Register it with AOP
+aop init
 ```
-
-This will:
-
-- Create `.devsfactory/` if it doesn't exist
-- Start the file watcher
-- Launch the dashboard at `http://localhost:3001`
 
 ### Create Your First Task
 
-You can create a task using the `/new-task` skill on your agent or open the dashboard at `http://localhost:3001` for an interactive brainstorming session:
+```bash
+# Option 1: Via CLI (interactive Claude session)
+aop create-task "Add user authentication with JWT tokens"
 
-1. Open the dashboard at `http://localhost:3001`
-2. Click "New Task" to start the task creation wizard
-3. Once the task is planned and moved to `PENDING` the orchestrator will detect and work on the subtasks.
+# Option 2: Via dashboard
+aop run   # Opens dashboard at http://localhost:3001
+# Then click "New Task" in the dashboard
+```
+
+### Start the Orchestrator
+
+```bash
+# Run from anywhere (auto-detects project from cwd)
+aop
+
+# Or specify project by name
+aop run my-project
+```
+
+This will:
+- Create `.devsfactory/` directory if needed
+- Start the file watcher for task changes
+- Launch the dashboard at `http://localhost:3001`
+- Open the dashboard in your browser
+- Begin processing any PENDING tasks
 
 ## Configuration
 
@@ -163,23 +179,265 @@ Specific requirements.
 - `REVIEW` — All work complete, ready for human review
 - `DONE` — Completed and merged
 
-## Commands
+## CLI Reference
+
+The `aop` command provides project management, orchestration, and task creation capabilities.
 
 ```bash
-# Start orchestrator with defaults
-aop
+aop [command] [options]
+```
 
-# Show help
-aop --help
+### Global Options
 
-# Show version
-aop --version
+| Option | Description |
+|--------|-------------|
+| `-h, --help` | Show help message |
+| `-v, --version` | Show version number |
 
-# Start with custom config
-MAX_CONCURRENT_AGENTS=4 DEBUG=true aop
+### Commands Overview
 
-# Export timing statistics for a task
-aop stats my-task-folder
+| Command | Description |
+|---------|-------------|
+| `init` | Register a git repository with AOP |
+| `projects` | List and manage registered projects |
+| `status` | Show task status across projects |
+| `run` | Run the orchestrator (default command) |
+| `stats` | Export timing statistics |
+| `create-task` | Create a new task via Claude Code |
+| `sys-debug` | Debug an issue via Claude Code |
+
+---
+
+### `aop init`
+
+Register a git repository with AOP for global access.
+
+```bash
+aop init [path]
+```
+
+**Arguments:**
+- `path` — Path to the git repository (default: current directory)
+
+**Examples:**
+```bash
+aop init                    # Register current directory
+aop init /path/to/my-repo   # Register a specific repository
+```
+
+After registration, you can run `aop` from anywhere and specify the project by name.
+
+---
+
+### `aop projects`
+
+List and manage registered projects.
+
+```bash
+aop projects [subcommand] [name]
+```
+
+**Subcommands:**
+- `(none)` — List all registered projects
+- `remove <name>` — Unregister a project
+
+**Examples:**
+```bash
+aop projects                # List all projects
+aop projects remove my-app  # Unregister 'my-app'
+```
+
+**Output example:**
+```
+Registered projects:
+
+  my-app        /home/user/projects/my-app
+  backend-api   /home/user/projects/backend-api
+  frontend      /home/user/projects/frontend
+
+3 projects registered
+```
+
+---
+
+### `aop status`
+
+Show task status for one or more projects.
+
+```bash
+aop status [project]
+```
+
+**Arguments:**
+- `project` — Project name (optional)
+  - If omitted and you're in a project directory: shows that project
+  - If omitted and not in a project: shows all projects summary
+
+**Examples:**
+```bash
+aop status              # Show current project or all projects
+aop status my-app       # Show detailed status for 'my-app'
+```
+
+**Output includes:**
+- Task counts by status (PENDING, INPROGRESS, DONE)
+- Detailed task list with progress for in-progress tasks
+- Subtask completion percentages
+
+---
+
+### `aop run`
+
+Start the orchestrator to process tasks. This is the default command when running `aop` without arguments.
+
+```bash
+aop run [project] [options]
+aop [project]              # Shorthand (run is default)
+```
+
+**Arguments:**
+- `project` — Project name (default: auto-detect from current directory)
+
+**Options:**
+- `-a, --all` — Run orchestrator for all registered projects
+
+**Examples:**
+```bash
+aop                      # Run for current project (auto-detect)
+aop run                  # Same as above
+aop run my-app           # Run for a specific project
+aop my-app               # Shorthand for above
+aop run --all            # Run for all registered projects
+```
+
+**What happens:**
+1. Creates `.devsfactory/` directory if needed
+2. Starts the file watcher for task changes
+3. Launches the web dashboard at `http://localhost:3001`
+4. Processes tasks: planning, implementation, review, merge
+5. Opens the dashboard in your browser
+
+**With environment overrides:**
+```bash
+MAX_CONCURRENT_AGENTS=4 DEBUG=true aop run
+```
+
+---
+
+### `aop stats`
+
+Export timing statistics for a completed task as JSON.
+
+```bash
+aop stats <task-folder>
+```
+
+**Arguments:**
+- `task-folder` — Name of the task folder in `.devsfactory/`
+
+**Examples:**
+```bash
+aop stats add-authentication
+aop stats fix-login-bug > stats.json
+```
+
+**Output includes:**
+- Total task duration
+- Per-subtask timing breakdown
+- Agent execution times
+- Review and merge durations
+
+---
+
+### `aop create-task`
+
+Create a new task by launching an interactive Claude Code session that brainstorms requirements and generates subtasks.
+
+```bash
+aop create-task <description> [options]
+```
+
+**Arguments:**
+- `description` — Task description (use quotes for multi-word descriptions)
+
+**Options:**
+- `-p, --project <name>` — Project name (default: auto-detect from cwd)
+- `-s, --slug <name>` — Custom slug for the task folder name
+
+**Examples:**
+```bash
+aop create-task "Add user authentication with JWT"
+aop create-task "Fix the login bug" -p my-app
+aop create-task "Implement dark mode" --slug dark-mode
+aop create-task "Refactor database layer to use connection pooling"
+```
+
+**What happens:**
+1. Spawns Claude Code with the `/create-task` skill
+2. Claude brainstorms with you to clarify requirements
+3. Generates `task.md` with description and acceptance criteria
+4. Creates numbered subtask files with dependencies
+5. Task is ready for the orchestrator to process
+
+---
+
+### `aop sys-debug`
+
+Launch a systematic debugging session via Claude Code to investigate and fix issues.
+
+```bash
+aop sys-debug <description> [options]
+```
+
+**Arguments:**
+- `description` — Bug or issue description (use quotes for details)
+
+**Options:**
+- `-p, --project <name>` — Project name (default: auto-detect from cwd)
+
+**Examples:**
+```bash
+aop sys-debug "Tests are failing with timeout errors"
+aop sys-debug "Login page crashes on submit" -p my-app
+aop sys-debug "Memory leak in the dashboard component"
+aop sys-debug "API returns 500 error on user registration"
+```
+
+**What happens:**
+1. Spawns Claude Code with the `/systematic-debugging` skill
+2. Claude investigates the issue methodically
+3. Identifies root cause through code analysis
+4. Proposes and implements fixes
+5. Verifies the fix resolves the issue
+
+---
+
+### Workflow Examples
+
+**Setting up a new project:**
+```bash
+cd /path/to/my-project
+aop init                           # Register the project
+aop create-task "Add user login"   # Create first task
+aop                                # Start orchestrator
+```
+
+**Working with multiple projects:**
+```bash
+aop projects                       # See all projects
+aop status                         # Quick status of all
+aop status backend-api             # Detailed status of one
+aop run backend-api                # Run orchestrator for specific project
+```
+
+**Quick debugging session:**
+```bash
+aop sys-debug "Users can't upload files larger than 1MB"
+```
+
+**Creating a task from a GitHub issue:**
+```bash
+aop create-task "Implement feature from GitHub issue #42"
 ```
 
 ## Development

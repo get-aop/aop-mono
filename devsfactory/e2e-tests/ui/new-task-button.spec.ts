@@ -43,13 +43,13 @@ const test = base.extend<NewTaskButtonFixtures>({
 
 test.describe("NewTaskButton Component", () => {
   test("renders in header controls", async ({ dashboardPage }) => {
-    const button = dashboardPage.locator(".new-task-button");
+    const button = dashboardPage.locator(".create-task-button");
     await expect(button).toBeVisible();
     await expect(button).toHaveText("+ New Task");
   });
 
   test("has correct styling", async ({ dashboardPage }) => {
-    const button = dashboardPage.locator(".new-task-button");
+    const button = dashboardPage.locator(".create-task-button");
     await expect(button).toBeVisible();
 
     const backgroundColor = await button.evaluate(
@@ -70,11 +70,11 @@ test.describe("NewTaskButton Component", () => {
     expect(count).toBeGreaterThanOrEqual(3);
 
     const firstChild = children.first();
-    await expect(firstChild).toHaveClass(/new-task-button/);
+    await expect(firstChild).toHaveClass(/create-task-button/);
   });
 
   test("opens modal on click", async ({ dashboardPage }) => {
-    const button = dashboardPage.locator(".new-task-button");
+    const button = dashboardPage.locator(".create-task-button");
     await button.click();
 
     await dashboardPage.waitForTimeout(100);
@@ -91,7 +91,7 @@ test.describe("NewTaskButton Component", () => {
   }) => {
     await dashboardPageWithDrafts.waitForTimeout(200);
 
-    const button = dashboardPageWithDrafts.locator(".new-task-button");
+    const button = dashboardPageWithDrafts.locator(".create-task-button");
     await expect(button).toBeVisible();
 
     const draftIndicator = button.locator(".draft-indicator");
@@ -101,7 +101,7 @@ test.describe("NewTaskButton Component", () => {
   test("does not show draft indicator when no drafts", async ({
     dashboardPage
   }) => {
-    const button = dashboardPage.locator(".new-task-button");
+    const button = dashboardPage.locator(".create-task-button");
     await expect(button).toBeVisible();
 
     const draftIndicator = button.locator(".draft-indicator");
@@ -109,7 +109,7 @@ test.describe("NewTaskButton Component", () => {
   });
 
   test("hover state changes opacity", async ({ dashboardPage }) => {
-    const button = dashboardPage.locator(".new-task-button");
+    const button = dashboardPage.locator(".create-task-button");
 
     const initialOpacity = await button.evaluate(
       (el) => getComputedStyle(el).opacity
