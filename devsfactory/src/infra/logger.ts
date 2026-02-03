@@ -14,13 +14,20 @@ export type LogCategory =
   | "orchestrator"
   | "watcher"
   | "agent"
+  | "agent-client"
+  | "agent-dispatcher"
+  | "remote-agent-registry"
   | "merge"
   | "state"
   | "git"
   | "e2e"
-  | "sdk-agent-runner"
   | "job-producer"
-  | "job-worker";
+  | "job-worker"
+  | "job-scheduler"
+  | "claude-code-session"
+  | "claude-code-runner"
+  | "dashboard"
+  | "dashboard-client";
 
 const LOG_MODE = process.env.LOG_MODE ?? "pretty";
 const DEBUG = process.env.DEBUG === "true" || process.env.DEBUG === "1";

@@ -1,76 +1,80 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import YAML from "yaml";
+import { registerProject } from "../core/sqlite/project-store";
+import { SQLiteTaskStorage } from "../core/sqlite/sqlite-task-storage";
 import {
   createIsolatedGlobalDir,
   type IsolatedGlobalDirContext
 } from "../test-helpers";
-import type { ProjectConfig } from "../types";
+import type { ProjectConfig, SubtaskStatus, TaskStatus } from "../types";
 import { parseStatusArgs, runStatusCommand } from "./status";
 
 let ctx: IsolatedGlobalDirContext;
 let originalCwd: string;
 let testRootDir: string;
 
-const createProjectFile = async (project: ProjectConfig) => {
-  const projectsDir = join(ctx.globalDir, "projects");
-  await mkdir(projectsDir, { recursive: true });
-  const content = YAML.stringify({
-    ...project,
-    registered: project.registered.toISOString()
-  });
-  await writeFile(join(projectsDir, `${project.name}.yaml`), content);
+const createProjectInDb = async (project: ProjectConfig) => {
+  await ctx.run(() =>
+    registerProject({
+      name: project.name,
+      path: project.path,
+      gitRemote: project.gitRemote
+    })
+  );
 };
 
-const createTaskFile = async (
+const createTaskInDb = async (
   projectName: string,
   taskFolder: string,
-  status: string
+  status: TaskStatus
 ) => {
-  const taskDir = join(ctx.globalDir, "tasks", projectName, taskFolder);
-  await mkdir(taskDir, { recursive: true });
-  const taskContent = `---
-title: Test task
-status: ${status}
-created: 2026-01-28T00:00:00Z
-priority: medium
-tags: []
-assignee: null
-dependencies: []
----
-
-## Description
-Test task description
-
-## Requirements
-Test requirements
-
-## Acceptance Criteria
-- [ ] Criterion 1
-`;
-  await writeFile(join(taskDir, "task.md"), taskContent);
+  await ctx.run(async () => {
+    const storage = new SQLiteTaskStorage({ projectName });
+    await storage.createTaskWithContent({
+      folder: taskFolder,
+      frontmatter: {
+        title: "Test task",
+        status,
+        created: new Date("2026-01-28T00:00:00Z"),
+        priority: "medium",
+        tags: [],
+        assignee: null,
+        dependencies: [],
+        startedAt: null,
+        completedAt: null,
+        durationMs: null
+      },
+      description: "Test task description",
+      requirements: "Test requirements",
+      acceptanceCriteria: ["Criterion 1"],
+      notes: undefined
+    });
+  });
 };
 
-const createSubtaskFile = async (
+const createSubtaskInDb = async (
   projectName: string,
   taskFolder: string,
   subtaskNumber: number,
-  status: string
+  status: SubtaskStatus
 ) => {
-  const taskDir = join(ctx.globalDir, "tasks", projectName, taskFolder);
-  await mkdir(taskDir, { recursive: true });
-  const subtaskContent = `---
-title: Subtask ${subtaskNumber}
-status: ${status}
-dependencies: []
----
-
-### Description
-Test subtask description
-`;
-  const filename = `${subtaskNumber.toString().padStart(3, "0")}-test-subtask.md`;
-  await writeFile(join(taskDir, filename), subtaskContent);
+  await ctx.run(async () => {
+    const storage = new SQLiteTaskStorage({ projectName });
+    const filename = `${subtaskNumber.toString().padStart(3, "0")}-test-subtask.md`;
+    await storage.createSubtaskWithContent(taskFolder, {
+      filename,
+      frontmatter: {
+        title: `Subtask ${subtaskNumber}`,
+        status,
+        dependencies: []
+      },
+      objective: "Test subtask description",
+      acceptanceCriteria: undefined,
+      tasksChecklist: undefined,
+      result: undefined
+    });
+  });
 };
 
 describe("parseStatusArgs", () => {
@@ -124,14 +128,14 @@ describe("runStatusCommand", () => {
     });
 
     test("shows summary of all projects with task counts", async () => {
-      await createProjectFile({
+      await createProjectInDb({
         name: "user-my-app",
         path: "/home/user/projects/my-app",
         gitRemote: "git@github.com:user/my-app.git",
         registered: new Date("2026-01-28T10:00:00Z")
       });
 
-      await createProjectFile({
+      await createProjectInDb({
         name: "org-backend",
         path: "/home/user/work/backend",
         gitRemote: "git@github.com:org/backend.git",
@@ -139,16 +143,16 @@ describe("runStatusCommand", () => {
       });
 
       // Create tasks for user-my-app: 2 PENDING, 1 INPROGRESS, 2 DONE
-      await createTaskFile("user-my-app", "task-1", "PENDING");
-      await createTaskFile("user-my-app", "task-2", "PENDING");
-      await createTaskFile("user-my-app", "task-3", "INPROGRESS");
-      await createTaskFile("user-my-app", "task-4", "DONE");
-      await createTaskFile("user-my-app", "task-5", "DONE");
+      await createTaskInDb("user-my-app", "task-1", "PENDING");
+      await createTaskInDb("user-my-app", "task-2", "PENDING");
+      await createTaskInDb("user-my-app", "task-3", "INPROGRESS");
+      await createTaskInDb("user-my-app", "task-4", "DONE");
+      await createTaskInDb("user-my-app", "task-5", "DONE");
 
       // Create tasks for org-backend: 1 PENDING, 2 DONE
-      await createTaskFile("org-backend", "task-1", "PENDING");
-      await createTaskFile("org-backend", "task-2", "DONE");
-      await createTaskFile("org-backend", "task-3", "DONE");
+      await createTaskInDb("org-backend", "task-1", "PENDING");
+      await createTaskInDb("org-backend", "task-2", "DONE");
+      await createTaskInDb("org-backend", "task-3", "DONE");
 
       const result = await ctx.run(() => runStatusCommand());
 
@@ -164,7 +168,7 @@ describe("runStatusCommand", () => {
     });
 
     test("shows projects with zero tasks", async () => {
-      await createProjectFile({
+      await createProjectInDb({
         name: "empty-project",
         path: "/home/user/empty",
         gitRemote: null,
@@ -181,15 +185,15 @@ describe("runStatusCommand", () => {
 
   describe("single project status", () => {
     test("shows detailed task list for named project", async () => {
-      await createProjectFile({
+      await createProjectInDb({
         name: "user-my-app",
         path: "/home/user/projects/my-app",
         gitRemote: "git@github.com:user/my-app.git",
         registered: new Date("2026-01-28T10:00:00Z")
       });
 
-      await createTaskFile("user-my-app", "add-auth", "INPROGRESS");
-      await createTaskFile("user-my-app", "fix-bug", "DONE");
+      await createTaskInDb("user-my-app", "add-auth", "INPROGRESS");
+      await createTaskInDb("user-my-app", "fix-bug", "DONE");
 
       const result = await ctx.run(() => runStatusCommand("user-my-app"));
 
@@ -202,17 +206,17 @@ describe("runStatusCommand", () => {
     });
 
     test("shows subtask counts for tasks in progress", async () => {
-      await createProjectFile({
+      await createProjectInDb({
         name: "user-my-app",
         path: "/home/user/projects/my-app",
         gitRemote: "git@github.com:user/my-app.git",
         registered: new Date("2026-01-28T10:00:00Z")
       });
 
-      await createTaskFile("user-my-app", "add-auth", "INPROGRESS");
-      await createSubtaskFile("user-my-app", "add-auth", 1, "DONE");
-      await createSubtaskFile("user-my-app", "add-auth", 2, "INPROGRESS");
-      await createSubtaskFile("user-my-app", "add-auth", 3, "PENDING");
+      await createTaskInDb("user-my-app", "add-auth", "INPROGRESS");
+      await createSubtaskInDb("user-my-app", "add-auth", 1, "DONE");
+      await createSubtaskInDb("user-my-app", "add-auth", 2, "INPROGRESS");
+      await createSubtaskInDb("user-my-app", "add-auth", 3, "PENDING");
 
       const result = await ctx.run(() => runStatusCommand("user-my-app"));
 
@@ -228,7 +232,7 @@ describe("runStatusCommand", () => {
     });
 
     test("shows empty state for project with no tasks", async () => {
-      await createProjectFile({
+      await createProjectInDb({
         name: "empty-project",
         path: "/home/user/empty",
         gitRemote: null,
@@ -248,14 +252,14 @@ describe("runStatusCommand", () => {
       const projectDir = join(testRootDir, "registered-project");
       await mkdir(projectDir, { recursive: true });
 
-      await createProjectFile({
+      await createProjectInDb({
         name: "registered-project",
         path: projectDir,
         gitRemote: null,
         registered: new Date("2026-01-28T10:00:00Z")
       });
 
-      await createTaskFile("registered-project", "global-task", "PENDING");
+      await createTaskInDb("registered-project", "global-task", "PENDING");
 
       process.chdir(projectDir);
 

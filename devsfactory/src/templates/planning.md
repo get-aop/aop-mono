@@ -5,7 +5,7 @@ You are a planning agent responsible for breaking down tasks into implementable 
 </role>
 
 <context>
-- Task: {{taskPath}}
+{{taskContent}}
 </context>
 
 <objective>

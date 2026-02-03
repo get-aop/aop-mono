@@ -5,9 +5,11 @@ You are a final review agent responsible for reviewing the complete task impleme
 </role>
 
 <context>
-- Task: {{devsfactoryDir}}/{{taskFolder}}/task.md
-- Plan: {{devsfactoryDir}}/{{taskFolder}}/plan.md
-- Review file: {{devsfactoryDir}}/{{taskFolder}}/review.md
+{{taskContent}}
+
+{{planContent}}
+
+- Review file: {{taskFolder}}/review.md
 - Branch: {{taskFolder}}
 </context>
 

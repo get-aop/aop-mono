@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { registerProject } from "../core/sqlite/project-store";
 import {
   createIsolatedGlobalDir,
   type IsolatedGlobalDirContext
@@ -55,6 +56,7 @@ describe("parseBrainstormArgs", () => {
 
 describe("runBrainstormCommand", () => {
   test("returns error when not in a project context and no project name provided", async () => {
+    let ctx: IsolatedGlobalDirContext | undefined;
     const nonProjectDir = join(TEST_DIR, "non-project");
     await mkdir(nonProjectDir, { recursive: true });
 
@@ -62,12 +64,14 @@ describe("runBrainstormCommand", () => {
     process.chdir(nonProjectDir);
 
     try {
-      const result = await runBrainstormCommand();
+      ctx = await createIsolatedGlobalDir("brainstorm-no-context");
+      const result = await ctx.run(() => runBrainstormCommand());
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("No project context found");
     } finally {
       process.chdir(originalCwd);
+      await ctx?.cleanup();
     }
   });
 
@@ -97,25 +101,15 @@ describe("runBrainstormCommand", () => {
 
       const projectDir = join(testRootDir, "registered-project");
       await mkdir(projectDir, { recursive: true });
-      await mkdir(
-        join(ctx.globalDir, "brainstorm", "user-registered-project"),
-        {
-          recursive: true
-        }
-      );
 
       await Bun.$`git -C ${projectDir} init`.quiet();
 
-      const projectConfig = {
-        name: "user-registered-project",
-        path: projectDir,
-        gitRemote: null,
-        registered: new Date().toISOString()
-      };
-
-      await writeFile(
-        join(ctx.globalDir, "projects", "user-registered-project.yaml"),
-        `name: ${projectConfig.name}\npath: ${projectConfig.path}\ngitRemote: null\nregistered: ${projectConfig.registered}\n`
+      await ctx.run(() =>
+        registerProject({
+          name: "user-registered-project",
+          path: projectDir,
+          gitRemote: null
+        })
       );
 
       const result = await ctx.run(() =>
@@ -125,9 +119,7 @@ describe("runBrainstormCommand", () => {
       expect(result.success).toBe(true);
       expect(result.projectName).toBe("user-registered-project");
       expect(result.mode).toBe("global");
-      expect(result.brainstormDir).toBe(
-        join(ctx.globalDir, "brainstorm", "user-registered-project")
-      );
+      // Brainstorm data is now stored in SQLite, no directory created
     } finally {
       if (ctx) await ctx.cleanup();
     }

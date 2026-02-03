@@ -155,6 +155,35 @@ describe("types", () => {
     expect(event.type).toBe("subtaskChanged");
   });
 
+  test("ServerEvent taskCreateStarted type", () => {
+    const event: ServerEvent = {
+      type: "taskCreateStarted",
+      runId: "run-1",
+      projectName: "my-project",
+      description: "Add auth"
+    };
+    expect(event.type).toBe("taskCreateStarted");
+  });
+
+  test("ServerEvent taskCreateOutput type", () => {
+    const event: ServerEvent = {
+      type: "taskCreateOutput",
+      runId: "run-1",
+      stream: "stdout",
+      line: "Creating task..."
+    };
+    expect(event.type).toBe("taskCreateOutput");
+  });
+
+  test("ServerEvent taskCreateCompleted type", () => {
+    const event: ServerEvent = {
+      type: "taskCreateCompleted",
+      runId: "run-1",
+      exitCode: 0
+    };
+    expect(event.type).toBe("taskCreateCompleted");
+  });
+
   test("ServerEvent agentStarted type", () => {
     const event: ServerEvent = {
       type: "agentStarted",

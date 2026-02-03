@@ -1,7 +1,6 @@
 import { resolvePaths, resolvePathsForProject } from "../core/path-resolver";
-import { getProject, listProjects } from "../core/project-registry";
-import { listSubtasks } from "../parser/subtask";
-import { listTaskFolders, parseTask } from "../parser/task";
+import { getProjectByName, listProjects } from "../core/sqlite/project-store";
+import { SQLiteTaskStorage } from "../core/sqlite/sqlite-task-storage";
 import type { TaskStatus } from "../types";
 
 export interface StatusArgs {
@@ -76,7 +75,7 @@ export const runStatusCommand = async (
 };
 
 const showAllProjectsStatus = async (): Promise<StatusResult> => {
-  const projects = await listProjects();
+  const projects = listProjects();
 
   if (projects.length === 0) {
     return {
@@ -106,10 +105,10 @@ const showAllProjectsStatus = async (): Promise<StatusResult> => {
 const showProjectStatus = async (
   projectName: string
 ): Promise<StatusResult> => {
-  const project = await getProject(projectName);
+  const project = getProjectByName(projectName);
 
   if (!project) {
-    const projects = await listProjects();
+    const projects = listProjects();
     const projectList =
       projects.length > 0
         ? `Available projects:\n${projects.map((p) => `  - ${p.name}`).join("\n")}`
@@ -134,9 +133,9 @@ const showProjectStatus = async (
 
 const showProjectStatusByPaths = async (
   projectName: string,
-  devsfactoryDir: string
+  _devsfactoryDir: string
 ): Promise<StatusResult> => {
-  const tasks = await getProjectTasks(devsfactoryDir);
+  const tasks = await getProjectTasks(projectName);
 
   if (tasks.length === 0) {
     return {
@@ -151,77 +150,67 @@ const showProjectStatusByPaths = async (
 
 const getProjectTaskSummary = async (
   projectName: string,
-  devsfactoryDir: string
+  _devsfactoryDir: string
 ): Promise<ProjectTaskSummary> => {
-  const taskFolders = await listTaskFolders(devsfactoryDir);
+  const storage = new SQLiteTaskStorage({ projectName });
+  const { tasks } = await storage.scan();
 
   let pending = 0;
   let inProgress = 0;
   let done = 0;
 
-  for (const folder of taskFolders) {
-    try {
-      const task = await parseTask(folder, devsfactoryDir);
-      const status = task.frontmatter.status;
+  for (const task of tasks) {
+    const status = task.frontmatter.status;
 
-      if (status === "PENDING" || status === "BACKLOG" || status === "DRAFT") {
-        pending++;
-      } else if (
-        status === "INPROGRESS" ||
-        status === "BLOCKED" ||
-        status === "REVIEW"
-      ) {
-        inProgress++;
-      } else if (status === "DONE") {
-        done++;
-      }
-    } catch {
-      // Skip tasks that can't be parsed
+    if (status === "PENDING" || status === "BACKLOG" || status === "DRAFT") {
+      pending++;
+    } else if (
+      status === "INPROGRESS" ||
+      status === "BLOCKED" ||
+      status === "REVIEW"
+    ) {
+      inProgress++;
+    } else if (status === "DONE") {
+      done++;
     }
   }
 
   return {
     projectName,
-    tasks: taskFolders.length,
+    tasks: tasks.length,
     pending,
     inProgress,
     done
   };
 };
 
-const getProjectTasks = async (
-  devsfactoryDir: string
-): Promise<TaskDetail[]> => {
-  const taskFolders = await listTaskFolders(devsfactoryDir);
-  const tasks: TaskDetail[] = [];
+const getProjectTasks = async (projectName: string): Promise<TaskDetail[]> => {
+  const storage = new SQLiteTaskStorage({ projectName });
+  const { tasks, subtasks } = await storage.scan();
+  const result: TaskDetail[] = [];
 
-  for (const folder of taskFolders) {
-    try {
-      const task = await parseTask(folder, devsfactoryDir);
-      const detail: TaskDetail = {
-        folder,
-        title: task.frontmatter.title,
-        status: task.frontmatter.status
-      };
+  for (const task of tasks) {
+    const detail: TaskDetail = {
+      folder: task.folder,
+      title: task.frontmatter.title,
+      status: task.frontmatter.status
+    };
 
-      if (task.frontmatter.status === "INPROGRESS") {
-        const subtasks = await listSubtasks(folder, devsfactoryDir);
-        if (subtasks.length > 0) {
-          const done = subtasks.filter(
-            (s) => s.frontmatter.status === "DONE"
-          ).length;
-          detail.subtasksDone = done;
-          detail.subtasksTotal = subtasks.length;
-        }
+    if (task.frontmatter.status === "INPROGRESS") {
+      const taskSubtasks = subtasks[task.folder] ?? [];
+      if (taskSubtasks.length > 0) {
+        const doneCount = taskSubtasks.filter(
+          (s) => s.frontmatter.status === "DONE"
+        ).length;
+        detail.subtasksDone = doneCount;
+        detail.subtasksTotal = taskSubtasks.length;
       }
-
-      tasks.push(detail);
-    } catch {
-      // Skip tasks that can't be parsed
     }
+
+    result.push(detail);
   }
 
-  return tasks;
+  return result;
 };
 
 const formatSummaryTable = (summaries: ProjectTaskSummary[]): string => {

@@ -510,7 +510,7 @@ describe("JobProducer", () => {
       expect(await queue.size()).toBe(0);
     });
 
-    test("does not enqueue merge job for DONE subtask", async () => {
+    test("enqueues completing-task job when all subtasks are DONE", async () => {
       const queue = new MemoryQueue();
       const registry = new MemoryAgentRegistry();
       const producer = new JobProducer(queue, registry);
@@ -556,7 +556,9 @@ describe("JobProducer", () => {
 
       await producer.produceFromState(state);
 
-      expect(await queue.size()).toBe(0);
+      expect(await queue.size()).toBe(1);
+      const job = await queue.peek();
+      expect(job?.type).toBe("completing-task");
     });
 
     test("enqueues completing-task job when all subtasks DONE and plan INPROGRESS", async () => {
@@ -626,7 +628,7 @@ describe("JobProducer", () => {
       expect(jobs).toContain("completing-task");
     });
 
-    test("enqueues completion-review job when plan AGENT_REVIEW", async () => {
+    test("does not enqueue completion-review jobs for AGENT_REVIEW plans", async () => {
       const queue = new MemoryQueue();
       const registry = new MemoryAgentRegistry();
       const producer = new JobProducer(queue, registry);
@@ -690,7 +692,8 @@ describe("JobProducer", () => {
         const job = await queue.dequeue();
         if (job) jobs.push(job.type);
       }
-      expect(jobs).toContain("completion-review");
+      expect(jobs).toContain("completing-task");
+      expect(jobs).not.toContain("completion-review");
     });
 
     test("does not enqueue completing-task job if agent already running", async () => {
@@ -872,7 +875,7 @@ describe("JobProducer", () => {
   });
 
   describe("task filtering", () => {
-    test("ignores subtasks for tasks not INPROGRESS", async () => {
+    test("processes PENDING tasks and ignores DONE tasks", async () => {
       const queue = new MemoryQueue();
       const registry = new MemoryAgentRegistry();
       const producer = new JobProducer(queue, registry);
@@ -949,7 +952,9 @@ describe("JobProducer", () => {
 
       await producer.produceFromState(state);
 
-      expect(await queue.size()).toBe(0);
+      expect(await queue.size()).toBe(1);
+      const job = await queue.peek();
+      expect(job?.type).toBe("implementation");
     });
   });
 
@@ -1227,69 +1232,8 @@ describe("JobProducer", () => {
       expect(job?.priority).toBe(15);
     });
 
-    test("completion-review jobs have priority 25", async () => {
-      const queue = new MemoryQueue();
-      const registry = new MemoryAgentRegistry();
-      const producer = new JobProducer(queue, registry);
-
-      const state: OrchestratorState = {
-        ...createEmptyState(),
-        tasks: [
-          {
-            folder: "my-task",
-            frontmatter: {
-              title: "My Task",
-              status: "INPROGRESS",
-              created: new Date(),
-              priority: "medium",
-              tags: [],
-              assignee: null,
-              dependencies: [],
-              startedAt: null,
-              completedAt: null,
-              durationMs: null
-            },
-            description: "",
-            requirements: "",
-            acceptanceCriteria: []
-          }
-        ],
-        plans: {
-          "my-task": {
-            folder: "my-task",
-            frontmatter: {
-              status: "AGENT_REVIEW",
-              task: "my-task",
-              created: new Date()
-            },
-            subtasks: [
-              { number: 1, slug: "first", title: "First", dependencies: [] }
-            ]
-          }
-        },
-        subtasks: {
-          "my-task": [
-            {
-              filename: "001-first.md",
-              number: 1,
-              slug: "first",
-              frontmatter: {
-                title: "First Subtask",
-                status: "DONE",
-                dependencies: []
-              },
-              description: ""
-            }
-          ]
-        }
-      };
-
-      await producer.produceFromState(state);
-
-      const job = await queue.dequeue();
-      expect(job?.type).toBe("completion-review");
-      expect(job?.priority).toBe(JOB_PRIORITY["completion-review"]);
-      expect(job?.priority).toBe(25);
+    test("completion-review priority is 25", () => {
+      expect(JOB_PRIORITY["completion-review"]).toBe(25);
     });
   });
 });

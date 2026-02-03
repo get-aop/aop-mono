@@ -3,8 +3,7 @@ devsfactory is an orchestration layer that transforms Claude Code into a team of
 Important docs:
 
 - `README.md` - Overview of the project
-- `docs/ARCHITECTURE.md` - Technical deep-dive
-- `docs/OPERATIONS.md` - Troubleshooting guide
+- `docs/RUNBOOK.md` - Troubleshooting guide
 
 Default to using Bun instead of Node.js.
 

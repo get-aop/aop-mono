@@ -1625,8 +1625,7 @@ describe("Global Configuration Schemas", () => {
         projectName: "my-project",
         projectRoot: "/home/user/projects/my-project",
         devsfactoryDir: "/home/user/.aop/tasks/my-project",
-        worktreesDir: "/home/user/.aop/worktrees/my-project",
-        brainstormDir: "/home/user/.aop/brainstorm/my-project"
+        worktreesDir: "/home/user/.aop/worktrees/my-project"
       };
 
       const result = ResolvedPathsSchema.parse(input);
@@ -1636,9 +1635,6 @@ describe("Global Configuration Schemas", () => {
       expect(result.projectRoot).toBe("/home/user/projects/my-project");
       expect(result.devsfactoryDir).toBe("/home/user/.aop/tasks/my-project");
       expect(result.worktreesDir).toBe("/home/user/.aop/worktrees/my-project");
-      expect(result.brainstormDir).toBe(
-        "/home/user/.aop/brainstorm/my-project"
-      );
     });
 
     test("rejects invalid mode", () => {
@@ -1647,8 +1643,7 @@ describe("Global Configuration Schemas", () => {
         projectName: "test",
         projectRoot: "/test",
         devsfactoryDir: "/test/.devsfactory",
-        worktreesDir: "/test/.worktrees",
-        brainstormDir: "/test/.devsfactory/brainstorm"
+        worktreesDir: "/test/.worktrees"
       };
 
       expect(() => ResolvedPathsSchema.parse(input)).toThrow();
@@ -1682,7 +1677,8 @@ describe("Global Configuration Type Exports", () => {
     const globalConfig: GlobalConfig = {
       version: 1,
       defaults: { maxConcurrentAgents: 5 },
-      providers: { claude: providerConfig }
+      providers: { claude: providerConfig },
+      server: { url: "http://localhost:3001" }
     };
     const projectConfig: ProjectConfig = {
       name: "test",
@@ -1695,8 +1691,7 @@ describe("Global Configuration Type Exports", () => {
       projectName: "test",
       projectRoot: "/test",
       devsfactoryDir: "/home/user/.aop/tasks/test",
-      worktreesDir: "/home/user/.aop/worktrees/test",
-      brainstormDir: "/home/user/.aop/brainstorm/test"
+      worktreesDir: "/home/user/.aop/worktrees/test"
     };
 
     expect(mode).toBe("global");

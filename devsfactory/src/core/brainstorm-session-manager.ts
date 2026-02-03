@@ -2,34 +2,45 @@ import { EventEmitter } from "node:events";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import KSUID from "ksuid";
-import type { LLMProvider } from "../providers/types";
 import type {
   BrainstormMessage,
+  BrainstormQuestion,
   BrainstormSession,
   SubtaskPreview,
   TaskPreview
 } from "../types";
+import {
+  type ClaudeCodeQuestion,
+  ClaudeCodeSession,
+  type ClaudeCodeSessionResult
+} from "./claude-code-session";
+import type { SQLiteBrainstormStorage } from "./sqlite/brainstorm-storage";
 
 export interface BrainstormSessionManagerOptions {
-  provider: LLMProvider;
   cwd: string;
   idleTimeoutMs?: number;
   skillContent?: string;
   plannerSkillContent?: string;
+  model?: string;
+  dangerouslySkipPermissions?: boolean;
+  brainstormStorage: SQLiteBrainstormStorage;
 }
 
 interface ActiveSession {
   session: BrainstormSession;
   agentId: string;
-  subprocess: ReturnType<typeof Bun.spawn>;
+  claudeSession: ClaudeCodeSession;
   timeoutId?: ReturnType<typeof setTimeout>;
   outputBuffer: string;
   intentionallyEnded: boolean;
-  planningSubprocess?: ReturnType<typeof Bun.spawn>;
+  isProcessing: boolean;
   tempDir?: string;
+  /** Counter for enforcing one question at a time */
+  oneQuestionRetries: number;
 }
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_ONE_QUESTION_RETRIES = 5;
 
 const BRAINSTORM_COMPLETE_MARKER = "[BRAINSTORM_COMPLETE]";
 
@@ -113,20 +124,25 @@ const SUBTASK_FILENAME_REGEX = /^(\d{3})-(.+)\.md$/;
 
 export class BrainstormSessionManager extends EventEmitter {
   private sessions: Map<string, ActiveSession> = new Map();
-  private provider: LLMProvider;
   private cwd: string;
   private idleTimeoutMs: number;
   private skillContent: string;
   private plannerSkillContent: string;
+  private model?: string;
+  private dangerouslySkipPermissions: boolean;
+  private brainstormStorage: SQLiteBrainstormStorage;
 
   constructor(options: BrainstormSessionManagerOptions) {
     super();
-    this.provider = options.provider;
     this.cwd = options.cwd;
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.skillContent = options.skillContent ?? DEFAULT_SKILL_CONTENT;
     this.plannerSkillContent =
       options.plannerSkillContent ?? DEFAULT_PLANNER_SKILL_CONTENT;
+    this.model = options.model;
+    this.dangerouslySkipPermissions =
+      options.dangerouslySkipPermissions ?? false;
+    this.brainstormStorage = options.brainstormStorage;
 
     this.on("_testAgentOutput", this.handleTestOutput.bind(this));
     this.on("_testAgentError", this.handleTestError.bind(this));
@@ -155,37 +171,143 @@ export class BrainstormSessionManager extends EventEmitter {
       updatedAt: now
     };
 
-    const prompt = this.buildPrompt(initialMessage);
-    const command = this.provider.buildCommand({
-      prompt,
-      cwd: this.cwd,
-      extraArgs: ["--print"]
-    });
+    // Persist to SQLite
+    await this.brainstormStorage.create(sessionId);
+    if (messages.length > 0) {
+      await this.brainstormStorage.update(sessionId, { messages });
+    }
 
-    const subprocess = Bun.spawn(command, {
-      cwd: this.cwd,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe"
-    });
-
+    const claudeSession = new ClaudeCodeSession();
     const agentId = this.generateAgentId();
 
     const activeSession: ActiveSession = {
       session,
       agentId,
-      subprocess,
+      claudeSession,
       outputBuffer: "",
-      intentionallyEnded: false
+      intentionallyEnded: false,
+      isProcessing: false,
+      oneQuestionRetries: 0
     };
 
     this.sessions.set(sessionId, activeSession);
-    this.setupProcessHandlers(sessionId, subprocess);
     this.resetIdleTimeout(sessionId);
-
     this.emit("sessionStarted", { sessionId, agentId });
 
+    this.runClaudeSession(sessionId, initialMessage);
+
     return session;
+  }
+
+  private async runClaudeSession(
+    sessionId: string,
+    initialMessage?: string
+  ): Promise<void> {
+    const activeSession = this.sessions.get(sessionId);
+    if (!activeSession || activeSession.intentionallyEnded) return;
+
+    activeSession.isProcessing = true;
+    const prompt = this.buildPrompt(initialMessage);
+
+    try {
+      const result = await activeSession.claudeSession.run({
+        cwd: this.cwd,
+        prompt,
+        model: this.model,
+        dangerouslySkipPermissions: this.dangerouslySkipPermissions
+      });
+
+      this.handleClaudeResult(sessionId, result);
+    } catch (error) {
+      if (!activeSession.intentionallyEnded) {
+        this.emit("error", {
+          sessionId,
+          error: error instanceof Error ? error : new Error(String(error))
+        });
+      }
+    } finally {
+      activeSession.isProcessing = false;
+    }
+  }
+
+  private handleClaudeResult(
+    sessionId: string,
+    result: ClaudeCodeSessionResult
+  ): void {
+    const activeSession = this.sessions.get(sessionId);
+    if (!activeSession || activeSession.intentionallyEnded) return;
+
+    activeSession.session.claudeSessionId = result.sessionId;
+    activeSession.session.updatedAt = new Date();
+    this.resetIdleTimeout(sessionId);
+
+    if (result.output) {
+      this.processAgentOutput(sessionId, result.output);
+    }
+
+    if (result.status === "waiting_for_input" && result.question) {
+      // Enforce one question at a time
+      if (result.question.questions.length > 1) {
+        activeSession.oneQuestionRetries++;
+
+        if (activeSession.oneQuestionRetries > MAX_ONE_QUESTION_RETRIES) {
+          this.emit("error", {
+            sessionId,
+            error: new Error(
+              "Claude keeps sending multiple questions despite being asked to send one at a time"
+            )
+          });
+          return;
+        }
+
+        // Auto-resume with error message
+        const errorMessage = `Error: You MUST ask exactly ONE question at a time. You sent ${result.question.questions.length} questions in a single AskUserQuestion call. This is REQUIRED for non-interactive session management. Call AskUserQuestion again with ONLY ONE question in the questions array. Ask your most important question first, then ask follow-up questions in subsequent turns based on the user's answer.`;
+
+        this.autoResumeWithError(
+          sessionId,
+          result.question.toolUseId,
+          errorMessage
+        );
+        return;
+      }
+
+      // Reset retry counter on successful single question
+      activeSession.oneQuestionRetries = 0;
+
+      activeSession.session.status = "waiting";
+      activeSession.session.pendingQuestion = this.convertQuestion(
+        result.question
+      );
+
+      this.emit("waiting", {
+        sessionId,
+        question: activeSession.session.pendingQuestion
+      });
+    } else if (result.status === "completed") {
+      if (activeSession.outputBuffer.includes(BRAINSTORM_COMPLETE_MARKER)) {
+        this.handleBrainstormComplete(sessionId, activeSession.outputBuffer);
+      }
+    } else if (result.status === "error") {
+      this.emit("error", {
+        sessionId,
+        error: new Error(result.error ?? "Unknown error")
+      });
+    }
+  }
+
+  private convertQuestion(question: ClaudeCodeQuestion): BrainstormQuestion {
+    return {
+      toolUseId: question.toolUseId,
+      questions: question.questions.map((q) => ({
+        question: q.question,
+        header: q.header,
+        options: q.options.map((o) => ({
+          label: o.label,
+          description: o.description
+        })),
+        multiSelect: q.multiSelect
+      }))
+    };
   }
 
   async sendMessage(sessionId: string, message: string): Promise<void> {
@@ -203,13 +325,91 @@ export class BrainstormSessionManager extends EventEmitter {
 
     activeSession.session.messages.push(brainstormMessage);
     activeSession.session.updatedAt = new Date();
+    activeSession.session.pendingQuestion = undefined;
 
-    const stdin = activeSession.subprocess.stdin;
-    if (stdin && typeof stdin === "object" && "write" in stdin) {
-      (stdin as { write: (data: string) => void }).write(`${message}\n`);
+    // Persist to SQLite
+    await this.brainstormStorage.addMessage(sessionId, brainstormMessage);
+
+    if (
+      activeSession.session.status === "waiting" &&
+      activeSession.session.claudeSessionId
+    ) {
+      activeSession.session.status = "active";
+      this.resumeClaudeSession(sessionId, message);
     }
 
     this.resetIdleTimeout(sessionId);
+  }
+
+  private async resumeClaudeSession(
+    sessionId: string,
+    answer: string
+  ): Promise<void> {
+    const activeSession = this.sessions.get(sessionId);
+    if (!activeSession || activeSession.intentionallyEnded) return;
+    if (!activeSession.session.claudeSessionId) return;
+
+    activeSession.isProcessing = true;
+
+    try {
+      const result = await activeSession.claudeSession.run({
+        cwd: this.cwd,
+        prompt: answer,
+        resume: activeSession.session.claudeSessionId,
+        model: this.model,
+        dangerouslySkipPermissions: this.dangerouslySkipPermissions
+      });
+
+      this.handleClaudeResult(sessionId, result);
+    } catch (error) {
+      if (!activeSession.intentionallyEnded) {
+        this.emit("error", {
+          sessionId,
+          error: error instanceof Error ? error : new Error(String(error))
+        });
+      }
+    } finally {
+      activeSession.isProcessing = false;
+    }
+  }
+
+  /**
+   * Auto-resume a session with an error message for tool enforcement.
+   * Used when Claude sends multiple questions instead of one at a time.
+   */
+  private async autoResumeWithError(
+    sessionId: string,
+    _toolUseId: string,
+    errorMessage: string
+  ): Promise<void> {
+    const activeSession = this.sessions.get(sessionId);
+    if (!activeSession || activeSession.intentionallyEnded) return;
+    if (!activeSession.session.claudeSessionId) return;
+
+    activeSession.isProcessing = true;
+
+    try {
+      // Just pass error as prompt without writing to session file
+      // This is closer to the reference implementation's kill/resume pattern
+      const result = await activeSession.claudeSession.run({
+        cwd: this.cwd,
+        prompt: errorMessage,
+        resume: activeSession.session.claudeSessionId,
+        model: this.model,
+        dangerouslySkipPermissions: this.dangerouslySkipPermissions
+      });
+
+      this.handleClaudeResult(sessionId, result);
+    } catch (error) {
+      if (!activeSession.intentionallyEnded) {
+        this.emit("error", {
+          sessionId,
+          error: error instanceof Error ? error : new Error(String(error))
+        });
+      }
+    } finally {
+      activeSession.isProcessing = false;
+    }
   }
 
   async endSession(sessionId: string): Promise<void> {
@@ -224,8 +424,10 @@ export class BrainstormSessionManager extends EventEmitter {
       clearTimeout(activeSession.timeoutId);
     }
 
+    // Mark as completed in SQLite
+    await this.brainstormStorage.update(sessionId, { status: "completed" });
+
     this.sessions.delete(sessionId);
-    await this.killProcess(activeSession.subprocess);
   }
 
   getSession(sessionId: string): BrainstormSession | undefined {
@@ -257,22 +459,33 @@ export class BrainstormSessionManager extends EventEmitter {
     await Bun.write(join(tempDir, "task.md"), taskMd);
 
     const prompt = this.buildPlannerPrompt(tempDir);
-    const command = this.provider.buildCommand({
-      prompt,
-      cwd: tempDir,
-      extraArgs: ["--print"]
-    });
 
-    const subprocess = Bun.spawn(command, {
-      cwd: tempDir,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe"
-    });
+    try {
+      const plannerSession = new ClaudeCodeSession();
+      const result = await plannerSession.run({
+        cwd: tempDir,
+        prompt,
+        model: this.model,
+        dangerouslySkipPermissions: this.dangerouslySkipPermissions
+      });
 
-    activeSession.planningSubprocess = subprocess;
-
-    this.setupPlanningProcessHandlers(sessionId, subprocess, tempDir);
+      if (
+        result.status === "completed" ||
+        result.status === "waiting_for_input"
+      ) {
+        await this.handlePlanGenerationComplete(sessionId, tempDir);
+      } else {
+        this.emit("error", {
+          sessionId,
+          error: new Error(result.error ?? "Plan generation failed")
+        });
+      }
+    } catch (error) {
+      this.emit("error", {
+        sessionId,
+        error: error instanceof Error ? error : new Error(String(error))
+      });
+    }
   }
 
   private buildTaskMd(taskPreview: TaskPreview): string {
@@ -314,43 +527,6 @@ export class BrainstormSessionManager extends EventEmitter {
 The task file is located at: ${join(tempDir, "task.md")}
 
 Read this file and create subtask files in the same directory.`;
-  }
-
-  private setupPlanningProcessHandlers(
-    sessionId: string,
-    subprocess: ReturnType<typeof Bun.spawn>,
-    tempDir: string
-  ): void {
-    const handleOutput = async (stream: ReadableStream<Uint8Array> | null) => {
-      if (!stream) return;
-
-      const reader = stream.getReader();
-
-      try {
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
-        }
-      } catch (error) {
-        this.emit("error", { sessionId, error });
-      }
-    };
-
-    const stdout = subprocess.stdout as ReadableStream<Uint8Array> | null;
-    const stderr = subprocess.stderr as ReadableStream<Uint8Array> | null;
-
-    Promise.all([handleOutput(stdout), handleOutput(stderr)]).then(() => {
-      subprocess.exited.then(async (exitCode) => {
-        if (exitCode === 0) {
-          await this.handlePlanGenerationComplete(sessionId, tempDir);
-        } else {
-          this.emit("error", {
-            sessionId,
-            error: new Error(`Plan generation failed with code ${exitCode}`)
-          });
-        }
-      });
-    });
   }
 
   private async handlePlanGenerationComplete(
@@ -511,51 +687,6 @@ ${completionInstruction}`;
     return prompt;
   }
 
-  private setupProcessHandlers(
-    sessionId: string,
-    subprocess: ReturnType<typeof Bun.spawn>
-  ): void {
-    const activeSession = this.sessions.get(sessionId);
-    if (!activeSession) return;
-
-    const handleOutput = async (stream: ReadableStream<Uint8Array> | null) => {
-      if (!stream) return;
-
-      const reader = stream.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const text = decoder.decode(value, { stream: true });
-          this.processAgentOutput(sessionId, text);
-        }
-      } catch (error) {
-        this.emit("error", { sessionId, error });
-      }
-    };
-
-    const stdout = subprocess.stdout as ReadableStream<Uint8Array> | null;
-    const stderr = subprocess.stderr as ReadableStream<Uint8Array> | null;
-
-    Promise.all([handleOutput(stdout), handleOutput(stderr)]).then(() => {
-      subprocess.exited.then((exitCode) => {
-        const session = this.sessions.get(sessionId);
-        if (session && !session.intentionallyEnded) {
-          this.sessions.delete(sessionId);
-          if (exitCode !== 0) {
-            this.emit("error", {
-              sessionId,
-              error: new Error(`Agent exited with code ${exitCode}`)
-            });
-          }
-        }
-      });
-    });
-  }
-
   private processAgentOutput(sessionId: string, text: string): void {
     const activeSession = this.sessions.get(sessionId);
     if (!activeSession) return;
@@ -584,6 +715,8 @@ ${completionInstruction}`;
             timestamp: new Date()
           };
           activeSession.session.messages.push(message);
+          // Persist to SQLite (fire and forget for streaming)
+          this.brainstormStorage.addMessage(sessionId, message).catch(() => {});
           this.emit("message", { sessionId, message });
         }
       }
@@ -629,6 +762,14 @@ ${completionInstruction}`;
     if (activeSession) {
       activeSession.session.status = "completed";
       activeSession.session.taskPreview = taskPreview;
+
+      // Persist to SQLite
+      this.brainstormStorage
+        .update(sessionId, {
+          status: "completed",
+          partialTaskData: taskPreview ?? {}
+        })
+        .catch(() => {});
     }
 
     this.emit("brainstormComplete", { sessionId, taskPreview });
@@ -646,23 +787,6 @@ ${completionInstruction}`;
       this.emit("sessionTimeout", { sessionId });
       await this.endSession(sessionId);
     }, this.idleTimeoutMs);
-  }
-
-  private async killProcess(
-    subprocess: ReturnType<typeof Bun.spawn>
-  ): Promise<void> {
-    subprocess.kill("SIGTERM");
-
-    const timeout = 500;
-    const start = Date.now();
-
-    while (subprocess.exitCode === null && Date.now() - start < timeout) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-
-    if (subprocess.exitCode === null) {
-      subprocess.kill("SIGKILL");
-    }
   }
 
   private generateSessionId(): string {

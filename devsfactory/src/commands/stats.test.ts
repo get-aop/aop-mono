@@ -1,70 +1,97 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { registerProject } from "../core/sqlite/project-store";
+import { SQLiteTaskStorage } from "../core/sqlite/sqlite-task-storage";
+import {
+  createIsolatedGlobalDir,
+  type IsolatedGlobalDirContext
+} from "../test-helpers";
+import type { SubtaskStatus, TaskStatus } from "../types";
 import { parseStatsArgs, runStatsCommand } from "./stats";
 
-const TEST_DIR = "/tmp/stats-command-test";
-const DEVSFACTORY_DIR = join(TEST_DIR, ".devsfactory");
+let ctx: IsolatedGlobalDirContext;
+const PROJECT_NAME = "stats-test-project";
 
-const formatYamlValue = (value: unknown, indent: number): string => {
-  const spaces = " ".repeat(indent);
-  if (value === null) return "null";
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  if (typeof value === "string") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "[]";
-    return value
-      .map((v) => `\n${spaces}- ${formatYamlValue(v, indent + 2)}`)
-      .join("");
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    return entries
-      .map(([k, v]) => {
-        if (typeof v === "object" && v !== null && !Array.isArray(v)) {
-          return `\n${spaces}${k}:${formatYamlValue(v, indent + 2)}`;
-        }
-        return `\n${spaces}${k}: ${formatYamlValue(v, indent + 2)}`;
-      })
-      .join("");
-  }
-  return String(value);
+const createProjectInDb = async () => {
+  await ctx.run(() =>
+    registerProject({
+      name: PROJECT_NAME,
+      path: "/tmp/stats-test-project"
+    })
+  );
 };
 
-const createTaskFile = async (
+const createTaskInDb = async (
   taskFolder: string,
-  frontmatter: Record<string, unknown>,
-  body = "## Description\nTest task\n\n## Requirements\nNone\n\n## Acceptance Criteria\n- [ ] Done"
+  data: {
+    title: string;
+    status: TaskStatus;
+    priority?: "high" | "medium" | "low";
+    startedAt?: Date | null;
+    completedAt?: Date | null;
+    durationMs?: number | null;
+  }
 ) => {
-  const dirPath = join(DEVSFACTORY_DIR, taskFolder);
-  await mkdir(dirPath, { recursive: true });
-  const yaml = Object.entries(frontmatter)
-    .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-    .join("\n");
-  await writeFile(join(dirPath, "task.md"), `---\n${yaml}\n---\n${body}`);
+  await ctx.run(async () => {
+    const storage = new SQLiteTaskStorage({ projectName: PROJECT_NAME });
+    await storage.createTaskWithContent({
+      folder: taskFolder,
+      frontmatter: {
+        title: data.title,
+        status: data.status,
+        created: new Date("2026-01-27T10:00:00Z"),
+        priority: data.priority ?? "medium",
+        tags: [],
+        assignee: null,
+        dependencies: [],
+        startedAt: data.startedAt ?? null,
+        completedAt: data.completedAt ?? null,
+        durationMs: data.durationMs ?? null
+      },
+      description: "Test task",
+      requirements: "None",
+      acceptanceCriteria: ["Done"],
+      notes: undefined
+    });
+  });
 };
 
-const createSubtaskFile = async (
+const createSubtaskInDb = async (
   taskFolder: string,
   filename: string,
-  frontmatter: Record<string, unknown>,
-  body = "### Description\nTest subtask"
+  data: {
+    title: string;
+    status: SubtaskStatus;
+    durationMs?: number | null;
+    phases?: {
+      implementation?: number | null;
+      review?: number | null;
+      merge?: number | null;
+      conflictSolver?: number | null;
+    };
+  }
 ) => {
-  const dirPath = join(DEVSFACTORY_DIR, taskFolder);
-  await mkdir(dirPath, { recursive: true });
-  const yaml = Object.entries(frontmatter)
-    .map(([k, v]) => {
-      if (typeof v === "object" && v !== null && !Array.isArray(v)) {
-        return `${k}:${formatYamlValue(v, 2)}`;
-      }
-      return `${k}: ${formatYamlValue(v, 2)}`;
-    })
-    .join("\n");
-  await writeFile(join(dirPath, filename), `---\n${yaml}\n---\n${body}`);
+  await ctx.run(async () => {
+    const storage = new SQLiteTaskStorage({ projectName: PROJECT_NAME });
+    await storage.createSubtaskWithContent(taskFolder, {
+      filename,
+      frontmatter: {
+        title: data.title,
+        status: data.status,
+        dependencies: []
+      },
+      objective: "Test subtask",
+      acceptanceCriteria: undefined,
+      tasksChecklist: undefined,
+      result: undefined
+    });
+
+    if (data.durationMs !== undefined || data.phases) {
+      await storage.updateSubtaskTiming(taskFolder, filename, {
+        durationMs: data.durationMs ?? undefined,
+        phases: data.phases
+      });
+    }
+  });
 };
 
 describe("parseStatsArgs", () => {
@@ -100,42 +127,38 @@ describe("parseStatsArgs", () => {
 
 describe("runStatsCommand", () => {
   beforeEach(async () => {
-    await mkdir(DEVSFACTORY_DIR, { recursive: true });
+    ctx = await createIsolatedGlobalDir("stats-cmd");
   });
 
   afterEach(async () => {
-    await rm(TEST_DIR, { recursive: true, force: true });
+    await ctx.cleanup();
   });
 
   test("outputs valid JSON for a task", async () => {
-    await createTaskFile("my-task", {
+    await createProjectInDb();
+    await createTaskInDb("my-task", {
       title: "Build dashboard",
       status: "DONE",
-      created: "2026-01-27T10:00:00Z",
-      priority: "medium",
-      startedAt: "2026-01-27T10:05:00Z",
-      completedAt: "2026-01-27T10:15:00Z",
+      startedAt: new Date("2026-01-27T10:05:00Z"),
+      completedAt: new Date("2026-01-27T10:15:00Z"),
       durationMs: 600000
     });
 
-    await createSubtaskFile("my-task", "001-first.md", {
+    await createSubtaskInDb("my-task", "001-first.md", {
       title: "First subtask",
       status: "DONE",
-      dependencies: [],
-      timing: {
-        startedAt: "2026-01-27T10:05:00Z",
-        completedAt: "2026-01-27T10:15:00Z",
-        durationMs: 600000,
-        phases: {
-          implementation: 500000,
-          review: 80000,
-          merge: 20000,
-          conflictSolver: null
-        }
+      durationMs: 600000,
+      phases: {
+        implementation: 500000,
+        review: 80000,
+        merge: 20000,
+        conflictSolver: null
       }
     });
 
-    const result = await runStatsCommand("my-task", DEVSFACTORY_DIR);
+    const result = await ctx.run(() =>
+      runStatsCommand("my-task", PROJECT_NAME)
+    );
 
     expect(result.success).toBe(true);
     expect(result.output).toBeDefined();
@@ -149,21 +172,25 @@ describe("runStatsCommand", () => {
   });
 
   test("returns error for non-existent task", async () => {
-    const result = await runStatsCommand("nonexistent", DEVSFACTORY_DIR);
+    const result = await ctx.run(() =>
+      runStatsCommand("nonexistent", PROJECT_NAME)
+    );
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("Task file not found");
+    expect(result.error).toContain("Task 'nonexistent' not found");
   });
 
   test("outputs pretty-printed JSON", async () => {
-    await createTaskFile("pretty-task", {
+    await createProjectInDb();
+    await createTaskInDb("pretty-task", {
       title: "Pretty task",
       status: "PENDING",
-      created: "2026-01-27T10:00:00Z",
       priority: "low"
     });
 
-    const result = await runStatsCommand("pretty-task", DEVSFACTORY_DIR);
+    const result = await ctx.run(() =>
+      runStatsCommand("pretty-task", PROJECT_NAME)
+    );
 
     expect(result.success).toBe(true);
     expect(result.output).toContain("\n");

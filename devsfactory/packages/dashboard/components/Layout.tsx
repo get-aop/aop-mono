@@ -32,10 +32,12 @@ const TaskDetail = () => {
   return (
     <>
       <h2>{task.frontmatter.title}</h2>
-      {plan ? (
+      {taskSubtasks.length > 0 ? (
         <DAGView subtasks={taskSubtasks} taskFolder={task.folder} />
+      ) : plan ? (
+        <p>Plan exists but no subtasks loaded</p>
       ) : (
-        <p>No plan available</p>
+        <p>No plan or subtasks available</p>
       )}
     </>
   );

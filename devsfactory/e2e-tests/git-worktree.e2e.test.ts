@@ -17,7 +17,10 @@ import {
   listWorktrees,
   mergeSubtaskIntoTask
 } from "../src/core/git";
-import { getReadySubtasks, listSubtasks } from "../src/parser/subtask";
+import {
+  getReadySubtasks,
+  listSubtasks
+} from "../src/migration/subtask-parser";
 import { createTestDir } from "../src/test-helpers";
 
 const FIXTURES_DIR = join(import.meta.dir, "fixtures");

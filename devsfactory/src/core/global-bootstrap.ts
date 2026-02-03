@@ -3,15 +3,13 @@ import { join } from "node:path";
 import YAML from "yaml";
 import type { GlobalConfig } from "../types";
 import { getGlobalDirStorage } from "./global-dir-storage";
+import { getDatabase } from "./sqlite/database";
 
 const GLOBAL_DIR_NAME = ".aop";
 const CONFIG_FILENAME = "config.yaml";
-const SUBDIRECTORIES = [
-  "projects",
-  "tasks",
-  "brainstorm",
-  "worktrees"
-] as const;
+
+// Subdirectories that remain file-based
+const SUBDIRECTORIES = ["worktrees", "logs"] as const;
 
 export const runWithGlobalDir = <T>(
   globalDir: string,
@@ -54,6 +52,9 @@ export const getDefaultConfig = (): GlobalConfig => ({
     "claude-code": {
       model: "claude-opus-4-5-20251101"
     }
+  },
+  server: {
+    url: "http://localhost:3001"
   }
 });
 
@@ -69,6 +70,10 @@ export const ensureGlobalDir = async (): Promise<string> => {
     await Bun.write(configPath, YAML.stringify(defaultConfig));
   }
 
+  // Initialize SQLite database (creates tables if needed)
+  getDatabase();
+
+  // Create file-based subdirectories
   await Promise.all(
     SUBDIRECTORIES.map((subdir) =>
       mkdir(join(globalDir, subdir), { recursive: true })

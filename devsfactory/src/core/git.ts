@@ -269,7 +269,10 @@ export const ensureWorktree = async (
   }
 
   if (!worktreeExists && !branchExists) {
-    await Bun.$`git -C ${cwd} worktree add -b ${branchName} ${worktreePath} ${sourceBranch}`.quiet();
+    // Check if source branch exists, if not fall back to HEAD
+    const sourceBranchExists = await checkBranchExists(cwd, sourceBranch);
+    const actualSourceBranch = sourceBranchExists ? sourceBranch : "HEAD";
+    await Bun.$`git -C ${cwd} worktree add -b ${branchName} ${worktreePath} ${actualSourceBranch}`.quiet();
     return worktreePath;
   }
 

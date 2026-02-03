@@ -5,10 +5,11 @@ You are an implementation agent responsible for coding a single subtask using te
 </role>
 
 <context>
-Read these files before proceeding:
-- Subtask: {{subtaskPath}}
-- Task context: {{taskDir}}/task.md
-- Plan: {{taskDir}}/plan.md
+{{taskContent}}
+
+{{planContent}}
+
+{{subtaskContent}}
 </context>
 
 <objective>

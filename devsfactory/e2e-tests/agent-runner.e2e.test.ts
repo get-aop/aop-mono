@@ -25,104 +25,111 @@ describe("AgentRunner E2E Tests", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  describe.skipIf(!!process.env.CI)("Claude Code Integration", () => {
-    test(
-      "runs claude code agent with hello world prompt",
-      async () => {
-        const outputs: string[] = [];
-        runner.on("output", (data: { agentId: string; line: string }) => {
-          outputs.push(data.line);
-        });
+  describe.skipIf(!!process.env.CI || !process.env.RUN_CLAUDE_TESTS)(
+    "Claude Code Integration",
+    () => {
+      test(
+        "runs claude code agent with hello world prompt",
+        async () => {
+          const outputs: string[] = [];
+          runner.on("output", (data: { agentId: string; line: string }) => {
+            outputs.push(data.line);
+          });
 
-        const process = await runner.spawn({
-          type: "implementation",
-          taskFolder: "e2e-test",
-          prompt:
-            "Tell me a short story about a cat which has the words hello and world in it",
-          cwd: tempDir,
-          provider: new ClaudeProvider(),
-          logsDir: LOGS_DIR
-        });
+          const process = await runner.spawn({
+            type: "implementation",
+            taskFolder: "e2e-test",
+            prompt:
+              "Tell me a short story about a cat which has the words hello and world in it",
+            cwd: tempDir,
+            provider: new ClaudeProvider(),
+            logsDir: LOGS_DIR
+          });
 
-        expect(process.id).toMatch(/^agent-[A-Za-z0-9]{27}$/);
-        expect(process.type).toBe("implementation");
-        expect(process.taskFolder).toBe("e2e-test");
-        expect(process.pid).toBeGreaterThan(0);
+          expect(process.id).toMatch(/^agent-[A-Za-z0-9]{27}$/);
+          expect(process.type).toBe("implementation");
+          expect(process.taskFolder).toBe("e2e-test");
+          expect(process.pid).toBeGreaterThan(0);
 
-        const exitCode = await new Promise<number>((resolve) => {
-          runner.on(
-            "completed",
-            (data: { agentId: string; exitCode: number }) => {
-              if (data.agentId === process.id) {
-                resolve(data.exitCode);
+          const exitCode = await new Promise<number>((resolve) => {
+            runner.on(
+              "completed",
+              (data: { agentId: string; exitCode: number }) => {
+                if (data.agentId === process.id) {
+                  resolve(data.exitCode);
+                }
               }
-            }
-          );
-        });
+            );
+          });
 
-        expect(exitCode).toBe(0);
+          expect(exitCode).toBe(0);
 
-        const allOutput = outputs.join("\n").toLowerCase();
-        expect(allOutput).toContain("hello");
-        expect(allOutput).toContain("world");
+          const allOutput = outputs.join("\n").toLowerCase();
+          expect(allOutput).toContain("hello");
+          expect(allOutput).toContain("world");
 
-        const logFiles = await readdir(LOGS_DIR);
-        const logFile = logFiles.find((f) => f.startsWith(process.id));
-        expect(logFile).toBeDefined();
+          const logFiles = await readdir(LOGS_DIR);
+          const logFile = logFiles.find((f) => f.startsWith(process.id));
+          expect(logFile).toBeDefined();
 
-        if (logFile) {
-          const logContent = await readFile(join(LOGS_DIR, logFile), "utf-8");
-          expect(logContent.toLowerCase()).toContain("hello");
-          expect(logContent.toLowerCase()).toContain("world");
+          if (logFile) {
+            const logContent = await readFile(join(LOGS_DIR, logFile), "utf-8");
+            expect(logContent.toLowerCase()).toContain("hello");
+            expect(logContent.toLowerCase()).toContain("world");
+          }
+        },
+        TIMEOUT
+      );
+
+      test("generates unique KSUID-based agent IDs", async () => {
+        const ids: string[] = [];
+
+        for (let i = 0; i < 3; i++) {
+          const process = await runner.spawn({
+            type: "planning",
+            taskFolder: `test-task-${i}`,
+            prompt: "say ok",
+            cwd: tempDir,
+            provider: new ClaudeProvider()
+          });
+          ids.push(process.id);
         }
-      },
-      TIMEOUT
-    );
 
-    test("generates unique KSUID-based agent IDs", async () => {
-      const ids: string[] = [];
+        const uniqueIds = new Set(ids);
+        expect(uniqueIds.size).toBe(3);
 
-      for (let i = 0; i < 3; i++) {
-        const process = await runner.spawn({
-          type: "planning",
-          taskFolder: `test-task-${i}`,
-          prompt: "say ok",
-          cwd: tempDir,
-          provider: new ClaudeProvider()
-        });
-        ids.push(process.id);
-      }
-
-      const uniqueIds = new Set(ids);
-      expect(uniqueIds.size).toBe(3);
-
-      for (const id of ids) {
-        expect(id).toMatch(/^agent-[A-Za-z0-9]{27}$/);
-      }
-    });
-
-    test("logs output to .logs directory in real-time", async () => {
-      const process = await runner.spawn({
-        type: "implementation",
-        taskFolder: "log-test",
-        prompt: "say line1 then line2 then line3, each on its own line",
-        cwd: tempDir,
-        provider: new ClaudeProvider(),
-        logsDir: LOGS_DIR
+        for (const id of ids) {
+          expect(id).toMatch(/^agent-[A-Za-z0-9]{27}$/);
+        }
       });
 
-      await new Promise<void>((resolve) => {
-        runner.on("completed", (data: { agentId: string }) => {
-          if (data.agentId === process.id) resolve();
-        });
-      });
+      test(
+        "logs output to .logs directory in real-time",
+        async () => {
+          const process = await runner.spawn({
+            type: "implementation",
+            taskFolder: "log-test",
+            prompt: "say line1 then line2 then line3, each on its own line",
+            cwd: tempDir,
+            provider: new ClaudeProvider(),
+            logsDir: LOGS_DIR
+          });
 
-      const logPath = join(LOGS_DIR, `${process.id}.log`);
-      const logContent = await readFile(logPath, "utf-8");
+          await new Promise<void>((resolve) => {
+            runner.on("completed", (data: { agentId: string }) => {
+              if (data.agentId === process.id) resolve();
+            });
+          });
 
-      expect(logContent).toContain("line1");
-      expect(logContent).toContain("line2");
-      expect(logContent).toContain("line3");
-    });
-  });
+          const logPath = join(LOGS_DIR, `${process.id}.log`);
+          const logContent = await readFile(logPath, "utf-8");
+
+          expect(logContent).toContain("line1");
+          expect(logContent).toContain("line2");
+          expect(logContent).toContain("line3");
+        },
+        TIMEOUT
+      );
+    }
+  );
 });

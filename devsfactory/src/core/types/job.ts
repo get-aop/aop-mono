@@ -21,6 +21,7 @@ export const JobSchema = z.object({
   id: z.string(),
   type: JobTypeSchema,
   taskFolder: z.string(),
+  projectName: z.string().optional(),
   subtaskFile: z.string().optional(),
   status: JobStatusSchema.default("pending"),
   priority: z.number().default(0),
@@ -50,6 +51,7 @@ export const JOB_PRIORITY: Record<JobType, number> = {
 } as const;
 
 export const getJobKey = (job: Job): string => {
-  const base = `${job.type}:${job.taskFolder}`;
+  const projectPrefix = job.projectName ? `${job.projectName}:` : "";
+  const base = `${projectPrefix}${job.type}:${job.taskFolder}`;
   return job.subtaskFile ? `${base}:${job.subtaskFile}` : base;
 };

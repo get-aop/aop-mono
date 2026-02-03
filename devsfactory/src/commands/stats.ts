@@ -41,10 +41,10 @@ export const parseStatsArgs = (args: string[]): StatsArgs => {
 
 export const runStatsCommand = async (
   taskFolder: string,
-  devsfactoryDir?: string
+  projectName: string
 ): Promise<StatsResult> => {
   try {
-    const stats = await exportTaskStats(taskFolder, devsfactoryDir);
+    const stats = await exportTaskStats(taskFolder, projectName);
     return {
       success: true,
       output: JSON.stringify(stats, null, 2)

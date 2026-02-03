@@ -4,19 +4,20 @@ import { getTemplate, loadTemplate, renderTemplate } from "./index";
 describe("loadTemplate", () => {
   test("loads planning template", async () => {
     const template = await loadTemplate("planning");
-    expect(template).toContain("{{taskPath}}");
+    expect(template).toContain("{{taskContent}}");
   });
 
   test("loads implementation template", async () => {
     const template = await loadTemplate("implementation");
-    expect(template).toContain("{{subtaskPath}}");
-    expect(template).toContain("{{taskDir}}");
+    expect(template).toContain("{{subtaskContent}}");
+    expect(template).toContain("{{taskContent}}");
+    expect(template).toContain("{{planContent}}");
   });
 
   test("loads review template", async () => {
     const template = await loadTemplate("review");
-    expect(template).toContain("{{subtaskPath}}");
-    expect(template).toContain("{{reviewPath}}");
+    expect(template).toContain("{{subtaskContent}}");
+    expect(template).toContain("{{reviewFilename}}");
   });
 
   test("caches templates after first load", async () => {
@@ -55,9 +56,10 @@ describe("renderTemplate", () => {
 describe("getTemplate", () => {
   test("loads and renders template in one call", async () => {
     const result = await getTemplate("planning", {
-      taskPath: "/path/to/task.md"
+      taskContent: "## Task\n\n**Title:** My Task"
     });
-    expect(result).toContain("/path/to/task.md");
-    expect(result).not.toContain("{{taskPath}}");
+    expect(result).toContain("## Task");
+    expect(result).toContain("**Title:** My Task");
+    expect(result).not.toContain("{{taskContent}}");
   });
 });

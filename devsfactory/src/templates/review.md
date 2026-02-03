@@ -5,8 +5,9 @@ You are a code review agent responsible for reviewing subtask implementations.
 </role>
 
 <context>
-- Subtask: {{subtaskPath}}
-- Review file: {{reviewPath}}
+{{subtaskContent}}
+
+- Review file: {{reviewFilename}}
 </context>
 
 <objective>

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { ResolvedPaths } from "../types";
 import { getGlobalDir } from "./global-bootstrap";
-import { findProjectByPath, getProject } from "./project-registry";
+import { findProjectByPath, getProjectByName } from "./sqlite/project-store";
 
 export const resolvePaths = async (
   cwd?: string
@@ -16,8 +16,7 @@ export const resolvePaths = async (
       projectName: project.name,
       projectRoot: project.path,
       devsfactoryDir: join(globalDir, "tasks", project.name),
-      worktreesDir: join(globalDir, "worktrees", project.name),
-      brainstormDir: join(globalDir, "brainstorm", project.name)
+      worktreesDir: join(globalDir, "worktrees", project.name)
     };
   }
 
@@ -27,7 +26,7 @@ export const resolvePaths = async (
 export const resolvePathsForProject = async (
   projectName: string
 ): Promise<ResolvedPaths | null> => {
-  const project = await getProject(projectName);
+  const project = getProjectByName(projectName);
   if (!project) {
     return null;
   }
@@ -38,8 +37,7 @@ export const resolvePathsForProject = async (
     projectName: project.name,
     projectRoot: project.path,
     devsfactoryDir: join(globalDir, "tasks", project.name),
-    worktreesDir: join(globalDir, "worktrees", project.name),
-    brainstormDir: join(globalDir, "brainstorm", project.name)
+    worktreesDir: join(globalDir, "worktrees", project.name)
   };
 };
 

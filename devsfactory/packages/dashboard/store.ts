@@ -71,11 +71,34 @@ export interface ProjectState {
 
 export interface ProjectActions {
   loadProjects(): Promise<void>;
-  selectProject(projectName: string): void;
+  selectProject(projectName: string): Promise<void>;
   selectAllProjects(): void;
+  refreshTasks(): Promise<void>;
 }
 
-export interface DashboardStore extends BrainstormActions, ProjectActions {
+export type LocalAgentStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
+
+export interface LocalAgentState {
+  status: LocalAgentStatus;
+  error: string | null;
+}
+
+export interface LocalAgentActions {
+  startLocalAgent(): Promise<void>;
+  stopLocalAgent(): Promise<void>;
+  createTaskSimple(description: string): Promise<{ runId: string }>;
+  sendTaskCreateInput(line: string): Promise<void>;
+  clearTaskCreateOutput(): void;
+}
+
+export interface DashboardStore
+  extends BrainstormActions,
+    ProjectActions,
+    LocalAgentActions {
   tasks: Task[];
   plans: Record<string, Plan>;
   subtasks: Record<string, Subtask[]>;
@@ -94,6 +117,8 @@ export interface DashboardStore extends BrainstormActions, ProjectActions {
 
   brainstorm: BrainstormState;
   project: ProjectState;
+  localAgent: LocalAgentState;
+  taskCreate: TaskCreateState;
 
   updateFromServer: (event: ServerEvent) => void;
   selectTask: (folder: string | null) => void;
@@ -131,9 +156,12 @@ export interface DashboardStoreInitialState {
   subtaskLogsLoading?: boolean;
   brainstorm?: Partial<BrainstormState>;
   project?: Partial<ProjectState>;
+  localAgent?: Partial<LocalAgentState>;
+  taskCreate?: Partial<TaskCreateState>;
 }
 
 const MAX_OUTPUT_LINES = 1000;
+const MAX_TASK_CREATE_LINES = 500;
 
 const defaultBrainstormState: BrainstormState = {
   activeSession: null,
@@ -157,6 +185,25 @@ const defaultProjectState: ProjectState = {
   projectsError: null,
   currentProject: null,
   isGlobalMode: false
+};
+
+const defaultLocalAgentState: LocalAgentState = {
+  status: "disconnected",
+  error: null
+};
+
+export interface TaskCreateState {
+  runId: string | null;
+  status: "idle" | "running" | "completed" | "failed";
+  exitCode: number | null;
+  output: string[];
+}
+
+const defaultTaskCreateState: TaskCreateState = {
+  runId: null,
+  status: "idle",
+  exitCode: null,
+  output: []
 };
 
 export const createDashboardStore = (
@@ -192,9 +239,23 @@ export const createDashboardStore = (
       ...initialState?.project
     },
 
+    localAgent: {
+      ...defaultLocalAgentState,
+      ...initialState?.localAgent
+    },
+
+    taskCreate: {
+      ...defaultTaskCreateState,
+      ...initialState?.taskCreate
+    },
+
     loadProjects: async () => {
       set((state) => ({
-        project: { ...state.project, projectsLoading: true, projectsError: null }
+        project: {
+          ...state.project,
+          projectsLoading: true,
+          projectsError: null
+        }
       }));
 
       try {
@@ -219,13 +280,26 @@ export const createDashboardStore = (
       }
     },
 
-    selectProject: (projectName) => {
+    selectProject: async (projectName) => {
       set((state) => ({
         project: { ...state.project, currentProject: projectName },
         selectedTask: null,
         selectedSubtask: null,
-        subtaskLogs: []
+        subtaskLogs: [],
+        tasks: [],
+        subtasks: {}
       }));
+
+      // Fetch tasks from SQLite for this project
+      try {
+        const data = await client.fetchProjectTasks(projectName);
+        set({
+          tasks: data.tasks,
+          subtasks: data.subtasks
+        });
+      } catch (error) {
+        console.error("Failed to fetch project tasks:", error);
+      }
     },
 
     selectAllProjects: () => {
@@ -236,6 +310,103 @@ export const createDashboardStore = (
         subtaskLogs: []
       }));
     },
+
+    refreshTasks: async () => {
+      const projectName = get().project.currentProject;
+      if (!projectName) return;
+
+      try {
+        const data = await client.fetchProjectTasks(projectName);
+        set({
+          tasks: data.tasks,
+          subtasks: data.subtasks
+        });
+      } catch (error) {
+        console.error("Failed to refresh tasks:", error);
+      }
+    },
+
+    startLocalAgent: async () => {
+      set((state) => ({
+        localAgent: { ...state.localAgent, status: "connecting", error: null }
+      }));
+
+      try {
+        const result = await client.startLocalAgent();
+        if (!result.success) {
+          set((state) => ({
+            localAgent: {
+              ...state.localAgent,
+              status: "error",
+              error: result.error ?? "Failed to start agent"
+            }
+          }));
+        }
+      } catch (error) {
+        set((state) => ({
+          localAgent: {
+            ...state.localAgent,
+            status: "error",
+            error:
+              error instanceof Error ? error.message : "Failed to start agent"
+          }
+        }));
+      }
+    },
+
+    stopLocalAgent: async () => {
+      try {
+        await client.stopLocalAgent();
+        set((state) => ({
+          localAgent: {
+            ...state.localAgent,
+            status: "disconnected",
+            error: null
+          }
+        }));
+      } catch (error) {
+        set((state) => ({
+          localAgent: {
+            ...state.localAgent,
+            status: "error",
+            error:
+              error instanceof Error ? error.message : "Failed to stop agent"
+          }
+        }));
+      }
+    },
+
+    createTaskSimple: async (description: string) => {
+      const projectName = get().project.currentProject;
+      if (!projectName) {
+        throw new Error("Select a project before creating a task");
+      }
+      const result = await client.createTaskCli(description, projectName);
+      set({
+        taskCreate: {
+          runId: result.runId,
+          status: "running",
+          exitCode: null,
+          output: []
+        }
+      });
+      return result;
+    },
+
+    sendTaskCreateInput: async (line: string) => {
+      const runId = get().taskCreate.runId;
+      if (!runId) {
+        throw new Error("No active task creation session");
+      }
+      await client.sendTaskCreateInput(runId, line);
+    },
+
+    clearTaskCreateOutput: () =>
+      set({
+        taskCreate: {
+          ...defaultTaskCreateState
+        }
+      }),
 
     selectTask: (folder) =>
       set({
@@ -428,6 +599,42 @@ export const createDashboardStore = (
 
     updateFromServer: (event) => {
       switch (event.type) {
+        case "taskCreateStarted":
+          set({
+            taskCreate: {
+              runId: event.runId,
+              status: "running",
+              exitCode: null,
+              output: []
+            }
+          });
+          break;
+        case "taskCreateOutput":
+          set((state) => {
+            const output = [...state.taskCreate.output, event.line];
+            if (output.length > MAX_TASK_CREATE_LINES) {
+              output.splice(0, output.length - MAX_TASK_CREATE_LINES);
+            }
+            return {
+              taskCreate: {
+                ...state.taskCreate,
+                runId: event.runId,
+                output
+              }
+            };
+          });
+          break;
+        case "taskCreateCompleted":
+          set((state) => ({
+            taskCreate: {
+              ...state.taskCreate,
+              runId: event.runId,
+              status: event.exitCode === 0 ? "completed" : "failed",
+              exitCode: event.exitCode
+            }
+          }));
+          break;
+
         case "state":
           set({
             tasks: event.data.tasks,
@@ -631,15 +838,39 @@ export const createDashboardStore = (
         case "jobFailed":
         case "jobRetrying":
           break;
+
+        case "localAgentConnected":
+          set((state) => ({
+            localAgent: {
+              ...state.localAgent,
+              status: "connected",
+              error: null
+            }
+          }));
+          break;
+
+        case "localAgentDisconnected":
+          set((state) => ({
+            localAgent: { ...state.localAgent, status: "disconnected" }
+          }));
+          break;
       }
     },
 
     setTaskStatus: async (folder, status) => {
-      await client.updateTaskStatus(folder, status);
+      const projectName = get().project.currentProject;
+      if (!projectName) {
+        throw new Error("Select a project before updating a task");
+      }
+      await client.updateTaskStatus(folder, status, projectName);
     },
 
     setSubtaskStatus: async (folder, file, status) => {
-      await client.updateSubtaskStatus(folder, file, status);
+      const projectName = get().project.currentProject;
+      if (!projectName) {
+        throw new Error("Select a project before updating a subtask");
+      }
+      await client.updateSubtaskStatus(folder, file, status, projectName);
     },
 
     createPullRequest: async (folder) => {

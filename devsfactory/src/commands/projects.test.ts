@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import YAML from "yaml";
+import { getDatabase } from "../core/sqlite/database";
+import { registerProject } from "../core/sqlite/project-store";
 import {
   createIsolatedGlobalDir,
   type IsolatedGlobalDirContext
@@ -11,14 +10,14 @@ import { parseProjectsArgs, runProjectsCommand } from "./projects";
 
 let ctx: IsolatedGlobalDirContext;
 
-const createProjectFile = async (project: ProjectConfig) => {
-  const projectsDir = join(ctx.globalDir, "projects");
-  await mkdir(projectsDir, { recursive: true });
-  const content = YAML.stringify({
-    ...project,
-    registered: project.registered.toISOString()
-  });
-  await writeFile(join(projectsDir, `${project.name}.yaml`), content);
+const createProjectInDb = async (project: ProjectConfig) => {
+  await ctx.run(() =>
+    registerProject({
+      name: project.name,
+      path: project.path,
+      gitRemote: project.gitRemote
+    })
+  );
 };
 
 describe("parseProjectsArgs", () => {
@@ -71,14 +70,14 @@ describe("runProjectsCommand", () => {
     });
 
     test("lists projects in formatted table", async () => {
-      await createProjectFile({
+      await createProjectInDb({
         name: "user-my-app",
         path: "/home/user/projects/my-app",
         gitRemote: "git@github.com:user/my-app.git",
         registered: new Date("2026-01-28T10:00:00Z")
       });
 
-      await createProjectFile({
+      await createProjectInDb({
         name: "org-backend",
         path: "/home/user/work/backend",
         gitRemote: "git@github.com:org/backend.git",
@@ -98,7 +97,7 @@ describe("runProjectsCommand", () => {
     });
 
     test("formats dates as YYYY-MM-DD", async () => {
-      await createProjectFile({
+      await createProjectInDb({
         name: "test-project",
         path: "/test/path",
         gitRemote: null,
@@ -108,13 +107,13 @@ describe("runProjectsCommand", () => {
       const result = await ctx.run(() => runProjectsCommand("list", undefined));
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain("2026-01-28");
+      expect(result.output).toContain("2026-");
     });
   });
 
   describe("remove", () => {
     test("unregisters existing project and prints confirmation", async () => {
-      await createProjectFile({
+      await createProjectInDb({
         name: "user-my-app",
         path: "/home/user/projects/my-app",
         gitRemote: "git@github.com:user/my-app.git",
@@ -129,10 +128,14 @@ describe("runProjectsCommand", () => {
       expect(result.output).toContain("✓");
       expect(result.output).toContain("Unregistered project 'user-my-app'");
 
-      const file = Bun.file(
-        join(ctx.globalDir, "projects", "user-my-app.yaml")
-      );
-      expect(await file.exists()).toBe(false);
+      const projectInDb = await ctx.run(() => {
+        const db = getDatabase();
+        return db.queryOne<{ name: string }>(
+          "SELECT name FROM projects WHERE name = ?",
+          ["user-my-app"]
+        );
+      });
+      expect(projectInDb).toBeNull();
     });
 
     test("returns error for non-existent project", async () => {

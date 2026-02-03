@@ -2,6 +2,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import ksuid from "ksuid";
 import { runWithGlobalDir } from "./core/global-bootstrap";
+import { closeDatabase, resetDatabaseInstance } from "./core/sqlite/database";
 
 const TEST_RUNS_DIR = join(import.meta.dir, "..", "test-runs");
 
@@ -55,6 +56,15 @@ export const createIsolatedGlobalDir = async (
     cleanup: async () => {
       await cleanupTestDir(testDir);
     },
-    run: <T>(fn: () => T | Promise<T>) => runWithGlobalDir(globalDir, fn)
+    run: async <T>(fn: () => T | Promise<T>) =>
+      runWithGlobalDir(globalDir, async () => {
+        resetDatabaseInstance();
+        try {
+          return await fn();
+        } finally {
+          closeDatabase();
+          resetDatabaseInstance();
+        }
+      })
   };
 };

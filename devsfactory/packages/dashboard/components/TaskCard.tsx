@@ -27,10 +27,18 @@ export const TaskCard = ({
     totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
   return (
-    <button
-      type="button"
+    // biome-ignore lint/a11y/useSemanticElements: Cannot use button as it contains StatusToggle button
+    <div
+      role="button"
+      tabIndex={0}
       className={`task-card ${selected ? "selected" : ""}`}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
     >
       <div className="task-card-header">
         <span className="task-card-title">{task.frontmatter.title}</span>
@@ -52,6 +60,6 @@ export const TaskCard = ({
         <div className="progress-fill" style={{ width: `${progress}%` }} />
       </div>
       <span className="progress-text">{progress}%</span>
-    </button>
+    </div>
   );
 };

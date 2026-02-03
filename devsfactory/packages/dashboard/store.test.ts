@@ -359,6 +359,7 @@ describe("DashboardStore", () => {
     });
 
     test("setTaskStatus calls API", async () => {
+      store.getState().selectProject("test-project");
       await store.getState().setTaskStatus("task-1", "INPROGRESS");
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -367,6 +368,7 @@ describe("DashboardStore", () => {
     });
 
     test("setSubtaskStatus calls API", async () => {
+      store.getState().selectProject("test-project");
       await store.getState().setSubtaskStatus("task-1", "001-test.md", "DONE");
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -1369,7 +1371,9 @@ describe("Project State", () => {
   test("can be initialized with custom project state", () => {
     store = createDashboardStore(undefined, {
       project: {
-        projects: [{ name: "test", path: "/test", registered: new Date(), taskCount: 2 }],
+        projects: [
+          { name: "test", path: "/test", registered: new Date(), taskCount: 2 }
+        ],
         isGlobalMode: true,
         currentProject: "test",
         projectsLoading: false,
@@ -1418,7 +1422,9 @@ describe("Project State", () => {
   test("loadProjects sets loading state", async () => {
     const mockClient = {
       fetchProjects: mock(async () => ({
-        projects: [{ name: "p1", path: "/p1", registered: new Date(), taskCount: 1 }],
+        projects: [
+          { name: "p1", path: "/p1", registered: new Date(), taskCount: 1 }
+        ],
         isGlobalMode: true
       }))
     };

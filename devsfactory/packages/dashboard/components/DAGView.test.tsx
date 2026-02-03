@@ -48,48 +48,49 @@ describe("DAGView", () => {
     store = createDashboardStore();
   });
 
-  test("renders React Flow container", () => {
+  test("renders dag-view class on container", () => {
     const html = renderToString(
       <StoreContext.Provider value={store}>
         <DAGView subtasks={[]} taskFolder="test-task" />
       </StoreContext.Provider>
     );
-    expect(html).toContain("react-flow");
+    expect(html).toContain("dag-view");
   });
 
-  test("renders empty state for no subtasks", () => {
-    const html = renderToString(
-      <StoreContext.Provider value={store}>
-        <DAGView subtasks={[]} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-    expect(html).toContain("react-flow");
+  test("renders empty grid for no subtasks", () => {
+    const { container } = renderWithStore([]);
+    expect(container.querySelector(".dag-view")).not.toBeNull();
   });
 
-  test("renders nodes for each subtask", () => {
+  test("renders cards for each subtask", () => {
     const subtasks = [makeSubtask(1), makeSubtask(2)];
     const { container } = renderWithStore(subtasks);
     expect(container.innerHTML).toContain("Subtask 1");
     expect(container.innerHTML).toContain("Subtask 2");
   });
 
-  test("uses custom SubtaskNode component", () => {
+  test("displays subtask number", () => {
     const subtasks = [makeSubtask(1)];
     const { container } = renderWithStore(subtasks);
-    expect(container.innerHTML).toContain(">#1<");
+    expect(container.innerHTML).toContain("1.");
   });
 
-  test("clicking node calls selectSubtask", () => {
+  test("clicking card calls selectSubtask", () => {
     const subtasks = [makeSubtask(1)];
     const { container } = renderWithStore(subtasks);
 
-    const node = container.querySelector('[role="button"]');
-    expect(node).not.toBeNull();
+    const cards = container.querySelectorAll("[style*='cursor: pointer']");
+    expect(cards.length).toBeGreaterThan(0);
 
-    fireEvent.click(node!);
+    fireEvent.click(cards[0]);
+
+    expect(store.getState().selectedSubtask).toEqual({
+      taskFolder: "test-task",
+      subtaskFile: "001-test.md"
+    });
   });
 
-  test("shows pulse animation for subtask with active agent", () => {
+  test("shows Running badge for subtask with active agent", () => {
     const subtasks = [makeSubtask(1, "INPROGRESS")];
     store.getState().updateFromServer({
       type: "agentStarted",
@@ -100,73 +101,45 @@ describe("DAGView", () => {
     });
 
     const { container } = renderWithStore(subtasks);
-    expect(container.innerHTML).toContain("dag-node-pulse");
+    expect(container.innerHTML).toContain("Running");
   });
 
-  test("does not show pulse for subtask without active agent", () => {
+  test("does not show Running badge for subtask without active agent", () => {
     const subtasks = [makeSubtask(1, "INPROGRESS")];
     const { container } = renderWithStore(subtasks);
-    expect(container.innerHTML).not.toContain("dag-node-pulse");
+    expect(container.innerHTML).not.toContain("Running");
   });
 
-  test("renders dag-view class on container", () => {
-    const html = renderToString(
-      <StoreContext.Provider value={store}>
-        <DAGView subtasks={[]} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-    expect(html).toContain("dag-view");
-  });
-
-  test("renders unblock button for BLOCKED subtasks", () => {
-    const subtasks = [makeSubtask(1, "BLOCKED")];
-    const { container } = renderWithStore(subtasks);
-    expect(container.innerHTML).toContain("Unblock");
-    expect(container.innerHTML).toContain("dag-node-unblock");
-  });
-
-  test("does not render unblock button for non-BLOCKED subtasks", () => {
-    const subtasks = [makeSubtask(1, "PENDING")];
-    const { container } = renderWithStore(subtasks);
-    expect(container.innerHTML).not.toContain("Unblock");
-    expect(container.innerHTML).not.toContain("dag-node-unblock");
-  });
-
-  test("selected node has blue border", () => {
+  test("selected card has blue border", () => {
     const subtasks = [makeSubtask(1, "PENDING")];
     const storeWithSelection = createDashboardStore(undefined, {
       selectedSubtask: { taskFolder: "test-task", subtaskFile: "001-test.md" }
     });
 
     const { container } = renderWithStore(subtasks, storeWithSelection);
-    expect(container.innerHTML).toContain("border-color: #3b82f6");
-    expect(container.innerHTML).toContain("border-width: 3px");
+    expect(container.innerHTML).toContain("2px solid #3b82f6");
   });
 
-  test("unselected node has status-based border", () => {
+  test("unselected card has gray border", () => {
     const subtasks = [makeSubtask(1, "PENDING")];
     const { container } = renderWithStore(subtasks);
-    expect(container.innerHTML).toContain("border-color: #9ca3af");
-    expect(container.innerHTML).toContain("border-width: 2px");
+    expect(container.innerHTML).toContain("1px solid #374151");
   });
 
-  test("only matching subtask is selected when multiple exist", () => {
-    const subtasks = [makeSubtask(1, "PENDING"), makeSubtask(2, "PENDING")];
-    const storeWithSelection = createDashboardStore(undefined, {
-      selectedSubtask: { taskFolder: "test-task", subtaskFile: "001-test.md" }
-    });
-
-    const { container } = renderWithStore(subtasks, storeWithSelection);
-    const html = container.innerHTML;
-
-    const selectedCount = (html.match(/border-width: 3px/g) || []).length;
-    expect(selectedCount).toBe(1);
-
-    const unselectedCount = (html.match(/border-width: 2px/g) || []).length;
-    expect(unselectedCount).toBe(1);
+  test("displays dependencies when present", () => {
+    const subtasks = [makeSubtask(1, "PENDING", [2, 3])];
+    const { container } = renderWithStore(subtasks);
+    expect(container.innerHTML).toContain("Deps:");
+    expect(container.innerHTML).toContain("2, 3");
   });
 
-  test("no nodes selected when taskFolder does not match", () => {
+  test("does not show Deps label when no dependencies", () => {
+    const subtasks = [makeSubtask(1, "PENDING", [])];
+    const { container } = renderWithStore(subtasks);
+    expect(container.innerHTML).not.toContain("Deps:");
+  });
+
+  test("no cards selected when taskFolder does not match", () => {
     const subtasks = [makeSubtask(1, "PENDING")];
     const storeWithSelection = createDashboardStore(undefined, {
       selectedSubtask: {
@@ -178,28 +151,28 @@ describe("DAGView", () => {
     const { container } = renderWithStore(subtasks, storeWithSelection);
     const html = container.innerHTML;
 
-    expect(html).not.toContain("border-color: #3b82f6");
-    expect(html).toContain("border-width: 2px");
+    expect(html).not.toContain("2px solid #3b82f6");
+    expect(html).toContain("1px solid #374151");
   });
 
-  test("container has explicit dimensions for React Flow", () => {
-    const html = renderToString(
-      <StoreContext.Provider value={store}>
-        <DAGView subtasks={[]} taskFolder="test-task" />
-      </StoreContext.Provider>
-    );
-    expect(html).toContain("width:");
-    expect(html).toContain("height:");
-  });
-
-  test("creates edges container for dependencies", () => {
+  test("renders status color indicator", () => {
     const subtasks = [
-      makeSubtask(1),
-      makeSubtask(2, "PENDING", [1]),
-      makeSubtask(3, "PENDING", [1, 2])
+      makeSubtask(1, "PENDING"),
+      makeSubtask(2, "INPROGRESS"),
+      makeSubtask(3, "DONE")
     ];
     const { container } = renderWithStore(subtasks);
+    const html = container.innerHTML;
 
-    expect(container.innerHTML).toContain("react-flow__edges");
+    // Status colors
+    expect(html).toContain("#fbbf24"); // PENDING - yellow
+    expect(html).toContain("#3b82f6"); // INPROGRESS - blue
+    expect(html).toContain("#22c55e"); // DONE - green
+  });
+
+  test("uses grid layout for cards", () => {
+    const { container } = renderWithStore([makeSubtask(1)]);
+    expect(container.innerHTML).toContain("display: grid");
+    expect(container.innerHTML).toContain("grid-template-columns");
   });
 });

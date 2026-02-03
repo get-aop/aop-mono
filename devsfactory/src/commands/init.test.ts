@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getDatabase } from "../core/sqlite/database";
 import {
   createIsolatedGlobalDir,
   type IsolatedGlobalDirContext
@@ -136,6 +137,46 @@ describe("runInitCommand", () => {
 
       expect(result.success).toBe(true);
       expect(result.projectName).toBe("user-my-project");
+    } finally {
+      if (ctx) await ctx.cleanup();
+    }
+  });
+
+  test("stores project in SQLite database, not YAML files", async () => {
+    let ctx: IsolatedGlobalDirContext | undefined;
+    try {
+      ctx = await createIsolatedGlobalDir("init-sqlite");
+      const gitDir = join(ctx.globalDir, "..", "sqlite-repo");
+      await mkdir(gitDir, { recursive: true });
+      await Bun.$`git -C ${gitDir} init`.quiet();
+
+      const result = await ctx.run(async () => {
+        const initResult = await runInitCommand(gitDir);
+        if (!initResult.success) return initResult;
+
+        const db = getDatabase();
+        const projectInDb = db.queryOne<{ name: string; path: string }>(
+          "SELECT name, path FROM projects WHERE name = ?",
+          ["sqlite-repo"]
+        );
+
+        return { ...initResult, projectInDb };
+      });
+
+      expect(result.success).toBe(true);
+      expect(
+        (result as { projectInDb: { name: string; path: string } }).projectInDb
+      ).toBeTruthy();
+      expect(
+        (result as { projectInDb: { name: string; path: string } }).projectInDb
+          .name
+      ).toBe("sqlite-repo");
+
+      const projectsDir = join(ctx.globalDir, "projects");
+      const files = await readdir(projectsDir);
+      expect(
+        files.filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
+      ).toHaveLength(0);
     } finally {
       if (ctx) await ctx.cleanup();
     }

@@ -19,11 +19,16 @@ export interface ApiClient {
   }>;
   fetchProjectTasks(projectName: string): Promise<OrchestratorState>;
   fetchState(): Promise<OrchestratorState>;
-  updateTaskStatus(folder: string, status: TaskStatus): Promise<void>;
+  updateTaskStatus(
+    folder: string,
+    status: TaskStatus,
+    projectName: string
+  ): Promise<void>;
   updateSubtaskStatus(
     folder: string,
     file: string,
-    status: SubtaskStatus
+    status: SubtaskStatus,
+    projectName: string
   ): Promise<void>;
   createPullRequest(folder: string): Promise<{ prUrl: string }>;
   fetchDiff(folder: string): Promise<{ diff: string }>;
@@ -45,11 +50,34 @@ export interface ApiClient {
     sessionId: string
   ): Promise<{ sessionId: string; agentId: string }>;
   deleteDraft(sessionId: string): Promise<void>;
+
+  // Local agent management
+  startLocalAgent(): Promise<{ success: boolean; error?: string }>;
+  stopLocalAgent(): Promise<{ success: boolean; error?: string }>;
+  getLocalAgentStatus(): Promise<{
+    status: "disconnected" | "connecting" | "connected";
+    processRunning: boolean;
+    agentConnected: boolean;
+  }>;
+  createTaskSimple(
+    description: string,
+    projectName?: string
+  ): Promise<{ success: boolean; taskFolder: string }>;
+  createTaskCli(
+    description: string,
+    projectName?: string
+  ): Promise<{ success: boolean; runId: string }>;
+  sendTaskCreateInput(runId: string, line: string): Promise<void>;
 }
 
-export const createApiClient = (
-  baseUrl = "http://localhost:3000"
-): ApiClient => {
+const getDefaultBaseUrl = () => {
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return "http://localhost:3001";
+};
+
+export const createApiClient = (baseUrl = getDefaultBaseUrl()): ApiClient => {
   const request = async <T>(
     path: string,
     options?: RequestInit
@@ -70,25 +98,32 @@ export const createApiClient = (
       ),
 
     fetchProjectTasks: (projectName) =>
-      request<OrchestratorState>(
-        `/api/projects/${encodeURIComponent(projectName)}/state`
+      request<{
+        tasks: OrchestratorState["tasks"];
+        subtasks: OrchestratorState["subtasks"];
+      }>(`/api/tasks?project=${encodeURIComponent(projectName)}`).then(
+        (data) => ({
+          tasks: data.tasks,
+          plans: {} as OrchestratorState["plans"],
+          subtasks: data.subtasks
+        })
       ),
 
     fetchState: () => request<OrchestratorState>("/api/state"),
 
-    updateTaskStatus: async (folder, status) => {
+    updateTaskStatus: async (folder, status, projectName) => {
       await request(`/api/tasks/${folder}/status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status, projectName })
       });
     },
 
-    updateSubtaskStatus: async (folder, file, status) => {
+    updateSubtaskStatus: async (folder, file, status, projectName) => {
       await request(`/api/subtasks/${folder}/${file}/status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status, projectName })
       });
     },
 
@@ -148,6 +183,45 @@ export const createApiClient = (
     deleteDraft: async (sessionId) => {
       await request(`/api/brainstorm/drafts/${sessionId}`, {
         method: "DELETE"
+      });
+    },
+
+    startLocalAgent: () =>
+      request<{ success: boolean; error?: string }>("/api/local-agent/start", {
+        method: "POST"
+      }),
+
+    stopLocalAgent: () =>
+      request<{ success: boolean; error?: string }>("/api/local-agent/stop", {
+        method: "POST"
+      }),
+
+    getLocalAgentStatus: () =>
+      request<{
+        status: "disconnected" | "connecting" | "connected";
+        processRunning: boolean;
+        agentConnected: boolean;
+      }>("/api/local-agent/status"),
+
+    createTaskSimple: (description, projectName) =>
+      request<{ success: boolean; taskFolder: string }>("/api/tasks/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description, projectName })
+      }),
+
+    createTaskCli: (description, projectName) =>
+      request<{ success: boolean; runId: string }>("/api/tasks/create-cli", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description, projectName })
+      }),
+
+    sendTaskCreateInput: async (runId, line) => {
+      await request("/api/tasks/create-cli/input", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId, line })
       });
     }
   };

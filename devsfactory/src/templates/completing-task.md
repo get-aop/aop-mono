@@ -5,8 +5,10 @@ You are a task completion agent responsible for verifying all subtasks are prope
 </role>
 
 <context>
-- Task: {{devsfactoryDir}}/{{taskFolder}}/task.md
-- Plan: {{devsfactoryDir}}/{{taskFolder}}/plan.md
+{{taskContent}}
+
+{{planContent}}
+
 - Working directory contains the merged implementation
 </context>
 
@@ -21,8 +23,8 @@ Verify the task is complete against acceptance criteria, or create additional su
 </success_criteria>
 
 <instructions>
-1. Read task.md acceptance criteria
-2. Read plan.md to understand what was implemented
+1. Read task acceptance criteria from the context above
+2. Read plan to understand what was implemented
 3. Check implementation against each acceptance criterion (READ-ONLY verification)
 4. Mark completed criteria in task.md (check the boxes, do NOT change task.md status)
 

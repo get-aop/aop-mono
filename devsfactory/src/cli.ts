@@ -1,18 +1,16 @@
 #!/usr/bin/env bun
-import { join } from "node:path";
-import {
-  parseAuthArgs,
-  runAuthCommand,
-  runAuthStatus,
-  runAuthWithToken
-} from "./commands/auth";
+import { agentCommand } from "./commands/agent";
+import { parseAuthArgs, runAuthCommand, runAuthStatus } from "./commands/auth";
 import {
   parseCreateTaskArgs,
   runCreateTaskCommand
 } from "./commands/create-task";
+import { dashboardCommand } from "./commands/dashboard";
 import { parseInitArgs, runInitCommand } from "./commands/init";
+import { parseMigrateArgs, runMigrateCommand } from "./commands/migrate";
 import { parseProjectsArgs, runProjectsCommand } from "./commands/projects";
-import { parseRunArgs, runStart, runStatus, runStop } from "./commands/run";
+import { serverCommand } from "./commands/server";
+import { startTaskCommand } from "./commands/start-task";
 import { parseStatsArgs, runStatsCommand } from "./commands/stats";
 import { parseStatusArgs, runStatusCommand } from "./commands/status";
 import { parseSysDebugArgs, runSysDebugCommand } from "./commands/sys-debug";
@@ -37,39 +35,37 @@ OPTIONS
   -v, --version   Show version number
 
 COMMANDS
-  auth                     Set up Anthropic API authentication
+  auth                     Check Claude Code authentication
   auth status              Check authentication status
-  run                      Start AOP orchestrator (default)
-  run stop                 Stop AOP containers
-  run status               Show AOP container status
+  server                   Run AOP server (stateless coordinator)
+  dashboard                Connect to remote server and show dashboard UI
+  agent                    Run as a remote agent (connects to server)
+  agent --init             Initialize agent configuration
   init [path]              Register a git repository with AOP
   projects                 List all registered projects
   projects remove <name>   Unregister a project
   status [project]         Show status of tasks across projects
+  start-task <task-folder> | --task-id <id> Move a task to PENDING
   stats <task-folder>      Export timing statistics as JSON
   create-task <desc>       Create a new task via Claude Code
   sys-debug <desc>         Debug an issue via Claude Code
+  migrate                  Migrate existing markdown files to SQLite
 
 ENVIRONMENT VARIABLES
   DASHBOARD_PORT        Dashboard server port (default: 3001)
   MAX_CONCURRENT_AGENTS Maximum parallel agents (default: 2)
 
 SETUP
-  1. Install aop globally: bun install -g aop
-  2. Run 'aop auth' to set up Anthropic API authentication
-  3. Run 'aop run' to start the orchestrator (requires Docker)
-  4. Go to your project directory and run 'aop init'
-  5. Run 'aop create-task "your task description"' to create a task
+  1. Install Claude Code: npm install -g @anthropic-ai/claude-code
+  2. Run 'claude' to authenticate Claude Code
+  3. Install aop globally: bun install -g aop
+  4. Run 'aop server --secret <your-secret>' to start the server
+  5. Go to your project directory and run 'aop init'
+  6. Run 'aop create-task "your task description"' to create a task
 
 EXAMPLES
-  # Start AOP orchestrator
-  aop run
-
-  # Stop AOP
-  aop run stop
-
-  # Check AOP status
-  aop run status
+  # Start AOP server
+  aop server --secret <your-secret>
 
   # Register current repository
   aop init
@@ -85,11 +81,15 @@ DOCUMENTATION
 `;
 
 const COMMANDS = [
+  "agent",
   "auth",
+  "dashboard",
   "init",
+  "migrate",
   "projects",
+  "server",
   "status",
-  "run",
+  "start-task",
   "stats",
   "create-task",
   "sys-debug"
@@ -137,21 +137,6 @@ const parseArgs = (args: string[]): ParsedArgs => {
   return result;
 };
 
-const openBrowser = async (url: string): Promise<void> => {
-  try {
-    const platform = process.platform;
-    if (platform === "darwin") {
-      await Bun.$`open ${url}`.quiet();
-    } else if (platform === "win32") {
-      await Bun.$`cmd /c start ${url}`.quiet();
-    } else {
-      await Bun.$`xdg-open ${url}`.quiet();
-    }
-  } catch {
-    // Silently ignore if browser can't be opened
-  }
-};
-
 const showHelp = () => {
   console.log(HELP_TEXT.trim());
 };
@@ -171,33 +156,26 @@ const handleAuthCommand = async (commandArgs: string[]) => {
   if (authArgs.help) {
     console.log(
       `
-aop auth - Set up Anthropic API authentication
+aop auth - Check Claude Code authentication status
 
 USAGE
   aop auth [options]
-  aop auth <token>
   aop auth status
 
 OPTIONS
-  -h, --help          Show this help message
-  -t, --token <tok>   Store a token directly (skip browser flow)
+  -h, --help    Show this help message
 
 SUBCOMMANDS
   status    Check authentication status
 
 DESCRIPTION
-  Sets up authentication for the Anthropic API using Claude's setup-token flow.
-  This opens a browser window to authenticate and stores the token locally.
-
-  The token is stored in ~/.claude-agi/auth.json and automatically used
-  by commands like 'aop create-task'.
-
-  You can also pass a token directly if you already have one.
+  Verifies that Claude Code is installed and properly authenticated.
+  AOP uses Claude Code for all AI operations, so Claude Code must be
+  installed and authenticated before using AOP.
 
 EXAMPLES
-  aop auth                      # Set up via browser
-  aop auth sk-ant-oat01-xxx     # Store token directly
-  aop auth status               # Check if authenticated
+  aop auth           # Check and verify Claude Code setup
+  aop auth status    # Check if authenticated
 `.trim()
     );
     process.exit(0);
@@ -210,17 +188,6 @@ EXAMPLES
 
   if (authArgs.status) {
     const result = await runAuthStatus();
-    if (result.success) {
-      console.log(result.message);
-      process.exit(0);
-    } else {
-      showError(result.error!);
-      process.exit(1);
-    }
-  }
-
-  if (authArgs.token) {
-    const result = await runAuthWithToken(authArgs.token);
     if (result.success) {
       console.log(result.message);
       process.exit(0);
@@ -346,8 +313,12 @@ EXAMPLES
 
 const handleStatsCommand = async (commandArgs: string[]) => {
   const paths = await resolvePaths();
-  const devsfactoryDir =
-    paths?.devsfactoryDir ?? join(process.cwd(), ".devsfactory");
+  if (!paths) {
+    showError(
+      "Not in a project context. Run from a registered project directory."
+    );
+    process.exit(1);
+  }
 
   const statsArgs = parseStatsArgs(commandArgs);
   if (statsArgs.error) {
@@ -355,7 +326,10 @@ const handleStatsCommand = async (commandArgs: string[]) => {
     process.exit(1);
   }
 
-  const result = await runStatsCommand(statsArgs.taskFolder!, devsfactoryDir);
+  const result = await runStatsCommand(
+    statsArgs.taskFolder!,
+    paths.projectName
+  );
   if (result.success) {
     console.log(result.output);
     process.exit(0);
@@ -468,109 +442,98 @@ EXAMPLES
   }
 };
 
+const handleMigrateCommand = async (commandArgs: string[]) => {
+  const migrateArgs = parseMigrateArgs(commandArgs);
+
+  if (migrateArgs.help) {
+    console.log(
+      `
+aop migrate - Migrate existing markdown files to SQLite
+
+USAGE
+  aop migrate [options]
+
+OPTIONS
+  --dry-run        Show what would be migrated without making changes
+  --remove-files   Remove markdown files after successful migration
+  -h, --help       Show this help message
+
+DESCRIPTION
+  Imports existing task, plan, and subtask markdown files from ~/.aop/tasks/
+  into the SQLite database. Use this when upgrading from file-based storage.
+
+  Files already in SQLite are skipped. The command reports a summary of
+  tasks, subtasks, and plans imported.
+
+EXAMPLES
+  aop migrate                  # Migrate all files to SQLite
+  aop migrate --dry-run        # Preview what would be migrated
+  aop migrate --remove-files   # Migrate and delete original files
+`.trim()
+    );
+    process.exit(0);
+  }
+
+  if (migrateArgs.error) {
+    showError(migrateArgs.error);
+    process.exit(1);
+  }
+
+  const result = await runMigrateCommand(migrateArgs);
+  if (result.success) {
+    const s = result.summary!;
+    console.log("\nMigration complete:");
+    console.log(`  Tasks imported:     ${s.tasksImported}`);
+    console.log(`  Subtasks imported:  ${s.subtasksImported}`);
+    console.log(`  Plans imported:     ${s.plansImported}`);
+    console.log(`  Skipped (existing): ${s.skipped}`);
+    if (s.errors > 0) {
+      console.log(`  Errors:             ${s.errors}`);
+      if (result.failedFiles) {
+        console.log("\nFailed files:");
+        for (const file of result.failedFiles) {
+          console.log(`  - ${file}`);
+        }
+      }
+    }
+    process.exit(result.hasErrors ? 1 : 0);
+  } else {
+    showError(result.error!);
+    process.exit(1);
+  }
+};
+
 const dispatchCommand = async (
   command: Command | undefined,
   commandArgs: string[]
 ): Promise<void> => {
   switch (command) {
+    case "agent":
+      return agentCommand(commandArgs);
     case "auth":
       return handleAuthCommand(commandArgs);
+    case "dashboard":
+      return dashboardCommand(commandArgs);
     case "init":
       return handleInitCommand(commandArgs);
+    case "migrate":
+      return handleMigrateCommand(commandArgs);
     case "projects":
       return handleProjectsCommand(commandArgs);
+    case "server":
+      return serverCommand(commandArgs);
     case "status":
       return handleStatusCommand(commandArgs);
+    case "start-task":
+      return startTaskCommand(commandArgs);
     case "stats":
       return handleStatsCommand(commandArgs);
     case "create-task":
       return handleCreateTaskCommand(commandArgs);
     case "sys-debug":
       return handleSysDebugCommand(commandArgs);
-    case "run":
     case undefined:
-      return handleRunCommand(commandArgs);
-  }
-};
-
-const RUN_HELP_TEXT = `
-aop run - Start AOP orchestrator
-
-USAGE
-  aop run [options]
-  aop run stop
-  aop run status
-
-OPTIONS
-  -h, --help  Show this help message
-
-SUBCOMMANDS
-  stop     Stop AOP containers
-  status   Show AOP container status
-
-DESCRIPTION
-  Starts the AOP orchestrator in a Docker container.
-
-  After starting, go to your project directory, run 'aop init' to register it,
-  then use 'aop create-task' to create tasks for the AI agents.
-
-EXAMPLES
-  aop run          # Start AOP
-  aop run stop     # Stop AOP
-  aop run status   # Check status
-`.trim();
-
-const handleRunCommand = async (commandArgs: string[]) => {
-  const runArgs = parseRunArgs(commandArgs);
-
-  if (runArgs.help) {
-    console.log(RUN_HELP_TEXT);
-    process.exit(0);
-  }
-
-  if (runArgs.error) {
-    showError(runArgs.error);
-    process.exit(1);
-  }
-
-  if (runArgs.stop) {
-    const result = await runStop();
-    if (result.success) {
-      console.log(result.message);
-      process.exit(0);
-    } else {
-      showError(result.error!);
-      process.exit(1);
-    }
-  }
-
-  if (runArgs.status) {
-    const result = await runStatus();
-    if (result.success) {
-      console.log(result.message);
-      process.exit(0);
-    } else {
-      showError(result.error!);
-      process.exit(1);
-    }
-  }
-
-  const options = {
-    dashboardPort: Number(process.env.DASHBOARD_PORT ?? 3001),
-    maxConcurrentAgents: Number(process.env.MAX_CONCURRENT_AGENTS ?? 2)
-  };
-
-  const result = await runStart(options, (message) => console.log(message));
-
-  if (result.success) {
-    console.log(`\n${result.message}`);
-    if (result.dashboardUrl) {
-      openBrowser(result.dashboardUrl);
-    }
-    process.exit(0);
-  } else {
-    showError(result.error!);
-    process.exit(1);
+      return showHelp();
   }
 };
 

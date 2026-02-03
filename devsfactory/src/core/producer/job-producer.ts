@@ -10,7 +10,8 @@ const log = getLogger("job-producer");
 export class JobProducer {
   constructor(
     private queue: JobQueue,
-    private registry: AgentRegistry
+    private registry: AgentRegistry,
+    private projectName?: string
   ) {}
 
   async produceFromState(state: OrchestratorState): Promise<void> {
@@ -22,7 +23,9 @@ export class JobProducer {
 
   private async processSubtasks(state: OrchestratorState): Promise<void> {
     for (const task of state.tasks) {
-      if (task.frontmatter.status !== "INPROGRESS") continue;
+      if (!["INPROGRESS", "PENDING"].includes(task.frontmatter.status)) {
+        continue;
+      }
 
       const subtasks = state.subtasks[task.folder] ?? [];
       for (const subtask of subtasks) {
@@ -77,37 +80,18 @@ export class JobProducer {
 
   private async processPlans(state: OrchestratorState): Promise<void> {
     for (const task of state.tasks) {
-      if (task.frontmatter.status !== "INPROGRESS") continue;
-
-      const plan = state.plans[task.folder];
-      if (!plan) continue;
-
       const subtasks = state.subtasks[task.folder] ?? [];
-
-      if (plan.frontmatter.status === "AGENT_REVIEW") {
-        if (await this.hasRunningTaskAgent(task.folder, "completion-review"))
-          continue;
-        await this.enqueueTaskJob("completion-review", task.folder);
-      } else if (plan.frontmatter.status === "INPROGRESS") {
-        const allDone =
-          subtasks.length > 0 &&
-          subtasks.every((s) => s.frontmatter.status === "DONE");
-        if (!allDone) continue;
-        if (await this.hasRunningTaskAgent(task.folder, "completing-task"))
-          continue;
-        await this.enqueueTaskJob("completing-task", task.folder);
-      }
+      const allDone =
+        subtasks.length > 0 &&
+        subtasks.every((s) => s.frontmatter.status === "DONE");
+      if (!allDone) continue;
+      if (await this.hasRunningTaskAgent(task.folder, "completing-task"))
+        continue;
+      await this.enqueueTaskJob("completing-task", task.folder);
     }
   }
 
-  private async processReviewTasks(state: OrchestratorState): Promise<void> {
-    for (const task of state.tasks) {
-      if (task.frontmatter.status !== "REVIEW") continue;
-
-      log.info(`Task ${task.folder} is in REVIEW status, enqueueing migration`);
-      await this.enqueueTaskJob("migrate-worktree", task.folder);
-    }
-  }
+  private async processReviewTasks(_state: OrchestratorState): Promise<void> {}
 
   private async enqueueSubtaskJob(
     type: JobType,
@@ -117,6 +101,7 @@ export class JobProducer {
     await this.enqueueIfNew({
       id: crypto.randomUUID(),
       type,
+      projectName: this.projectName,
       taskFolder,
       subtaskFile,
       status: "pending",
@@ -132,6 +117,7 @@ export class JobProducer {
     await this.enqueueIfNew({
       id: crypto.randomUUID(),
       type,
+      projectName: this.projectName,
       taskFolder,
       status: "pending",
       priority: JOB_PRIORITY[type],

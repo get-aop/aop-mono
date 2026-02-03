@@ -3,6 +3,7 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import YAML from "yaml";
+import { closeDatabase, resetDatabaseInstance } from "./sqlite/database";
 
 const dirExists = async (path: string): Promise<boolean> => {
   try {
@@ -27,6 +28,8 @@ describe("global-bootstrap", () => {
   afterEach(async () => {
     process.env.HOME = originalHome;
     process.env.USERPROFILE = originalUserProfile;
+    closeDatabase();
+    resetDatabaseInstance();
     await rm(tempDir, { recursive: true, force: true });
   });
 
@@ -132,10 +135,14 @@ describe("global-bootstrap", () => {
       expect(
         await Bun.file(join(tempDir, ".aop", "config.yaml")).exists()
       ).toBe(true);
-      expect(await dirExists(join(tempDir, ".aop", "projects"))).toBe(true);
-      expect(await dirExists(join(tempDir, ".aop", "tasks"))).toBe(true);
-      expect(await dirExists(join(tempDir, ".aop", "brainstorm"))).toBe(true);
+      // SQLite database should be created
+      expect(await Bun.file(join(tempDir, ".aop", "aop.db")).exists()).toBe(
+        true
+      );
+      // File-based subdirectories
       expect(await dirExists(join(tempDir, ".aop", "worktrees"))).toBe(true);
+      expect(await dirExists(join(tempDir, ".aop", "logs"))).toBe(true);
+      // Brainstorm data is now stored in SQLite, no directory created
     });
 
     test("creates config.yaml with correct default content", async () => {
@@ -196,10 +203,12 @@ describe("global-bootstrap", () => {
       const mod = await reimportModule();
       await mod.ensureGlobalDir();
 
-      expect(await dirExists(join(aopDir, "projects"))).toBe(true);
-      expect(await dirExists(join(aopDir, "tasks"))).toBe(true);
-      expect(await dirExists(join(aopDir, "brainstorm"))).toBe(true);
+      // SQLite database should be created
+      expect(await Bun.file(join(aopDir, "aop.db")).exists()).toBe(true);
+      // File-based subdirectories
       expect(await dirExists(join(aopDir, "worktrees"))).toBe(true);
+      expect(await dirExists(join(aopDir, "logs"))).toBe(true);
+      // Brainstorm data is now stored in SQLite, no directory created
     });
 
     test("is idempotent - can be called multiple times", async () => {

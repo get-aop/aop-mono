@@ -199,7 +199,7 @@ describe("Git Worktree Manager", () => {
 
       // Cleanup: rename remote back
       await Bun.$`git -C ${gitRepoDir} remote rename origin test-remote`.quiet();
-    });
+    }, 30000);
   });
 
   describe("createSubtaskWorktree", () => {

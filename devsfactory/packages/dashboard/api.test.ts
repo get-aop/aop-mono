@@ -27,7 +27,8 @@ describe("api client", () => {
     test("creates client with default base URL", () => {
       const client = createApiClient();
       expect(client).toBeDefined();
-      expect(client.baseUrl).toBe("http://localhost:3000");
+      // In Node.js tests (no window), falls back to localhost:3001
+      expect(client.baseUrl).toBe("http://localhost:3001");
     });
 
     test("creates client with custom base URL", () => {
@@ -84,14 +85,17 @@ describe("api client", () => {
       globalThis.fetch = mockFetch as unknown as typeof fetch;
 
       const client = createApiClient("http://test:3000");
-      await client.updateTaskStatus("my-task", "INPROGRESS");
+      await client.updateTaskStatus("my-task", "INPROGRESS", "my-project");
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, options] = mockFetch.mock.calls[0];
       expect(url).toBe("http://test:3000/api/tasks/my-task/status");
       expect(options.method).toBe("POST");
       expect(options.headers["Content-Type"]).toBe("application/json");
-      expect(JSON.parse(options.body)).toEqual({ status: "INPROGRESS" });
+      expect(JSON.parse(options.body)).toEqual({
+        status: "INPROGRESS",
+        projectName: "my-project"
+      });
     });
 
     test("throws on non-ok response", async () => {
@@ -102,7 +106,11 @@ describe("api client", () => {
 
       const client = createApiClient();
       await expect(
-        client.updateTaskStatus("my-task", "INVALID" as TaskStatus)
+        client.updateTaskStatus(
+          "my-task",
+          "INVALID" as TaskStatus,
+          "my-project"
+        )
       ).rejects.toThrow("400");
     });
   });
@@ -117,7 +125,12 @@ describe("api client", () => {
       globalThis.fetch = mockFetch as unknown as typeof fetch;
 
       const client = createApiClient("http://test:3000");
-      await client.updateSubtaskStatus("my-task", "001-setup.md", "DONE");
+      await client.updateSubtaskStatus(
+        "my-task",
+        "001-setup.md",
+        "DONE",
+        "my-project"
+      );
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, options] = mockFetch.mock.calls[0];
@@ -125,7 +138,55 @@ describe("api client", () => {
         "http://test:3000/api/subtasks/my-task/001-setup.md/status"
       );
       expect(options.method).toBe("POST");
-      expect(JSON.parse(options.body)).toEqual({ status: "DONE" });
+      expect(JSON.parse(options.body)).toEqual({
+        status: "DONE",
+        projectName: "my-project"
+      });
+    });
+  });
+
+  describe("createTaskCli", () => {
+    test("sends POST to /api/tasks/create-cli", async () => {
+      const response = { success: true, runId: "run-1" };
+      mockFetch = mock(() =>
+        Promise.resolve(new Response(JSON.stringify(response), { status: 202 }))
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = createApiClient("http://test:3000");
+      const result = await client.createTaskCli("Add auth", "my-project");
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toBe("http://test:3000/api/tasks/create-cli");
+      expect(options.method).toBe("POST");
+      expect(options.headers["Content-Type"]).toBe("application/json");
+      expect(JSON.parse(options.body)).toEqual({
+        description: "Add auth",
+        projectName: "my-project"
+      });
+      expect(result).toEqual(response);
+    });
+  });
+
+  describe("sendTaskCreateInput", () => {
+    test("sends POST to /api/tasks/create-cli/input", async () => {
+      mockFetch = mock(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ success: true }), { status: 200 })
+        )
+      );
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = createApiClient("http://test:3000");
+      await client.sendTaskCreateInput("run-1", "yes");
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toBe("http://test:3000/api/tasks/create-cli/input");
+      expect(options.method).toBe("POST");
+      expect(options.headers["Content-Type"]).toBe("application/json");
+      expect(JSON.parse(options.body)).toEqual({ runId: "run-1", line: "yes" });
     });
   });
 
@@ -384,8 +445,18 @@ describe("api client", () => {
     test("fetches projects from /api/projects", async () => {
       const response = {
         projects: [
-          { name: "proj-1", path: "/p1", registered: "2024-01-01", taskCount: 3 },
-          { name: "proj-2", path: "/p2", registered: "2024-01-02", taskCount: 5 }
+          {
+            name: "proj-1",
+            path: "/p1",
+            registered: "2024-01-01",
+            taskCount: 3
+          },
+          {
+            name: "proj-2",
+            path: "/p2",
+            registered: "2024-01-02",
+            taskCount: 5
+          }
         ],
         isGlobalMode: true
       };
@@ -406,14 +477,16 @@ describe("api client", () => {
   });
 
   describe("fetchProjectTasks", () => {
-    test("fetches project state from /api/projects/:name/state", async () => {
+    test("fetches project tasks from /api/projects/:name/tasks", async () => {
       const mockState: OrchestratorState = {
         tasks: [],
         plans: {},
         subtasks: {}
       };
       mockFetch = mock(() =>
-        Promise.resolve(new Response(JSON.stringify(mockState), { status: 200 }))
+        Promise.resolve(
+          new Response(JSON.stringify(mockState), { status: 200 })
+        )
       );
       globalThis.fetch = mockFetch as unknown as typeof fetch;
 
@@ -422,7 +495,7 @@ describe("api client", () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url] = mockFetch.mock.calls[0];
-      expect(url).toBe("http://test:3000/api/projects/my-project/state");
+      expect(url).toBe("http://test:3000/api/projects/my-project/tasks");
       expect(result).toEqual(mockState);
     });
 
@@ -436,7 +509,7 @@ describe("api client", () => {
       await client.fetchProjectTasks("my project");
 
       const [url] = mockFetch.mock.calls[0];
-      expect(url).toBe("http://test:3000/api/projects/my%20project/state");
+      expect(url).toBe("http://test:3000/api/projects/my%20project/tasks");
     });
   });
 });

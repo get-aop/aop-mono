@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import YAML from "yaml";
+import { getDatabase } from "../core/sqlite/database";
 import {
   createIsolatedGlobalDir,
   type IsolatedGlobalDirContext
@@ -47,15 +48,6 @@ const dirExists = async (path: string): Promise<boolean> => {
   try {
     const s = await stat(path);
     return s.isDirectory();
-  } catch {
-    return false;
-  }
-};
-
-const fileExists = async (path: string): Promise<boolean> => {
-  try {
-    const s = await stat(path);
-    return s.isFile();
   } catch {
     return false;
   }
@@ -128,7 +120,7 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
   });
 
   describe("Project Registration Tests", () => {
-    test("aop init in git repo creates project file", async () => {
+    test("aop init in git repo stores project in SQLite", async () => {
       const repoDir = join(tempDir, "my-project");
       await createGitRepo(repoDir);
       await Bun.$`git -C ${repoDir} remote add origin git@github.com:testuser/my-project.git`.quiet();
@@ -142,12 +134,15 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
       expect(result.success).toBe(true);
       expect(result.projectName).toBe("testuser-my-project");
 
-      const projectFile = join(
-        ctx.globalDir,
-        "projects",
-        "testuser-my-project.yaml"
-      );
-      expect(await fileExists(projectFile)).toBe(true);
+      const projectInDb = await ctx.run(() => {
+        const db = getDatabase();
+        return db.queryOne<{ name: string; path: string }>(
+          "SELECT name, path FROM projects WHERE name = ?",
+          ["testuser-my-project"]
+        );
+      });
+      expect(projectInDb).toBeTruthy();
+      expect(projectInDb!.name).toBe("testuser-my-project");
     });
 
     test("project name derived correctly from remote", async () => {
@@ -242,9 +237,6 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
       );
       expect(result!.worktreesDir).toBe(
         join(ctx.globalDir, "worktrees", "global-paths-project")
-      );
-      expect(result!.brainstormDir).toBe(
-        join(ctx.globalDir, "brainstorm", "global-paths-project")
       );
       expect(result!.projectRoot).toBe(repoDir);
     });
@@ -348,31 +340,8 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
     });
   });
 
-  describe("Run Command Tests", () => {
-    test("run command parseRunArgs handles stop flag", async () => {
-      const run = await reimportRunCommand();
-      const result = run.parseRunArgs(["stop"]);
-
-      expect(result.stop).toBe(true);
-    });
-
-    test("run command parseRunArgs handles status flag", async () => {
-      const run = await reimportRunCommand();
-      const result = run.parseRunArgs(["status"]);
-
-      expect(result.status).toBe(true);
-    });
-
-    test("run command parseRunArgs handles help flag", async () => {
-      const run = await reimportRunCommand();
-      const result = run.parseRunArgs(["--help"]);
-
-      expect(result.help).toBe(true);
-    });
-  });
-
   describe("Brainstorm Tests", () => {
-    test("brainstorm creates directory in global mode", async () => {
+    test("brainstorm succeeds in global mode with registered project", async () => {
       const repoDir = join(tempDir, "brainstorm-global");
       await createGitRepo(repoDir);
 
@@ -389,9 +358,7 @@ describe.skipIf(!!process.env.CI)("Global Mode Integration Tests", () => {
 
       expect(result.success).toBe(true);
       expect(result.mode).toBe("global");
-      expect(result.brainstormDir).toBe(
-        join(ctx.globalDir, "brainstorm", "brainstorm-global")
-      );
+      // Brainstorm data is now stored in SQLite, no directory created
     });
   });
 
@@ -547,11 +514,6 @@ async function reimportInitCommand() {
 async function reimportProjectsCommand() {
   const timestamp = Date.now();
   return await import(`../commands/projects?t=${timestamp}`);
-}
-
-async function reimportRunCommand() {
-  const timestamp = Date.now();
-  return await import(`../commands/run?t=${timestamp}`);
 }
 
 async function reimportCreateTaskCommand() {

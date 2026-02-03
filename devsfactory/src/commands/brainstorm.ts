@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises";
 import { resolvePaths, resolvePathsForProject } from "../core/path-resolver";
 import type { OperationMode, ResolvedPaths } from "../types";
 
@@ -11,7 +10,6 @@ export interface BrainstormArgs {
 export interface BrainstormResult {
   success: boolean;
   projectName?: string;
-  brainstormDir?: string;
   mode?: OperationMode;
   error?: string;
 }
@@ -62,12 +60,10 @@ export const runBrainstormCommand = async (
     }
   }
 
-  await mkdir(paths.brainstormDir, { recursive: true });
-
+  // Brainstorm data is now stored in SQLite, no directory creation needed
   return {
     success: true,
     projectName: paths.projectName,
-    brainstormDir: paths.brainstormDir,
     mode: paths.mode
   };
 };

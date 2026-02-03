@@ -1,43 +1,26 @@
-import {
-  Background,
-  BackgroundVariant,
-  Controls,
-  type Edge,
-  MarkerType,
-  MiniMap,
-  type Node,
-  ReactFlow,
-  ReactFlowProvider
-} from "@xyflow/react";
 import { useDashboardStore } from "../context";
-import { calculateDAGLayout } from "../lib/dag-layout";
 import type { Subtask } from "../types";
-import {
-  getStatusStyle,
-  SubtaskNode,
-  type SubtaskNodeData
-} from "./SubtaskNode";
-
-import "@xyflow/react/dist/style.css";
 
 export interface DAGViewProps {
   subtasks: Subtask[];
   taskFolder: string;
 }
 
-const nodeTypes = { subtask: SubtaskNode };
-
-const nodeColor = (node: Node<SubtaskNodeData>) =>
-  getStatusStyle(node.data.subtask.frontmatter.status).borderColor;
+const getStatusBadge = (status: string) => {
+  const colors: Record<string, string> = {
+    PENDING: "#fbbf24",
+    INPROGRESS: "#3b82f6",
+    DONE: "#22c55e",
+    BLOCKED: "#ef4444",
+    REVIEW: "#a855f7"
+  };
+  return colors[status] || "#6b7280";
+};
 
 export const DAGView = ({ subtasks, taskFolder }: DAGViewProps) => {
   const activeAgents = useDashboardStore((s) => s.activeAgents);
   const selectedSubtask = useDashboardStore((s) => s.selectedSubtask);
   const selectSubtask = useDashboardStore((s) => s.selectSubtask);
-  const setSubtaskStatus = useDashboardStore((s) => s.setSubtaskStatus);
-
-  const dagNodes = calculateDAGLayout(subtasks);
-  const subtaskByNumber = new Map(subtasks.map((s) => [s.number, s]));
 
   const hasActiveAgent = (subtask: Subtask) =>
     Array.from(activeAgents.values()).some(
@@ -50,57 +33,86 @@ export const DAGView = ({ subtasks, taskFolder }: DAGViewProps) => {
     selectedSubtask?.taskFolder === taskFolder &&
     selectedSubtask?.subtaskFile === subtask.filename;
 
-  const nodes: Node<SubtaskNodeData>[] = dagNodes.map((node) => ({
-    id: node.subtask.filename,
-    type: "subtask",
-    position: { x: node.x, y: node.y },
-    data: {
-      subtask: node.subtask,
-      hasActiveAgent: hasActiveAgent(node.subtask),
-      isSelected: isSelected(node.subtask),
-      onSelect: () => selectSubtask(taskFolder, node.subtask.filename),
-      onUnblock: () =>
-        setSubtaskStatus(taskFolder, node.subtask.filename, "PENDING")
-    }
-  }));
-
-  const edges: Edge[] = subtasks.flatMap((subtask) =>
-    subtask.frontmatter.dependencies
-      .map((depNum) => {
-        const depSubtask = subtaskByNumber.get(depNum);
-        if (!depSubtask) return null;
-        return {
-          id: `${depSubtask.filename}-${subtask.filename}`,
-          source: depSubtask.filename,
-          target: subtask.filename,
-          type: "default",
-          style: { stroke: "#9ca3af", strokeWidth: 2 },
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#9ca3af" }
-        };
-      })
-      .filter((edge): edge is Edge => edge !== null)
-  );
-
   return (
-    <div className="dag-view" style={{ width: "100%", height: "100%" }}>
-      <ReactFlowProvider>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          nodesDraggable={true}
-          nodesConnectable={false}
-          edgesUpdatable={false}
-          elementsSelectable={false}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Controls />
-          <MiniMap nodeColor={nodeColor} position="bottom-right" />
-          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-        </ReactFlow>
-      </ReactFlowProvider>
+    <div className="dag-view" style={{ padding: "1rem" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+          gap: "1rem"
+        }}
+      >
+        {subtasks.map((subtask) => (
+          // biome-ignore lint/a11y/useSemanticElements: Using div for custom card styling
+          <div
+            key={subtask.filename}
+            role="button"
+            tabIndex={0}
+            onClick={() => selectSubtask(taskFolder, subtask.filename)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                selectSubtask(taskFolder, subtask.filename);
+              }
+            }}
+            style={{
+              padding: "1rem",
+              borderRadius: "8px",
+              border: isSelected(subtask)
+                ? "2px solid #3b82f6"
+                : "1px solid #374151",
+              backgroundColor: isSelected(subtask) ? "#1e3a5f" : "#1f2937",
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                marginBottom: "0.5rem"
+              }}
+            >
+              <span
+                style={{
+                  width: "10px",
+                  height: "10px",
+                  borderRadius: "50%",
+                  backgroundColor: getStatusBadge(subtask.frontmatter.status),
+                  display: "inline-block"
+                }}
+              />
+              <span style={{ fontWeight: "bold", color: "#f3f4f6" }}>
+                {subtask.number}. {subtask.frontmatter.title}
+              </span>
+              {hasActiveAgent(subtask) && (
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    fontSize: "0.75rem",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    backgroundColor: "#3b82f6",
+                    color: "white"
+                  }}
+                >
+                  Running
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: "0.875rem", color: "#9ca3af" }}>
+              {subtask.frontmatter.status}
+              {subtask.frontmatter.dependencies.length > 0 && (
+                <span>
+                  {" "}
+                  • Deps: {subtask.frontmatter.dependencies.join(", ")}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

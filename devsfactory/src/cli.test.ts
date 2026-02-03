@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
 const COMMANDS = [
+  "agent",
+  "auth",
+  "dashboard",
   "init",
   "projects",
+  "server",
   "status",
-  "run",
+  "start-task",
   "stats",
   "create-task",
   "sys-debug"
@@ -136,22 +140,10 @@ describe("CLI argument parsing", () => {
     expect(result.commandArgs).toEqual(["my-project"]);
   });
 
-  test("parses run command", () => {
-    const result = parseArgs(["run"]);
-    expect(result.command).toBe("run");
+  test("parses server command", () => {
+    const result = parseArgs(["server"]);
+    expect(result.command).toBe("server");
     expect(result.commandArgs).toEqual([]);
-  });
-
-  test("parses run command with project argument", () => {
-    const result = parseArgs(["run", "my-project"]);
-    expect(result.command).toBe("run");
-    expect(result.commandArgs).toEqual(["my-project"]);
-  });
-
-  test("parses run command with --all flag", () => {
-    const result = parseArgs(["run", "--all"]);
-    expect(result.command).toBe("run");
-    expect(result.commandArgs).toEqual(["--all"]);
   });
 
   test("parses stats command", () => {
@@ -176,6 +168,18 @@ describe("CLI argument parsing", () => {
     const result = parseArgs(["create-task", "Add auth", "-p", "my-project"]);
     expect(result.command).toBe("create-task");
     expect(result.commandArgs).toEqual(["Add auth", "-p", "my-project"]);
+  });
+
+  test("parses start-task command with task id", () => {
+    const result = parseArgs(["start-task", "--task-id", "42"]);
+    expect(result.command).toBe("start-task");
+    expect(result.commandArgs).toEqual(["--task-id", "42"]);
+  });
+
+  test("parses start-task command with task id", () => {
+    const result = parseArgs(["start-task", "--task-id", "42"]);
+    expect(result.command).toBe("start-task");
+    expect(result.commandArgs).toEqual(["--task-id", "42"]);
   });
 
   test("parses sys-debug command", () => {

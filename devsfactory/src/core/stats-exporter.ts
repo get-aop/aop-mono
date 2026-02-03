@@ -1,6 +1,5 @@
-import { listSubtasks } from "../parser/subtask";
-import { parseTask } from "../parser/task";
 import type { PhaseTimings } from "../types";
+import { SQLiteTaskStorage } from "./sqlite/sqlite-task-storage";
 import { detectBottleneck } from "./timing";
 
 export interface SubtaskStats {
@@ -37,10 +36,14 @@ const DEFAULT_PHASES: PhaseTimings = {
 
 export const exportTaskStats = async (
   taskFolder: string,
-  devsfactoryDir?: string
+  projectName: string
 ): Promise<TaskStats> => {
-  const task = await parseTask(taskFolder, devsfactoryDir);
-  const subtasks = await listSubtasks(taskFolder, devsfactoryDir);
+  const storage = new SQLiteTaskStorage({ projectName });
+  const task = await storage.getTask(taskFolder);
+  if (!task) {
+    throw new Error(`Task '${taskFolder}' not found`);
+  }
+  const subtasks = await storage.listSubtasks(taskFolder);
 
   const subtaskStats: SubtaskStats[] = subtasks.map((subtask) => ({
     number: subtask.number,

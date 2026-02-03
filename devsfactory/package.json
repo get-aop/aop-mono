@@ -41,8 +41,6 @@
     "@anthropic-ai/sdk": "^0.72.1",
     "@logtape/logtape": "^2.0.2",
     "@logtape/pretty": "^2.0.2",
-    "@mariozechner/pi-ai": "^0.50.4",
-    "@mariozechner/pi-coding-agent": "0.49.3",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@opentui/core": "^0.1.75",
     "@opentui/react": "^0.1.75",

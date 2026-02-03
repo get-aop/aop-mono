@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   createIsolatedGlobalDir,
   type IsolatedGlobalDirContext
 } from "../test-helpers";
+import { registerProject } from "./sqlite/project-store";
 
 describe("PathResolver", () => {
   let ctx: IsolatedGlobalDirContext;
@@ -21,19 +22,16 @@ describe("PathResolver", () => {
 
   const runInCtx = <T>(fn: () => T | Promise<T>) => ctx.run(fn);
 
-  const createProjectFile = async (
+  const createProjectInDb = async (
     name: string,
     path: string,
     gitRemote: string | null = null
   ) => {
-    const projectFile = join(ctx.globalDir, "projects", `${name}.yaml`);
-    await writeFile(
-      projectFile,
-      JSON.stringify({
+    await runInCtx(() =>
+      registerProject({
         name,
         path,
-        gitRemote,
-        registered: new Date().toISOString()
+        gitRemote
       })
     );
   };
@@ -43,7 +41,7 @@ describe("PathResolver", () => {
       const projectDir = join(testRootDir, "my-global-project");
       await mkdir(projectDir, { recursive: true });
 
-      await createProjectFile(
+      await createProjectInDb(
         "test-project",
         projectDir,
         "git@github.com:test/test-project.git"
@@ -62,9 +60,6 @@ describe("PathResolver", () => {
       expect(result!.worktreesDir).toBe(
         join(ctx.globalDir, "worktrees", "test-project")
       );
-      expect(result!.brainstormDir).toBe(
-        join(ctx.globalDir, "brainstorm", "test-project")
-      );
     });
 
     test("returns global mode when cwd is a subdirectory of registered project", async () => {
@@ -72,7 +67,7 @@ describe("PathResolver", () => {
       const subDir = join(projectDir, "src", "components");
       await mkdir(subDir, { recursive: true });
 
-      await createProjectFile("test-project", projectDir);
+      await createProjectInDb("test-project", projectDir);
 
       const mod = await reimportModule();
       const result = await runInCtx(() => mod.resolvePaths(subDir));
@@ -99,7 +94,7 @@ describe("PathResolver", () => {
       const projectDir = join(testRootDir, "named-project");
       await mkdir(projectDir, { recursive: true });
 
-      await createProjectFile(
+      await createProjectInDb(
         "my-named-project",
         projectDir,
         "git@github.com:test/my-named-project.git"
@@ -120,9 +115,6 @@ describe("PathResolver", () => {
       expect(result!.worktreesDir).toBe(
         join(ctx.globalDir, "worktrees", "my-named-project")
       );
-      expect(result!.brainstormDir).toBe(
-        join(ctx.globalDir, "brainstorm", "my-named-project")
-      );
     });
 
     test("returns null for non-existent project", async () => {
@@ -140,7 +132,7 @@ describe("PathResolver", () => {
       const projectDir = join(testRootDir, "global-context-project");
       await mkdir(projectDir, { recursive: true });
 
-      await createProjectFile("test-project", projectDir);
+      await createProjectInDb("test-project", projectDir);
 
       const mod = await reimportModule();
       const result = await runInCtx(() => mod.isInProjectContext(projectDir));

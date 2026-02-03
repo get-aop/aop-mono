@@ -186,6 +186,19 @@ export type ServerEvent =
   | { type: "taskChanged"; task: Task; projectName?: string }
   | { type: "subtaskChanged"; taskFolder: string; subtask: Subtask }
   | {
+      type: "taskCreateStarted";
+      runId: string;
+      projectName: string;
+      description: string;
+    }
+  | {
+      type: "taskCreateOutput";
+      runId: string;
+      stream: "stdout" | "stderr";
+      line: string;
+    }
+  | { type: "taskCreateCompleted"; runId: string; exitCode: number | null }
+  | {
       type: "agentStarted";
       agentId: string;
       taskFolder: string;
@@ -213,4 +226,6 @@ export type ServerEvent =
     }
   | { type: "taskCreated"; sessionId: string; taskFolder: string }
   | { type: "brainstormError"; sessionId: string; error: string }
+  | { type: "localAgentConnected" }
+  | { type: "localAgentDisconnected" }
   | AskUserRequest;

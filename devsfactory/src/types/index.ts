@@ -154,6 +154,7 @@ export const ConfigSchema = z.object({
   devsfactoryDir: z.string().default(".devsfactory"),
   worktreesDir: z.string().default(".worktrees"),
   projectRoot: z.string().optional(),
+  projectName: z.string().optional(),
   dashboardPort: z.number().default(3001),
   debounceMs: z.number().default(100),
   retryBackoff: RetryBackoffSchema.default({
@@ -216,6 +217,7 @@ export type WatcherEvent = z.infer<typeof WatcherEventSchema>;
 export const BrainstormSessionStatusSchema = z.enum([
   "active",
   "brainstorming",
+  "waiting",
   "planning",
   "review",
   "completed",
@@ -247,6 +249,23 @@ export const SubtaskPreviewSchema = z.object({
   dependencies: z.array(z.number()).default([])
 });
 
+export const BrainstormQuestionOptionSchema = z.object({
+  label: z.string(),
+  description: z.string()
+});
+
+export const BrainstormQuestionItemSchema = z.object({
+  question: z.string(),
+  header: z.string(),
+  options: z.array(BrainstormQuestionOptionSchema),
+  multiSelect: z.boolean()
+});
+
+export const BrainstormQuestionSchema = z.object({
+  toolUseId: z.string(),
+  questions: z.array(BrainstormQuestionItemSchema)
+});
+
 export const BrainstormSessionSchema = z.object({
   id: z.string(),
   status: BrainstormSessionStatusSchema,
@@ -254,7 +273,9 @@ export const BrainstormSessionSchema = z.object({
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   taskPreview: TaskPreviewSchema.optional(),
-  subtaskPreviews: z.array(SubtaskPreviewSchema).optional()
+  subtaskPreviews: z.array(SubtaskPreviewSchema).optional(),
+  claudeSessionId: z.string().optional(),
+  pendingQuestion: BrainstormQuestionSchema.optional()
 });
 
 export const BrainstormDraftSchema = z.object({
@@ -274,6 +295,13 @@ export type BrainstormMessageRole = z.infer<typeof BrainstormMessageRoleSchema>;
 export type BrainstormMessage = z.infer<typeof BrainstormMessageSchema>;
 export type TaskPreview = z.infer<typeof TaskPreviewSchema>;
 export type SubtaskPreview = z.infer<typeof SubtaskPreviewSchema>;
+export type BrainstormQuestionOption = z.infer<
+  typeof BrainstormQuestionOptionSchema
+>;
+export type BrainstormQuestionItem = z.infer<
+  typeof BrainstormQuestionItemSchema
+>;
+export type BrainstormQuestion = z.infer<typeof BrainstormQuestionSchema>;
 export type BrainstormSession = z.infer<typeof BrainstormSessionSchema>;
 export type BrainstormDraft = z.infer<typeof BrainstormDraftSchema>;
 
@@ -286,11 +314,33 @@ export const ProviderConfigSchema = z.object({
   env: z.record(z.string(), z.string()).optional()
 });
 
+export const ServerConfigSchema = z.object({
+  url: z.string().url().default("http://localhost:3001")
+});
+
+export const AgentConfigFileSchema = z.object({
+  serverUrl: z.string().url(),
+  secret: z.string().min(16),
+  clientId: z.string().optional(),
+  machineId: z.string().optional(),
+  model: z.enum(["opus", "sonnet", "haiku"]).optional(),
+  maxConcurrentJobs: z.number().min(1).max(10).optional(),
+  reconnect: z.boolean().optional(),
+  logLevel: z.enum(["debug", "info", "warn", "error"]).optional(),
+  projectName: z.string(),
+  devsfactoryDir: z.string()
+});
+
 export const GlobalConfigSchema = z.object({
   version: z.number().default(1),
   defaults: ConfigSchema.partial().default({}),
-  providers: z.record(z.string(), ProviderConfigSchema).default({})
+  providers: z.record(z.string(), ProviderConfigSchema).default({}),
+  server: ServerConfigSchema.default({ url: "http://localhost:3001" }),
+  agent: AgentConfigFileSchema.optional()
 });
+
+export type ServerConfig = z.infer<typeof ServerConfigSchema>;
+export type AgentConfigFile = z.infer<typeof AgentConfigFileSchema>;
 
 export const ProjectConfigSchema = z.object({
   name: z.string(),
@@ -306,8 +356,7 @@ export const ResolvedPathsSchema = z.object({
   projectName: z.string(),
   projectRoot: z.string(),
   devsfactoryDir: z.string(),
-  worktreesDir: z.string(),
-  brainstormDir: z.string()
+  worktreesDir: z.string()
 });
 
 // Global Configuration Inferred Types
@@ -316,3 +365,57 @@ export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 export type ResolvedPaths = z.infer<typeof ResolvedPathsSchema>;
+
+// Orchestrator interfaces (previously in dashboard-server.ts)
+import type { EventEmitter } from "node:events";
+
+export interface ProjectScanResult {
+  tasks: Task[];
+  plans: Record<string, Plan>;
+  subtasks: Record<string, Subtask[]>;
+}
+
+export interface OrchestratorLike extends EventEmitter {
+  getState(): OrchestratorState;
+  getActiveAgents(): Promise<unknown[]>;
+}
+
+export interface BrainstormManagerLike extends EventEmitter {
+  startSession(initialMessage?: string): Promise<BrainstormSession>;
+  sendMessage(sessionId: string, message: string): Promise<void>;
+  endSession(sessionId: string): Promise<void>;
+  getSession(sessionId: string): BrainstormSession | undefined;
+}
+
+// Content interfaces for SQLite single source of truth
+export interface TaskWithContent {
+  folder: string;
+  frontmatter: TaskFrontmatter;
+  description: string;
+  requirements?: string;
+  acceptanceCriteria?: string[];
+  notes?: string;
+}
+
+export interface SubtaskWithContent {
+  filename: string;
+  frontmatter: SubtaskFrontmatter;
+  objective: string;
+  acceptanceCriteria?: string;
+  tasksChecklist?: string;
+  result?: string;
+}
+
+export interface TaskContentUpdate {
+  description?: string;
+  requirements?: string;
+  acceptanceCriteria?: string[];
+  notes?: string;
+}
+
+export interface SubtaskContentUpdate {
+  objective?: string;
+  acceptanceCriteria?: string;
+  tasksChecklist?: string;
+  result?: string;
+}

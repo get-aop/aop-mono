@@ -1,4 +1,6 @@
 import { useDashboardStore } from "../context";
+import { AgentControl } from "./AgentControl";
+import { CreateTaskForm } from "./CreateTaskForm";
 import { NewTaskButton } from "./NewTaskButton";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 
@@ -14,6 +16,10 @@ export const Header = () => {
       <div className="header-left">
         <h1 className="header-title">Devsfactory</h1>
         <ProjectSwitcher />
+      </div>
+      <div className="header-center">
+        <AgentControl />
+        <CreateTaskForm />
       </div>
       <div className="header-controls">
         <NewTaskButton />

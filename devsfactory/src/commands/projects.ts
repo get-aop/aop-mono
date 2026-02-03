@@ -1,5 +1,8 @@
-import { listProjects, unregisterProject } from "../core/project-registry";
-import type { ProjectConfig } from "../types";
+import {
+  listProjects,
+  type ProjectRecord,
+  unregisterProject
+} from "../core/sqlite/project-store";
 
 export type ProjectsSubcommand = "list" | "remove";
 
@@ -47,9 +50,13 @@ const formatDate = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-const formatTable = (projects: ProjectConfig[]): string => {
+const formatTable = (projects: ProjectRecord[]): string => {
   const headers = ["NAME", "PATH", "REGISTERED"];
-  const rows = projects.map((p) => [p.name, p.path, formatDate(p.registered)]);
+  const rows = projects.map((p) => [
+    p.name,
+    p.path,
+    formatDate(p.registeredAt)
+  ]);
 
   const colWidths = headers.map((h, i) =>
     Math.max(h.length, ...rows.map((r) => r[i]!.length))
@@ -68,14 +75,14 @@ export const runProjectsCommand = async (
 ): Promise<ProjectsResult> => {
   try {
     if (subcommand === "remove") {
-      await unregisterProject(projectName!);
+      unregisterProject(projectName!);
       return {
         success: true,
         output: `✓ Unregistered project '${projectName}'`
       };
     }
 
-    const projects = await listProjects();
+    const projects = listProjects();
 
     if (projects.length === 0) {
       return {

@@ -5,13 +5,19 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import { Header } from "./Header";
 import { Layout } from "./Layout";
 
-const WS_URL = "ws://localhost:3001/api/events";
+const getWsUrl = () => {
+  if (typeof window === "undefined") {
+    return "ws://localhost:3001/api/events";
+  }
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/api/events`;
+};
 
 const AppContent = () => {
   const store = useContext(StoreContext);
   const loadProjects = useDashboardStore((s) => s.loadProjects);
 
-  useWebSocket({ store: store!, url: WS_URL });
+  useWebSocket({ store: store!, url: getWsUrl() });
   useProjectRoute({ store: store! });
 
   useEffect(() => {
