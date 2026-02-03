@@ -1,0 +1,72 @@
+import type { TaskStatus, TaskStatusResponse } from "@aop/common/protocol";
+import type { ExecutionRepository } from "../executions/execution-repository.ts";
+import type { RepoRepository } from "../repos/repo-repository.ts";
+import type { TaskRepository } from "./task-repository.ts";
+
+export interface TaskNotFoundError {
+  success: false;
+  error: "task_not_found";
+}
+
+export interface TaskStatusResult {
+  success: true;
+  response: TaskStatusResponse;
+}
+
+export type GetTaskStatusResult = TaskStatusResult | TaskNotFoundError;
+
+export interface TaskService {
+  syncTask: (
+    clientId: string,
+    taskId: string,
+    repoId: string,
+    status: TaskStatus,
+    syncedAt: Date,
+  ) => Promise<void>;
+  getTaskStatus: (clientId: string, taskId: string) => Promise<GetTaskStatusResult>;
+}
+
+export const createTaskService = (
+  taskRepo: TaskRepository,
+  executionRepo: ExecutionRepository,
+  repoRepo: RepoRepository,
+): TaskService => ({
+  syncTask: async (clientId, taskId, repoId, status, syncedAt) => {
+    // Ensure repo exists before syncing task (auto-create if needed)
+    await repoRepo.upsert({
+      id: repoId,
+      client_id: clientId,
+      synced_at: syncedAt,
+    });
+
+    await taskRepo.upsert({
+      id: taskId,
+      client_id: clientId,
+      repo_id: repoId,
+      status,
+      synced_at: syncedAt,
+    });
+  },
+
+  getTaskStatus: async (clientId, taskId) => {
+    const task = await taskRepo.findById(taskId);
+    if (!task || task.client_id !== clientId) {
+      return { success: false, error: "task_not_found" };
+    }
+
+    const activeExecution = await executionRepo.findActiveByTask(taskId);
+
+    return {
+      success: true,
+      response: {
+        status: task.status,
+        execution: activeExecution
+          ? {
+              id: activeExecution.id,
+              awaitingResult: true,
+            }
+          : undefined,
+      },
+    };
+  },
+});

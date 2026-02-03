@@ -1,0 +1,17 @@
+[test]
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageSkipTestFiles = true
+
+# Preload test-setup to verify TEST_DATABASE_URL is set
+preload = ["./apps/server/src/db/test-setup.ts"]
+
+# Ignore migrations and test utilities from coverage
+coveragePathIgnorePatterns = [
+  "**/migrations/**",
+  "**/test-utils.ts",
+  "**/test-setup.ts"
+]
+
+# Coverage thresholds (0.0-1.0) - CI will fail if coverage drops below these
+coverageThreshold = { lines = 0.8, functions = 0.8 }

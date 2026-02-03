@@ -1,0 +1,15 @@
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{js,ts,tsx,jsx,json,jsonc}"
+      run: bun check
+      stage_fixed: true
+
+pre-push:
+  commands:
+    coverage:
+      run: bun run test:coverage
+      skip:
+        - merge
+        - rebase

@@ -1,0 +1,23 @@
+{
+  "name": "@aop/infra",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@logtape/file": "^2.0.2",
+    "@logtape/logtape": "^2.0.2",
+    "@logtape/pretty": "^2.0.2",
+    "typeid-js": "^1.2.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.8",
+    "typescript": "^5.9.3"
+  }
+}

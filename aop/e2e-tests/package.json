@@ -1,0 +1,22 @@
+{
+  "name": "@aop/e2e-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "bun test --concurrency 1 ./src/*.e2e.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aop/cli": "workspace:*",
+    "@aop/common": "workspace:*",
+    "@aop/server": "workspace:*",
+    "kysely": "^0.28.2",
+    "kysely-postgres-js": "^3.0.0",
+    "postgres": "^3.4.8"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.8",
+    "typescript": "^5.9.3"
+  }
+}

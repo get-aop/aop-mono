@@ -60,6 +60,7 @@
     "context7@claude-plugins-official": true,
     "linear@claude-plugins-official": false,
     "code-review@claude-plugins-official": false,
-    "playwright@claude-plugins-official": true
-  }
+    "playwright@claude-plugins-official": false
+  },
+  "enabledMcpjsonServers": ["playwright"]
 }

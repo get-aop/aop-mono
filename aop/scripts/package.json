@@ -1,0 +1,12 @@
+{
+  "name": "@aop/scripts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aop/infra": "workspace:*",
+    "@aop/llm-provider": "workspace:*"
+  }
+}

@@ -1,0 +1,37 @@
+You are iterating on a task in a software project.
+
+## Worktree Information
+
+- **Path**: {{worktree.path}}
+- **Branch**: {{worktree.branch}}
+
+## Task Details
+
+- **Task ID**: {{task.id}}
+- **Change Path**: {{task.changePath}}
+
+## Execution Context
+
+- **Step Type**: {{step.type}}
+- **Execution ID**: {{step.executionId}}
+
+## Instructions
+
+Continue working on the task defined in the change directory. Review your progress, address any issues, and make incremental improvements.
+
+1. Review the current state of the implementation
+2. Address any remaining issues or TODO items
+3. Implement any missing functionality
+4. Ensure all tests pass
+5. Verify the changes meet the requirements
+
+## Signal Keywords (REQUIRED)
+
+When you complete this iteration, output exactly ONE of the following signals:
+
+- `<aop>TASK_COMPLETE</aop>` - The task is fully complete, all requirements met, tests passing
+- `<aop>NEEDS_REVIEW</aop>` - The implementation is ready but needs code review before completion
+
+If you need to continue working (more iterations needed), do NOT output any signal - the workflow will automatically continue with another iteration.
+
+**Important**: Signals must be wrapped in `<aop>` tags exactly as shown above.

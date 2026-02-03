@@ -2,9 +2,14 @@ __pycache__
 .dex
 .claude-bkp
 
-tmp/
+tmp
 .devsfactory
 
 **/*.local*
 .aop
+
+node_modules
+
+.playwright-mcp
+playwright-report
 link-claude.sh
