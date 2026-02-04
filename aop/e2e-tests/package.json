@@ -13,6 +13,7 @@
     "@aop/server": "workspace:*",
     "kysely": "^0.28.2",
     "kysely-postgres-js": "^3.0.0",
+    "playwright": "^1.58.1",
     "postgres": "^3.4.8"
   },
   "devDependencies": {

@@ -1,3 +1,5 @@
+// Prerequisites: `bun dev` must be running before executing this test
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -9,12 +11,14 @@ import {
   ensureChangesDir,
   findTasksForRepo,
   getFullStatus,
+  isLocalServerRunning,
   runAopCommand,
   setupE2ETestDir,
   startDaemon,
   stopDaemon,
   type TaskInfo,
   type TempRepoResult,
+  triggerServerRefresh,
   waitForRepoInStatus,
   waitForTask,
   waitForTasksInRepo,
@@ -49,15 +53,20 @@ describe("backlog full flow", () => {
       expect(initExit).toBe(0);
 
       const daemonResult = await startDaemon();
-      const { success, pid, context: daemonCtx, wasAlreadyRunning: alreadyRunning } = daemonResult;
+      const { success, context: daemonCtx, wasAlreadyRunning: alreadyRunning } = daemonResult;
       context = daemonCtx;
       wasAlreadyRunning = alreadyRunning;
       expect(success).toBe(true);
-      expect(pid).toBeGreaterThan(0);
 
-      // Wait for daemon to process SIGUSR1 from repo:init (adds repo to watcher)
+      // Verify local server is running
+      expect(await isLocalServerRunning()).toBe(true);
+
+      // Wait for server to process repo:init (adds repo to watcher)
       const repoSynced = await waitForRepoInStatus(repo.path, { timeout: 5000 });
       expect(repoSynced).toBe(true);
+
+      // Trigger refresh to ensure watcher picks up the new repo
+      await triggerServerRefresh();
 
       await copyFixture("backlog-test", repo.path);
 

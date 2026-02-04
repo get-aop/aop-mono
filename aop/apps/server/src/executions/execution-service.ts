@@ -1,5 +1,5 @@
 import type { StepCompleteResponse, TaskReadyResponse, TaskStatus } from "@aop/common/protocol";
-import { generateTypeId } from "@aop/infra";
+import { generateTypeId, getLogger } from "@aop/infra";
 import type { Kysely } from "kysely";
 import type { Client, Database, Execution, StepExecution } from "../db/schema.ts";
 import { createTemplateLoader } from "../prompts/template-loader.ts";
@@ -14,6 +14,7 @@ import { createExecutionRepository } from "./execution-repository.ts";
 import { createStepExecutionRepository } from "./step-execution-repository.ts";
 
 const DEFAULT_WORKFLOW_NAME = "simple";
+const logger = getLogger("aop", "execution-service");
 
 export interface ProcessStepResultInput {
   stepId: string;
@@ -94,6 +95,22 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
         client_id: client.id,
         synced_at: new Date(),
       });
+
+      // Cancel any existing active execution for this task (handles server restart scenarios)
+      const cancelledExecution = await executionRepoTrx.cancelActiveByTask(taskId);
+      if (cancelledExecution) {
+        const cancelledSteps = await stepExecutionRepoTrx.cancelRunningByExecution(
+          cancelledExecution.id,
+        );
+        logger.info(
+          "Cancelled stale execution {executionId} with {stepCount} running steps for task {taskId}",
+          {
+            executionId: cancelledExecution.id,
+            stepCount: cancelledSteps,
+            taskId,
+          },
+        );
+      }
 
       await taskRepoTrx.upsert({
         id: taskId,

@@ -18,7 +18,7 @@ export interface WaitForTaskOptions {
 }
 
 export interface StatusOutput {
-  daemon: { running: boolean; pid: number | null };
+  ready: boolean;
   globalCapacity: { working: number; max: number };
   repos: Array<{
     id: string;

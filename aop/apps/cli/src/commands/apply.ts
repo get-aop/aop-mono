@@ -1,18 +1,64 @@
 import { getLogger } from "@aop/infra";
-import type { CommandContext } from "../context.ts";
-import { type ApplyTaskError, applyTask } from "../tasks";
+import { fetchServer, requireServer } from "./client.ts";
 
 const logger = getLogger("aop", "cli", "apply");
 
-export const applyCommand = async (ctx: CommandContext, identifier: string): Promise<void> => {
-  const result = await applyTask(ctx, identifier);
+interface Task {
+  id: string;
+  repo_id: string;
+  status: string;
+}
 
-  if (result.success) {
-    printSuccess(result.affectedFiles);
+interface ResolveResponse {
+  task: Task;
+}
+
+interface ApplyResponse {
+  ok: boolean;
+  affectedFiles: string[];
+  noChanges?: boolean;
+}
+
+interface ApplyErrorResponse {
+  error: string;
+  status?: string;
+  conflictingFiles?: string[];
+}
+
+export const applyCommand = async (identifier: string): Promise<void> => {
+  await requireServer();
+
+  const resolveResult = await fetchServer<ResolveResponse>(
+    `/api/tasks/resolve/${encodeURIComponent(identifier)}`,
+  );
+
+  if (!resolveResult.ok) {
+    if (resolveResult.status === 404) {
+      logger.error("Task '{identifier}' not found", { identifier });
+    } else {
+      logger.error("Failed to resolve task: {error}", { error: resolveResult.error.error });
+    }
+    process.exit(1);
+  }
+
+  const { task } = resolveResult.data;
+
+  const applyResult = await fetchServer<ApplyResponse>(
+    `/api/repos/${task.repo_id}/tasks/${task.id}/apply`,
+    { method: "POST" },
+  );
+
+  if (!applyResult.ok) {
+    handleApplyError(applyResult.error as ApplyErrorResponse, applyResult.status);
+    process.exit(1);
+  }
+
+  if (applyResult.data.noChanges) {
+    logger.info("\nNo changes to apply - worktree matches base commit");
     return;
   }
 
-  handleError(result.error);
+  printSuccess(applyResult.data.affectedFiles);
 };
 
 const printSuccess = (affectedFiles: string[]): void => {
@@ -23,38 +69,53 @@ const printSuccess = (affectedFiles: string[]): void => {
   logger.info("\nReview changes and commit when ready.");
 };
 
-const handleError = (error: ApplyTaskError): never => {
-  switch (error.code) {
-    case "NOT_FOUND":
-      logger.error("Task '{identifier}' not found", { identifier: error.identifier });
-      break;
-    case "INVALID_STATUS":
-      logger.error("Error: Task status is '{status}', expected 'DONE' or 'BLOCKED'", {
-        status: error.status,
-      });
-      logger.error("Run 'aop run' first to complete the task");
-      break;
-    case "REPO_NOT_FOUND":
-      logger.error("Repository not found for task '{taskId}'", { taskId: error.taskId });
-      break;
-    case "DIRTY_WORKING_DIRECTORY":
-      logger.error("\nError: Main repository has uncommitted changes");
-      logger.error("Commit or stash your changes first, then re-run apply");
-      break;
-    case "CONFLICT":
-      logger.error("\nError: Conflicts detected while applying changes");
-      logger.error("Conflicting files:");
-      for (const file of error.conflictingFiles) {
-        logger.error("  {file}", { file });
-      }
-      break;
-    case "NO_CHANGES":
-      logger.info("\nNo changes to apply - worktree matches base commit");
-      process.exit(0);
-      break;
-    case "WORKTREE_NOT_FOUND":
-      logger.error("Worktree for task '{taskId}' not found", { taskId: error.taskId });
-      break;
+const handleNotFound = (error: ApplyErrorResponse): void => {
+  const messages: Record<string, string> = {
+    "Task not found": "Task not found",
+    "Repository not found": "Repository not found for task",
+    "Worktree not found": "Worktree for task not found",
+  };
+  const message = messages[error.error] ?? `Not found: ${error.error}`;
+  logger.error(message);
+};
+
+const handleConflict = (error: ApplyErrorResponse): void => {
+  if (error.error === "Invalid task status") {
+    logger.error("Error: Task status is '{status}', expected 'DONE' or 'BLOCKED'", {
+      status: error.status,
+    });
+    logger.error("Run 'aop run' first to complete the task");
+    return;
   }
-  process.exit(1);
+
+  if (error.error === "Main repository has uncommitted changes") {
+    logger.error("\nError: Main repository has uncommitted changes");
+    logger.error("Commit or stash your changes first, then re-run apply");
+    return;
+  }
+
+  if (error.error === "Conflicts detected") {
+    logger.error("\nError: Conflicts detected while applying changes");
+    logger.error("Conflicting files:");
+    for (const file of error.conflictingFiles ?? []) {
+      logger.error("  {file}", { file });
+    }
+    return;
+  }
+
+  logger.error("Conflict: {error}", { error: error.error });
+};
+
+const handleApplyError = (error: ApplyErrorResponse, status: number): void => {
+  if (status === 404) {
+    handleNotFound(error);
+    return;
+  }
+
+  if (status === 409) {
+    handleConflict(error);
+    return;
+  }
+
+  logger.error("Failed to apply task: {error}", { error: error.error });
 };

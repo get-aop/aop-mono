@@ -6,9 +6,11 @@ import {
   cleanupTestRepos,
   copyFixture,
   createTempRepo,
+  isLocalServerRunning,
   runAopCommand,
   setupE2ETestDir,
   type TempRepoResult,
+  triggerServerRefresh,
   waitForTask,
 } from "./helpers";
 import { API_KEY, SERVER_URL } from "./helpers/constants";
@@ -32,6 +34,15 @@ describe("degraded mode", () => {
       );
     }
 
+    // This test requires the local server to be running
+    const serverRunning = await isLocalServerRunning();
+    if (!serverRunning) {
+      throw new Error(
+        "Local server not running.\n" +
+          "Run 'bun dev' in a separate terminal before running E2E tests.",
+      );
+    }
+
     await setupE2ETestDir();
     repo = await createTempRepo("degraded-mode");
   });
@@ -42,118 +53,84 @@ describe("degraded mode", () => {
   });
 
   test(
-    "tasks can be managed locally without server and sync back when connection restored",
+    "tasks work locally and sync to remote server when connection is available",
     async () => {
       const changePath = await copyFixture("backlog-test", repo.path);
 
       await Bun.$`git add .`.cwd(repo.path).quiet();
       await Bun.$`git commit -m "Add fixture"`.cwd(repo.path).quiet();
 
-      // Stop any running daemon first
-      await runAopCommand(["stop"]);
-      await Bun.sleep(1000);
+      // Configure server connection
+      const { exitCode: setServerUrl } = await runAopCommand([
+        "config:set",
+        "server_url",
+        SERVER_URL,
+      ]);
+      expect(setServerUrl).toBe(0);
 
-      // Start daemon in degraded mode (clear server settings)
-      const { exitCode: clearServerUrl } = await runAopCommand(["config:set", "server_url", ""]);
-      expect(clearServerUrl).toBe(0);
+      const { exitCode: setApiKey } = await runAopCommand(["config:set", "api_key", API_KEY]);
+      expect(setApiKey).toBe(0);
 
-      const { exitCode: clearApiKey } = await runAopCommand(["config:set", "api_key", ""]);
-      expect(clearApiKey).toBe(0);
+      // Initialize repo
+      const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
+      expect(initExit).toBe(0);
 
-      const { exitCode: startExit } = await runAopCommand(["start"]);
-      expect(startExit).toBe(0);
+      // Trigger refresh to ensure watcher picks up the new repo
+      await triggerServerRefresh();
       await Bun.sleep(2000);
 
-      try {
-        // Initialize repo in degraded mode
-        const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
-        expect(initExit).toBe(0);
-        await Bun.sleep(2000);
+      // Get task status - should be DRAFT
+      const { exitCode: statusDraftExit, stdout: statusDraftOut } = await runAopCommand([
+        "status",
+        changePath,
+        "--json",
+      ]);
+      expect(statusDraftExit).toBe(0);
+      const taskDraft = JSON.parse(statusDraftOut);
+      expect(taskDraft.status).toBe("DRAFT");
+      const taskId = taskDraft.id;
 
-        // Get task status - should be DRAFT
-        const { exitCode: statusDraftExit, stdout: statusDraftOut } = await runAopCommand([
-          "status",
-          changePath,
-          "--json",
-        ]);
-        expect(statusDraftExit).toBe(0);
-        const taskDraft = JSON.parse(statusDraftOut);
-        expect(taskDraft.status).toBe("DRAFT");
-        const taskId = taskDraft.id;
+      // Mark task as ready
+      const { exitCode: readyExit } = await runAopCommand(["task:ready", taskId]);
+      expect(readyExit).toBe(0);
+      await Bun.sleep(1000);
 
-        // Mark task as ready (should work in degraded mode)
-        const { exitCode: readyExit } = await runAopCommand(["task:ready", taskId]);
-        expect(readyExit).toBe(0);
-        await Bun.sleep(1000);
+      // Verify task is READY or WORKING locally
+      const { exitCode: statusReadyExit, stdout: statusReadyOut } = await runAopCommand([
+        "status",
+        taskId,
+        "--json",
+      ]);
+      expect(statusReadyExit).toBe(0);
+      const taskReady = JSON.parse(statusReadyOut);
+      expect(["READY", "WORKING"]).toContain(taskReady.status);
 
-        // Verify task is READY locally (stays READY because no server to get step command)
-        const { exitCode: statusReadyExit, stdout: statusReadyOut } = await runAopCommand([
-          "status",
-          taskId,
-          "--json",
-        ]);
-        expect(statusReadyExit).toBe(0);
-        const taskReady = JSON.parse(statusReadyOut);
-        expect(taskReady.status).toBe("READY");
+      // Wait for task to be synced and start working on server
+      const serverTaskAfter = await waitForServerTaskStatus(taskId, ["WORKING", "DONE"], {
+        timeout: 60_000,
+        pollInterval: 2000,
+      });
 
-        // Verify task is NOT on server yet (server doesn't know about it)
-        const serverTaskBefore = await getServerTaskStatus(taskId);
-        expect(serverTaskBefore).toBeNull();
-
-        // Stop daemon
-        await runAopCommand(["stop"]);
-        await Bun.sleep(1000);
-
-        // Restore server settings
-        const { exitCode: setServerUrl } = await runAopCommand([
-          "config:set",
-          "server_url",
-          SERVER_URL,
-        ]);
-        expect(setServerUrl).toBe(0);
-
-        const { exitCode: setApiKey } = await runAopCommand(["config:set", "api_key", API_KEY]);
-        expect(setApiKey).toBe(0);
-
-        // Start daemon with server connection
-        const { exitCode: startConnectedExit } = await runAopCommand(["start"]);
-        expect(startConnectedExit).toBe(0);
-        await Bun.sleep(3000);
-
-        // Since task was READY and now we have server connection, daemon should sync
-        // The task should get picked up and start execution
-
-        // Wait for task to be synced and start working on server
-        const serverTaskAfter = await waitForServerTaskStatus(taskId, ["WORKING", "DONE"], {
-          timeout: 60_000,
-          pollInterval: 2000,
-        });
-
-        if (serverTaskAfter) {
-          expect(["WORKING", "DONE"]).toContain(serverTaskAfter.status);
-        }
-
-        // Wait for task to complete
-        const completedTask = await waitForTask(taskId, ["DONE", "BLOCKED"], {
-          timeout: 300_000,
-          pollInterval: 5000,
-        });
-        expect(completedTask).not.toBeNull();
-        expect(completedTask?.status).toBe("DONE");
-
-        // Verify server has final status
-        const serverTaskFinal = await getServerTaskStatus(taskId);
-        expect(serverTaskFinal?.status).toBe("DONE");
-
-        // Verify the work was done
-        const helloFile = join(repo.path, ".worktrees", taskId, "hello.txt");
-        const helloExists = await Bun.file(helloFile).exists();
-        expect(helloExists).toBe(true);
-      } finally {
-        await runAopCommand(["stop"]);
-        await runAopCommand(["config:set", "server_url", SERVER_URL]);
-        await runAopCommand(["config:set", "api_key", API_KEY]);
+      if (serverTaskAfter) {
+        expect(["WORKING", "DONE"]).toContain(serverTaskAfter.status);
       }
+
+      // Wait for task to complete
+      const completedTask = await waitForTask(taskId, ["DONE", "BLOCKED"], {
+        timeout: 300_000,
+        pollInterval: 5000,
+      });
+      expect(completedTask).not.toBeNull();
+      expect(completedTask?.status).toBe("DONE");
+
+      // Verify server has final status
+      const serverTaskFinal = await getServerTaskStatus(taskId);
+      expect(serverTaskFinal?.status).toBe("DONE");
+
+      // Verify the work was done
+      const helloFile = join(repo.path, ".worktrees", taskId, "hello.txt");
+      const helloExists = await Bun.file(helloFile).exists();
+      expect(helloExists).toBe(true);
     },
     E2E_TIMEOUT,
   );

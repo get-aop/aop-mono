@@ -6,6 +6,7 @@ export interface ExecutionRepository {
   update: (id: string, update: ExecutionUpdate) => Promise<Execution | null>;
   findActiveByTask: (taskId: string) => Promise<Execution | null>;
   findById: (id: string) => Promise<Execution | null>;
+  cancelActiveByTask: (taskId: string) => Promise<Execution | null>;
 }
 
 export const createExecutionRepository = (db: Kysely<Database>): ExecutionRepository => ({
@@ -40,5 +41,27 @@ export const createExecutionRepository = (db: Kysely<Database>): ExecutionReposi
       .where("id", "=", id)
       .executeTakeFirst();
     return execution ?? null;
+  },
+
+  cancelActiveByTask: async (taskId: string): Promise<Execution | null> => {
+    const active = await db
+      .selectFrom("executions")
+      .selectAll()
+      .where("task_id", "=", taskId)
+      .where("status", "=", "running")
+      .executeTakeFirst();
+
+    if (!active) {
+      return null;
+    }
+
+    const cancelled = await db
+      .updateTable("executions")
+      .set({ status: "cancelled", completed_at: new Date() })
+      .where("id", "=", active.id)
+      .returningAll()
+      .executeTakeFirst();
+
+    return cancelled ?? null;
   },
 });

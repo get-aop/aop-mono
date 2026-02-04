@@ -16,15 +16,15 @@ The system SHALL run a Hono HTTP server on localhost, listening on a configurabl
 - **THEN** system binds to 127.0.0.1 (not 0.0.0.0)
 
 ### Requirement: Health endpoint
-The system SHALL expose a health check endpoint at `/api/health` with service stats.
+The system SHALL expose a health check endpoint at `/api/health` with orchestrator stats.
 
 #### Scenario: Health check returns ok
 - **WHEN** client sends GET to `/api/health`
 - **THEN** system returns `{ "ok": true, "service": "aop" }` with status 200
 
-#### Scenario: Health check returns services status
+#### Scenario: Health check returns orchestrator status
 - **WHEN** client sends GET to `/api/health`
-- **THEN** response includes `services: { watcher: "running"|"stopped", ticker: "running"|"stopped", processor: "running"|"stopped" }`
+- **THEN** response includes `orchestrator: { watcher: "running"|"stopped", ticker: "running"|"stopped", processor: "running"|"stopped" }`
 
 #### Scenario: Health check returns database status
 - **WHEN** client sends GET to `/api/health`
@@ -41,8 +41,8 @@ The system SHALL expose server status at `/api/status`.
 - **WHEN** client sends GET to `/api/status`
 - **THEN** system returns repos, tasks, global capacity, and service readiness
 
-#### Scenario: Status indicates service readiness
-- **WHEN** background services are still initializing
+#### Scenario: Status indicates orchestrator readiness
+- **WHEN** orchestrator is still initializing
 - **THEN** status response includes `{ "ready": false }`
 
 ### Requirement: Refresh endpoint
@@ -82,31 +82,31 @@ The system SHALL expose task management under `/api/repos/:id/tasks`.
 - **WHEN** client sends DELETE to `/api/repos/:repoId/tasks/:taskId`
 - **THEN** system marks task as REMOVED (aborts if WORKING)
 
-### Requirement: Config endpoints
-The system SHALL expose configuration at `/api/config`.
+### Requirement: Settings endpoints
+The system SHALL expose settings at `/api/settings`.
 
-#### Scenario: Get all config
-- **WHEN** client sends GET to `/api/config`
-- **THEN** system returns all configuration keys and values
+#### Scenario: Get all settings
+- **WHEN** client sends GET to `/api/settings`
+- **THEN** system returns all settings keys and values
 
-#### Scenario: Get single config
-- **WHEN** client sends GET to `/api/config/:key`
+#### Scenario: Get single setting
+- **WHEN** client sends GET to `/api/settings/:key`
 - **THEN** system returns the value for that key
 
-#### Scenario: Set config
-- **WHEN** client sends PUT to `/api/config/:key` with `{ "value": "..." }`
+#### Scenario: Set setting
+- **WHEN** client sends PUT to `/api/settings/:key` with `{ "value": "..." }`
 - **THEN** system updates the setting and returns confirmation
 
-### Requirement: Background services initialization
-The system SHALL start background services after HTTP server is listening.
+### Requirement: Orchestrator initialization
+The system SHALL start the orchestrator after HTTP server is listening.
 
-#### Scenario: Services start after server
+#### Scenario: Orchestrator starts after server
 - **WHEN** server binds to port successfully
-- **THEN** system initializes watcher, ticker, and queue processor
+- **THEN** system initializes orchestrator (watcher, ticker, queue processor, remote sync)
 
 #### Scenario: Health responds during initialization
-- **WHEN** client calls `/api/health` while services are starting
-- **THEN** system returns 200 (server is up, even if services not ready)
+- **WHEN** client calls `/api/health` while orchestrator is starting
+- **THEN** system returns 200 (server is up, even if orchestrator not ready)
 
 ### Requirement: Graceful shutdown on SIGTERM
 The system SHALL perform graceful shutdown when receiving SIGTERM.

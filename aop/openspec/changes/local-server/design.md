@@ -80,7 +80,7 @@ const isServerRunning = async (port: number): Promise<boolean> => {
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/health` | GET | Health check with services stats, db status, uptime |
+| `/api/health` | GET | Health check with orchestrator stats, db status, uptime |
 | `/api/status` | GET | Full server status (repos, tasks, capacity) |
 | `/api/refresh` | POST | Trigger repo refresh |
 | `/api/repos` | POST | Register repo |
@@ -88,8 +88,8 @@ const isServerRunning = async (port: number): Promise<boolean> => {
 | `/api/repos/:id/tasks` | GET | List tasks for repo |
 | `/api/repos/:id/tasks/:taskId/ready` | POST | Mark task ready |
 | `/api/repos/:id/tasks/:taskId` | DELETE | Remove task |
-| `/api/config` | GET | Get all config |
-| `/api/config/:key` | GET/PUT | Get/set config value |
+| `/api/settings` | GET | Get all config |
+| `/api/settings/:key` | GET/PUT | Get/set config value |
 
 **Rationale**: RESTful conventions with proper resource nesting. Tasks belong to repos, so they're nested under `/api/repos/:id/tasks`. Dashboard will use the same endpoints.
 
@@ -120,18 +120,18 @@ if (!isRunning) {
 
 **Rationale**: Clean separation of concerns. Server is a standalone process managed by user/system (systemd, launchd, Docker). CLI is just a client. No process spawning complexity in CLI.
 
-### 6. Background Services Initialization
+### 6. Orchestrator Initialization
 
-**Decision**: Start services after Hono server is listening.
+**Decision**: Start orchestrator after Hono server is listening.
 
 ```typescript
 const server = Bun.serve({ fetch: app.fetch, port });
 
-// Server is up, now start background services
-const daemon = await initializeServices(db);
+// Server is up, now start orchestrator (watcher, ticker, processor, sync)
+const orchestrator = await startOrchestrator(db);
 ```
 
-**Rationale**: Ensures health endpoint responds immediately while services initialize. Clients can poll `/api/status` to check readiness.
+**Rationale**: Ensures health endpoint responds immediately while orchestrator initializes. Clients can poll `/api/status` to check readiness.
 
 ### 7. Graceful Shutdown
 
@@ -139,34 +139,34 @@ const daemon = await initializeServices(db);
 
 ```typescript
 process.on('SIGTERM', async () => {
-  await services.stop();  // Stop watcher, ticker, processor
-  await server.stop();    // Close HTTP server
+  await orchestrator.stop();  // Stop watcher, ticker, processor, sync
+  await server.stop();        // Close HTTP server
   process.exit(0);
 });
 ```
 
 **Rationale**: Standard Unix process management. User stops server via Ctrl+C, `kill`, systemd, launchd, Docker, etc. No CLI command needed.
 
-### 8. Background Services
+### 8. Orchestrator
 
-**Decision**: No Hono abstraction for background work. Just run JavaScript alongside the server.
+**Decision**: No Hono abstraction for background work. The orchestrator runs JavaScript alongside the server.
 
 ```typescript
 // run.ts entry point
 const app = createApp(db);
 const server = Bun.serve({ fetch: app.fetch, port });
 
-// Start background services - plain JavaScript, no framework
-const services = await startServices(db);
+// Start orchestrator - coordinates watcher, ticker, processor, remote sync
+const orchestrator = await startOrchestrator(db);
 
 // Standard signal handling
 process.on('SIGTERM', async () => {
-  await services.stop();
+  await orchestrator.stop();
   server.stop();
 });
 ```
 
-**Rationale**: Hono is a router, not a background job framework. Background work (watcher, ticker, processor) is just JavaScript running in the same process. No abstraction needed.
+**Rationale**: Hono is a router, not a background job framework. The orchestrator (watcher, ticker, processor, remote sync) is just JavaScript running in the same process. No abstraction needed.
 
 ### 9. Directory Structure
 
@@ -177,7 +177,7 @@ apps/
   local-server/           # New standalone app (replaces daemon)
     src/
       app.ts              # Hono app + routes
-      services.ts         # Background services (watcher, ticker, processor)
+      orchestrator.ts     # Orchestrator (watcher, ticker, processor, remote sync)
       run.ts              # Entry point
     package.json          # Own dependencies (hono, etc.)
   cli/
@@ -203,7 +203,7 @@ apps/
 
 **[Backward compatibility]** → Breaking change: daemon removed, CLI commands require server. Mitigation: Document migration, old daemon code removed cleanly.
 
-**[Startup latency]** → Server binds port before services are ready. Mitigation: `/api/status` indicates service readiness; `/api/health` always responds.
+**[Startup latency]** → Server binds port before orchestrator is ready. Mitigation: `/api/status` indicates orchestrator readiness; `/api/health` always responds.
 
 **[Security]** → Server listens on localhost only, no auth needed. Future dashboard may add optional auth if requested.
 

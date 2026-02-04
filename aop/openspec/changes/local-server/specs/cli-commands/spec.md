@@ -53,11 +53,11 @@ The system SHALL display configuration values via `aop config:get`.
 
 #### Scenario: Get single value via API
 - **WHEN** user runs `aop config:get <key>` with server running
-- **THEN** system calls GET /api/config/:key and displays the value
+- **THEN** system calls GET /api/settings/:key and displays the value
 
 #### Scenario: Get all values via API
 - **WHEN** user runs `aop config:get` without key with server running
-- **THEN** system calls GET /api/config and displays all keys and values
+- **THEN** system calls GET /api/settings and displays all keys and values
 
 #### Scenario: Get config when server not running
 - **WHEN** user runs `aop config:get` with server not running
@@ -68,7 +68,7 @@ The system SHALL update configuration values via `aop config:set`.
 
 #### Scenario: Set valid value via API
 - **WHEN** user runs `aop config:set <key> <value>` with server running
-- **THEN** system calls PUT /api/config/:key with value and displays confirmation
+- **THEN** system calls PUT /api/settings/:key with value and displays confirmation
 
 #### Scenario: Set config when server not running
 - **WHEN** user runs `aop config:set <key> <value>` with server not running

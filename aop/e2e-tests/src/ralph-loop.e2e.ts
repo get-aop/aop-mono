@@ -9,11 +9,13 @@ import {
   createTempRepo,
   type DaemonContext,
   getStepExecutionsForTask,
+  isLocalServerRunning,
   runAopCommand,
   setupE2ETestDir,
   startDaemon,
   stopDaemon,
   type TempRepoResult,
+  triggerServerRefresh,
   waitForTask,
 } from "./helpers";
 import {
@@ -38,19 +40,31 @@ describe("ralph loop workflow execution", () => {
       );
     }
 
+    // This test requires the local server to be running
+    const serverRunning = await isLocalServerRunning();
+    if (!serverRunning) {
+      throw new Error(
+        "Local server not running.\n" +
+          "Run 'bun dev' in a separate terminal before running E2E tests.",
+      );
+    }
+
     await setupE2ETestDir();
     repo = await createTempRepo("ralph-loop");
 
     // Start daemon once for all tests
-    const { context, wasAlreadyRunning: alreadyRunning } = await startDaemon();
-    daemonContext = context;
-    wasAlreadyRunning = alreadyRunning;
+    const daemonResult = await startDaemon();
+    daemonContext = daemonResult.context;
+    wasAlreadyRunning = daemonResult.wasAlreadyRunning;
 
     // Initialize repo once
     const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
     if (initExit !== 0) {
       throw new Error("Failed to initialize repo");
     }
+
+    // Trigger refresh to ensure watcher picks up the new repo
+    await triggerServerRefresh();
   });
 
   afterAll(async () => {
@@ -67,8 +81,11 @@ describe("ralph loop workflow execution", () => {
       await Bun.$`git add .`.cwd(repo.path).quiet();
       await Bun.$`git commit -m "Add fixture"`.cwd(repo.path).quiet();
 
-      // Wait for daemon to detect the new change
-      await Bun.sleep(3000);
+      // Trigger refresh to reconcile the new change
+      await triggerServerRefresh();
+
+      // Wait for reconciliation to complete
+      await Bun.sleep(2000);
 
       const { exitCode: statusInitExit, stdout: statusInitOut } = await runAopCommand([
         "status",
@@ -135,8 +152,11 @@ describe("ralph loop workflow execution", () => {
       await Bun.$`git add .`.cwd(repo.path).quiet();
       await Bun.$`git commit -m "Add review fixture"`.cwd(repo.path).quiet();
 
-      // Wait for daemon to auto-detect the new change (file watcher)
-      await Bun.sleep(3000);
+      // Trigger refresh to reconcile the new change
+      await triggerServerRefresh();
+
+      // Wait for reconciliation to complete
+      await Bun.sleep(2000);
 
       const { exitCode: statusInitExit, stdout: statusInitOut } = await runAopCommand([
         "status",

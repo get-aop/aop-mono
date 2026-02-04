@@ -175,4 +175,90 @@ describe("StepExecutionRepository", () => {
       expect(updated).toBeNull();
     });
   });
+
+  describe("cancelRunningByExecution", () => {
+    test("cancels all running step executions for an execution", async () => {
+      await setupTestData();
+      await stepExecutionRepository.create({
+        id: "step-1",
+        client_id: clientId,
+        execution_id: executionId,
+        step_type: "implement",
+        prompt_template: "Implement",
+        status: "running",
+      });
+      await stepExecutionRepository.create({
+        id: "step-2",
+        client_id: clientId,
+        execution_id: executionId,
+        step_type: "test",
+        prompt_template: "Test",
+        status: "running",
+      });
+
+      const count = await stepExecutionRepository.cancelRunningByExecution(executionId);
+
+      expect(count).toBe(2);
+
+      const step1 = await stepExecutionRepository.findById("step-1");
+      const step2 = await stepExecutionRepository.findById("step-2");
+      expect(step1?.status).toBe("cancelled");
+      expect(step1?.ended_at).not.toBeNull();
+      expect(step2?.status).toBe("cancelled");
+      expect(step2?.ended_at).not.toBeNull();
+    });
+
+    test("only cancels running steps, not completed ones", async () => {
+      await setupTestData();
+      await stepExecutionRepository.create({
+        id: "step-1",
+        client_id: clientId,
+        execution_id: executionId,
+        step_type: "implement",
+        prompt_template: "Implement",
+        status: "success",
+      });
+      await stepExecutionRepository.create({
+        id: "step-2",
+        client_id: clientId,
+        execution_id: executionId,
+        step_type: "test",
+        prompt_template: "Test",
+        status: "running",
+      });
+
+      const count = await stepExecutionRepository.cancelRunningByExecution(executionId);
+
+      expect(count).toBe(1);
+
+      const step1 = await stepExecutionRepository.findById("step-1");
+      const step2 = await stepExecutionRepository.findById("step-2");
+      expect(step1?.status).toBe("success");
+      expect(step2?.status).toBe("cancelled");
+    });
+
+    test("returns 0 when no running steps", async () => {
+      await setupTestData();
+      await stepExecutionRepository.create({
+        id: "step-1",
+        client_id: clientId,
+        execution_id: executionId,
+        step_type: "implement",
+        prompt_template: "Implement",
+        status: "success",
+      });
+
+      const count = await stepExecutionRepository.cancelRunningByExecution(executionId);
+
+      expect(count).toBe(0);
+    });
+
+    test("returns 0 for non-existent execution", async () => {
+      await setupTestData();
+
+      const count = await stepExecutionRepository.cancelRunningByExecution("non-existent");
+
+      expect(count).toBe(0);
+    });
+  });
 });

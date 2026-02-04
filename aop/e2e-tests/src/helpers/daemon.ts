@@ -1,14 +1,19 @@
-import { existsSync, readFileSync } from "node:fs";
-import { AOP_BIN, API_KEY, DEFAULT_PID_FILE, getAopEnv, SERVER_URL } from "./constants";
+import { AOP_BIN, API_KEY, getAopEnv, SERVER_URL } from "./constants";
+import {
+  isLocalServerRunning,
+  type LocalServerContext,
+  requireLocalServer,
+  startLocalServer,
+  stopLocalServer,
+} from "./local-server";
 
 export interface DaemonContext {
-  pidFile: string;
+  localServer: LocalServerContext | null;
   env: NodeJS.ProcessEnv;
 }
 
 export interface StartDaemonResult {
   success: boolean;
-  pid: number | null;
   context: DaemonContext;
   wasAlreadyRunning: boolean;
 }
@@ -34,79 +39,53 @@ export const runAopCommand = async (
 
 export interface StartDaemonOptions {
   configureServer?: boolean;
+  dbPath?: string;
 }
 
 export const startDaemon = async (options: StartDaemonOptions = {}): Promise<StartDaemonResult> => {
   const { configureServer = true } = options;
-  const pidFile = DEFAULT_PID_FILE;
   const env = getAopEnv();
-  const context: DaemonContext = { pidFile, env };
 
-  if (isDaemonRunning(context)) {
-    const pid = readPidFile(pidFile);
-    return { success: true, pid, context, wasAlreadyRunning: true };
+  // Check if local server is already running
+  const alreadyRunning = await isLocalServerRunning();
+  if (alreadyRunning) {
+    return {
+      success: true,
+      context: { localServer: null, env },
+      wasAlreadyRunning: true,
+    };
   }
 
+  // Start local server
+  const localServer = await startLocalServer({ dbPath: options.dbPath });
+
+  // Configure server connection if requested
   if (configureServer) {
     await runAopCommand(["config:set", "server_url", SERVER_URL]);
     await runAopCommand(["config:set", "api_key", API_KEY]);
   }
 
-  const { exitCode } = await runAopCommand(["start"]);
-  if (exitCode !== 0) {
-    return { success: false, pid: null, context, wasAlreadyRunning: false };
-  }
-
-  await Bun.sleep(100);
-  const pid = readPidFile(pidFile);
-  return { success: true, pid, context, wasAlreadyRunning: false };
+  return {
+    success: true,
+    context: { localServer, env },
+    wasAlreadyRunning: false,
+  };
 };
 
 export const stopDaemon = async (
   context: DaemonContext,
   wasAlreadyRunning: boolean,
 ): Promise<boolean> => {
-  if (wasAlreadyRunning) {
+  if (wasAlreadyRunning || !context.localServer) {
     return true;
   }
 
-  const { exitCode } = await runAopCommand(["stop"]);
-  if (exitCode !== 0) {
-    return false;
-  }
-
-  const waitForStop = async (retries = 50): Promise<boolean> => {
-    for (let i = 0; i < retries; i++) {
-      if (!existsSync(context.pidFile)) {
-        return true;
-      }
-      await Bun.sleep(100);
-    }
-    return false;
-  };
-
-  return waitForStop();
+  await stopLocalServer(context.localServer);
+  return true;
 };
 
-export const isDaemonRunning = (context: DaemonContext): boolean => {
-  const pid = readPidFile(context.pidFile);
-  if (!pid) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+export const isDaemonRunning = async (_context?: DaemonContext): Promise<boolean> => {
+  return isLocalServerRunning();
 };
 
-const readPidFile = (pidFile: string): number | null => {
-  if (!existsSync(pidFile)) {
-    return null;
-  }
-  try {
-    const content = readFileSync(pidFile, "utf-8").trim();
-    return Number.parseInt(content, 10);
-  } catch {
-    return null;
-  }
-};
+export { requireLocalServer };

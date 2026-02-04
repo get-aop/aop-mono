@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!skills"]
+    "includes": ["**", "!skills", "!openspec"]
   },
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {

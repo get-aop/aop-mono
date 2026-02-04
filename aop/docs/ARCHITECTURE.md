@@ -4,8 +4,9 @@
 
 AOP (Agents Operating Platform) is a backlog manager and orchestrator for autonomous AI agents implementing software tasks. Developers manage a unified task backlog across multiple repositories, mark tasks as ready for work, and AOP dispatches agents to implement them using configurable workflows.
 
-**Architecture**: Local CLI + Remote Backend (SaaS model)
-- Local CLI runs on developer machine: watches all repos, manages task backlog, spawns agents
+**Architecture**: Local Server + CLI + Remote Backend (SaaS model)
+- Local Server runs on developer machine: HTTP server managing task backlog, spawning agents, watching repos
+- CLI is a thin HTTP client: communicates with Local Server via REST API
 - Remote backend is the product IP: workflow engine, prompt library, analytics, team sync (future)
 - Code and task content never leave the user's machine
 
@@ -58,9 +59,9 @@ STEP = Single Unit of Work
 
 ## Decisions
 
-### 1. Local CLI as Central Hub
+### 1. Local Server + CLI Architecture
 
-**Choice**: The CLI application watches all registered repositories and manages the unified task backlog in SQLite. When running in daemon mode (`aop start`), it becomes a long-running process.
+**Choice**: A Local Server (HTTP) handles all background operations: watching repositories, managing the task backlog in SQLite, and spawning agents. The CLI is a thin HTTP client that communicates with the Local Server via REST API.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -75,20 +76,38 @@ STEP = Single Unit of Work
 │                                     │                                       │
 │                                     ▼                                       │
 │                        ┌─────────────────────────┐                         │
-│                        │      AOP CLI            │                         │
-│                        │  (daemon mode)          │                         │
+│                        │   Local Server (HTTP)   │                         │
+│                        │  ┌───────────────────┐  │                         │
+│                        │  │   Orchestrator    │  │                         │
+│                        │  │ (watcher, ticker, │  │                         │
+│                        │  │  queue, executor) │  │                         │
+│                        │  └───────────────────┘  │                         │
 │                        └────────────┬────────────┘                         │
 │                                     │                                       │
-│                                     ▼                                       │
-│                        ┌─────────────────────────┐                         │
-│                        │        SQLite           │                         │
-│                        │  (unified task backlog) │                         │
-│                        └─────────────────────────┘                         │
+│                      ┌──────────────┼──────────────┐                       │
+│                      │              │              │                       │
+│                      ▼              ▼              ▼                       │
+│             ┌─────────────┐  ┌───────────┐  ┌───────────┐                  │
+│             │   SQLite    │  │ REST API  │  │  Agents   │                  │
+│             │  (backlog)  │  │ (port 3847)│  │(worktrees)│                  │
+│             └─────────────┘  └─────┬─────┘  └───────────┘                  │
+│                                    │                                       │
+│                                    ▼                                       │
+│                           ┌─────────────┐                                  │
+│                           │     CLI     │                                  │
+│                           │(thin client)│                                  │
+│                           └─────────────┘                                  │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Rationale**: Single source of truth for all tasks. User sees unified backlog regardless of which repo a task belongs to.
+**Why Local Server instead of CLI Daemon:**
+- **Process management**: Server runs as a standalone process (systemd, launchd, or terminal), not managed by CLI
+- **Simpler CLI**: CLI becomes stateless HTTP client, no daemon mode or PID management
+- **Better testability**: Server can be tested in isolation, CLI integration tests against real server
+- **Standard tooling**: Works with existing process managers (systemd, launchd, Docker)
+
+**Rationale**: Single source of truth for all tasks. User sees unified backlog regardless of which repo a task belongs to. CLI is lightweight and can be run from any terminal.
 
 ### 2. Task Status Model
 
@@ -457,32 +476,34 @@ settings:
 
 ### 9. Dashboard Interactions
 
-**Choice**: Dashboard communicates with CLI daemon via local API. Status changes sync to remote.
+**Choice**: Dashboard and CLI both communicate with Local Server via REST API. Local Server handles remote sync.
 
 ```
-User clicks "Mark Ready" in Dashboard
+User clicks "Mark Ready" in Dashboard (or runs CLI command)
          │
          ▼
-┌─────────────────┐
-│ Dashboard (UI)  │
-└────────┬────────┘
-         │ POST /tasks/{id}/ready
-         ▼
-┌─────────────────┐
-│ CLI (API)       │
-└────────┬────────┘
-         │ 1. Update SQLite
-         │ 2. Sync to remote
-         ▼
-┌─────────────────┐
-│ Remote Server   │
-└────────┬────────┘
-         │ ACK
-         ▼
-Dashboard shows updated status
+┌─────────────────┐      ┌─────────────────┐
+│ Dashboard (UI)  │  OR  │       CLI       │
+└────────┬────────┘      └────────┬────────┘
+         │                        │
+         └────────────┬───────────┘
+                      │ POST /api/repos/:id/tasks/:id/ready
+                      ▼
+             ┌─────────────────┐
+             │  Local Server   │
+             └────────┬────────┘
+                      │ 1. Update SQLite
+                      │ 2. Sync to remote
+                      ▼
+             ┌─────────────────┐
+             │ Remote Server   │
+             └────────┬────────┘
+                      │ ACK
+                      ▼
+         Dashboard/CLI shows updated status
 ```
 
-**Rationale**: Local-first. Remote sync is secondary, system works offline.
+**Rationale**: Local-first. Local Server is the single source of truth. Remote sync is secondary, system works offline.
 
 ### 10. Sync Ownership Model
 
@@ -612,7 +633,7 @@ Not watched: /repo/src/**, /repo/node_modules/**, etc.
                                    │  • Report metrics
                                    │
 ┌──────────────────────────────────┼──────────────────────────────────────────┐
-│                          LOCAL CLI                                          │
+│                       LOCAL SERVER (port 3847)                              │
 │                                   │                                          │
 │  ┌────────────────────────────────┴───────────────────────────────────┐     │
 │  │                    SQLite (Kysely + Bun)                           │     │
@@ -621,18 +642,41 @@ Not watched: /repo/src/**, /repo/node_modules/**, etc.
 │  │  └─────────┘  └─────────┘  └───────────┘  └────────────────────┘  │     │
 │  └────────────────────────────────────────────────────────────────────┘     │
 │                                                                             │
-│  ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐        │
-│  │   File Watcher   │   │   Step Runner    │   │   LLM Provider   │        │
-│  │  (all repos)     │──▶│ (execute steps)  │──▶│  (run agents)    │        │
-│  └──────────────────┘   └──────────────────┘   └──────────────────┘        │
-│                                  │                      │                   │
-│                                  ▼                      ▼                   │
-│                         ┌──────────────────┐   ┌──────────────────┐        │
-│                         │   Git Manager    │   │  Script Runner   │        │
-│                         │  (worktrees)     │   │  (bun test etc)  │        │
-│                         └──────────────────┘   └──────────────────┘        │
+│  ┌───────────────────────────────────────────────────────────────────┐     │
+│  │                        Orchestrator                                │     │
+│  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────────┐   │     │
+│  │  │ Watcher  │   │  Ticker  │   │  Queue   │   │ Remote Sync  │   │     │
+│  │  │(fs events)│   │(periodic)│   │Processor │   │ (to server)  │   │     │
+│  │  └────┬─────┘   └────┬─────┘   └────┬─────┘   └──────────────┘   │     │
+│  │       │              │              │                              │     │
+│  │       └──────────────┴──────────────┘                              │     │
+│  │                      │                                             │     │
+│  │                      ▼                                             │     │
+│  │            ┌──────────────────┐   ┌──────────────────┐            │     │
+│  │            │     Executor     │──▶│   LLM Provider   │            │     │
+│  │            │ (spawn agents)   │   │  (Claude CLI)    │            │     │
+│  │            └────────┬─────────┘   └──────────────────┘            │     │
+│  │                     │                                              │     │
+│  │                     ▼                                              │     │
+│  │            ┌──────────────────┐                                   │     │
+│  │            │   Git Manager    │                                   │     │
+│  │            │   (worktrees)    │                                   │     │
+│  │            └──────────────────┘                                   │     │
+│  └───────────────────────────────────────────────────────────────────┘     │
 │                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+│                            REST API (/api/*)                                │
+│                                  │                                          │
+└──────────────────────────────────┼──────────────────────────────────────────┘
+                                   │
+                                   │  • GET /api/status, /api/health
+                                   │  • POST /api/repos, DELETE /api/repos/:id
+                                   │  • GET/POST/DELETE /api/repos/:id/tasks/*
+                                   │  • GET/PUT /api/settings/*
+                                   │
+                          ┌────────┴────────┐
+                          │       CLI       │
+                          │ (thin client)   │
+                          └─────────────────┘
 ```
 
 ## Code Organization
@@ -640,59 +684,77 @@ Not watched: /repo/src/**, /repo/node_modules/**, etc.
 **Principle**: Organize by domain (vertical slices), not by layer. Extract to packages only when there are 2+ consumers.
 
 **Data Access Pattern**: thin entrypoints → domain handlers → repositories
-- Commands are thin wrappers (parse args, call handler, format output)
-- Handlers contain domain logic, receive `CommandContext`, never call `getDatabase()`
+- Routes/Commands are thin wrappers (parse input, call handler, return response)
+- Handlers contain domain logic, receive context (database, config), orchestrate operations
 - Repositories provide data access, each domain has its own
-- Only `main.ts` creates the database connection and injects context
+- Only `run.ts`/`main.ts` creates connections and injects context
 
 ```
 apps/
-  cli/                        # CLI + local daemon
+  local-server/               # Local HTTP server (orchestrator, all background operations)
     src/
       db/                     # SQLite infrastructure
         connection.ts         # Kysely + Bun SQLite setup
         migrations.ts         # Schema migrations
+        schema.ts             # Database schema types
         test-utils.ts         # createTestDb(), createTestContext()
-      context.ts              # CommandContext type + factory
-      repos/                  # Domain: repository management
-        types.ts
+      context.ts              # ServerContext type + factory
+      config.ts               # Server configuration (port, env vars)
+      app.ts                  # Hono app with route registration
+      run.ts                  # Entry point (Bun.serve + orchestrator + signals)
+      orchestrator.ts         # Coordinates watcher, ticker, queue, remote sync
+      repo/                   # Domain: repository management
         repository.ts         # Data access layer
         handlers.ts           # initRepo(), removeRepo()
-      tasks/                  # Domain: task backlog
+        routes.ts             # POST /api/repos, DELETE /api/repos/:id
+      task/                   # Domain: task backlog
         types.ts
         repository.ts         # Data access layer
-        handlers.ts           # runTask(), applyTask(), markTaskReady(), removeTask()
-        detector.ts           # Detect tasks from openspec files
+        handlers.ts           # markTaskReady(), removeTask()
         resolve.ts            # Task resolution helpers
+        routes.ts             # GET/POST/DELETE /api/repos/:id/tasks/*
       settings/               # Domain: settings
         types.ts
         repository.ts         # Data access layer
         handlers.ts           # getSetting(), setSetting()
+        routes.ts             # GET/PUT /api/settings/*
       status/                 # Domain: status display
-        handlers.ts           # getStatus()
-      watcher/                # Domain: file system watching
-        index.ts
-        events.ts
+        handlers.ts           # getStatus(), getHealth()
       executions/             # Domain: execution tracking
         types.ts
         repository.ts         # Data access layer
-      commands/               # CLI commands (thin wrappers)
-        run.ts                # aop run → calls runTask()
-        apply.ts              # aop apply → calls applyTask()
-        status.ts             # aop status → calls getStatus()
-        repo-init.ts          # aop init → calls initRepo()
-        repo-remove.ts        # aop repo remove → calls removeRepo()
-        config-get.ts         # aop config get → calls getSetting()
-        config-set.ts         # aop config set → calls setSetting()
-        task-ready.ts         # aop task ready → calls markTaskReady()
-        task-remove.ts        # aop task remove → calls removeTask()
-      api/                    # Local HTTP API for dashboard
-        server.ts
-        routes.ts
+      executor/               # Domain: agent execution
+        types.ts
+        executor.ts           # Spawns agents in worktrees
+        abort.ts              # Abort running executions
+        process-utils.ts      # Process management utilities
+      queue/                  # Domain: task queue processing
+        processor.ts          # Polls READY tasks, dispatches to executor
+      watcher/                # Domain: file system watching
+        watcher.ts            # Watches openspec/changes/ directories
+        reconcile.ts          # Reconciles file system with database
+        ticker.ts             # Periodic reconciliation
+        types.ts
       sync/                   # Remote sync
-        ws-client.ts
-        sync.ts
-      main.ts                 # Entry point, creates context, dispatches commands
+        server-sync.ts        # Sync with remote server
+        signal-detector.ts    # Detect workflow signals
+        template-resolver.ts  # Resolve prompt templates
+
+  cli/                        # CLI (thin HTTP client)
+    src/
+      context.ts              # CLI context (server URL)
+      main.ts                 # Entry point, dispatches commands
+      commands/               # CLI commands (thin HTTP clients)
+        client.ts             # HTTP client helpers (isServerRunning, requireServer)
+        status.ts             # aop status → GET /api/status
+        repo-init.ts          # aop repo:init → POST /api/repos
+        repo-remove.ts        # aop repo:remove → DELETE /api/repos/:id
+        config-get.ts         # aop config:get → GET /api/settings
+        config-set.ts         # aop config:set → PUT /api/settings/:key
+        task-ready.ts         # aop task:ready → POST /api/repos/:id/tasks/:id/ready
+        task-remove.ts        # aop task:remove → DELETE /api/repos/:id/tasks/:id
+      tasks/handlers/         # Task command utilities
+        test-utils.ts         # Test utilities
 
   server/                     # Remote backend (closed source)
     src/
@@ -716,10 +778,10 @@ apps/
   dashboard/                  # React UI
 
 packages/
-  common/                     # Lean: only types shared between CLI and Server
+  common/                     # Lean: only types shared between apps
     src/
       types/
-        task.ts               # Task, Status types
+        task.ts               # Task, TaskStatus types
         protocol.ts           # REST API types
       index.ts
   git-manager/                # Git worktree lifecycle
@@ -728,23 +790,20 @@ packages/
     src/
       logger.ts               # Logging
       typeid.ts               # TypeID generation helpers
+
+e2e-tests/                    # End-to-end tests with real agents
+scripts/                      # Development scripts (dev.ts)
 ```
 
 ## Build Milestones
 
 Structured for early validation. Each milestone delivers usable functionality.
 
-### Milestone 1: One Task, One Agent, Manual
+### Milestone 1: One Task, One Agent, Manual ✓
 
 **Goal**: Validate core loop (agent + worktree + task completion) end-to-end.
 
-**Scope**:
-- `packages/common`: Task, Status types
-- `packages/infra`: Add TypeID helpers (move from common)
-- `apps/cli/src/db`: Kysely + SQLite connection and migrations
-- `apps/cli/src/tasks`: Task domain (types + store, manual add)
-- `apps/cli/src/commands`: Basic commands (`aop run <change-path>`)
-- Integration: git-manager + llm-provider (already exist)
+**Status**: Complete
 
 **What works**:
 ```bash
@@ -761,37 +820,33 @@ aop apply <task-id>           # User reviews, then applies
 # → Worktree persists (cleanup via dashboard later)
 ```
 
-**Not yet**: No watcher, no repos table, no server, no dashboard. Single repo, single task, manual trigger.
-
-**Validation**: Can an agent complete a real task in an isolated worktree?
+**Validation**: Can an agent complete a real task in an isolated worktree? ✓
 
 ---
 
-### Milestone 2: Backlog Management
+### Milestone 2: Local Server + Backlog Management ✓
 
-**Goal**: Multi-repo task tracking with local workflow execution.
+**Goal**: Multi-repo task tracking with Local Server architecture.
 
-**Scope**:
-- `apps/cli/src/repos`: Repo domain (register, list, remove)
-- `apps/cli/src/watcher`: File watcher for `openspec/changes/`
-- `apps/cli/src/tasks`: Task detector (auto-create from changes)
-- `apps/cli/src/executions`: Execution tracking
-- `apps/cli/src/commands`: Full CLI (`init`, `start`, `stop`, `status`, `list`, `run`)
-- Local workflow runner (temporary, will be replaced by server)
+**Status**: Complete
+
+**Architecture Change**: Instead of a CLI daemon, we now have a dedicated Local Server (`apps/local-server`). The CLI is a thin HTTP client.
 
 **What works**:
 ```bash
-aop init                      # Register current repo
-aop start                     # Start daemon, watch for changes
-aop list                      # See unified backlog across repos
-aop run task_xxx              # Execute task with local workflow
+# Start the local server (run in terminal or as service)
+bun run apps/local-server/src/run.ts
+
+# CLI commands (require local server running)
+aop repo:init                 # Register current repo (POST /api/repos)
+aop status                    # See unified backlog (GET /api/status)
+aop task:ready <id>           # Mark task ready (POST /api/repos/:id/tasks/:id/ready)
+aop task:remove <id>          # Remove task (DELETE /api/repos/:id/tasks/:id)
+aop config:get [key]          # Get settings (GET /api/settings)
+aop config:set <key> <value>  # Set setting (PUT /api/settings/:key)
 ```
 
-**Not yet**: No server, no remote sync, no dashboard. Workflows defined locally.
-
-**Validation**: Can we manage a backlog across multiple repos? Is the UX right?
-
-**Note**: Local workflow runner is throwaway code. Keep it minimal.
+**Validation**: Can we manage a backlog across multiple repos with clean architecture? ✓
 
 ---
 
@@ -799,25 +854,26 @@ aop run task_xxx              # Execute task with local workflow
 
 **Goal**: Server-controlled workflows (the product).
 
+**Status**: In Progress
+
 **Scope**:
 - `apps/server/src/db`: PostgreSQL + Kysely
 - `apps/server/src/workflows`: Engine, parser, validator
 - `apps/server/src/prompts`: Prompt library
 - `apps/server/src/api`: REST API server
-- `apps/cli/src/sync`: HTTP client, state sync
+- `apps/local-server/src/sync`: HTTP client, state sync
 - `packages/common`: Protocol message types
 
 **What works**:
 ```bash
-aop start                     # Daemon connects to server
+# Start local server (connects to remote)
+bun run apps/local-server/src/run.ts
 # User marks task READY
-# → CLI syncs to server
-# → Server sends step commands
-# → CLI executes agents
+# → Local server syncs to remote
+# → Remote server sends step commands
+# → Local server executes agents
 # → Workflow completes
 ```
-
-**Delete**: Local workflow runner from Milestone 2.
 
 **Validation**: Does the remote orchestration model work? Latency acceptable?
 
@@ -829,10 +885,11 @@ aop start                     # Daemon connects to server
 
 **Scope**:
 - `apps/dashboard`: React UI
-- `apps/cli/src/api`: HTTP API for dashboard
+- Local Server already has HTTP API for dashboard
 - Task list view (all repos, filterable)
 - Task detail + workflow progress
 - Actions: Mark ready, retry, abandon
+- Metrics: Task duration, steps drill down, agent success rate, etc.
 
 **What works**: User can manage backlog visually instead of CLI-only.
 

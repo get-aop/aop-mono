@@ -104,3 +104,54 @@ export const createSimpleWorkflow = async (
 
   return { id, name };
 };
+
+const RALPH_LOOP_WORKFLOW_DEFINITION = {
+  version: 1,
+  name: "ralph-loop",
+  initialStep: "iterate",
+  steps: {
+    iterate: {
+      id: "iterate",
+      type: "iterate",
+      promptTemplate: "iterate.md.hbs",
+      maxAttempts: 1,
+      signals: ["TASK_COMPLETE", "NEEDS_REVIEW"],
+      transitions: [
+        { condition: "TASK_COMPLETE", target: "__done__" },
+        { condition: "NEEDS_REVIEW", target: "review" },
+        { condition: "__none__", target: "iterate" },
+        { condition: "failure", target: "__blocked__" },
+      ],
+    },
+    review: {
+      id: "review",
+      type: "review",
+      promptTemplate: "review.md.hbs",
+      maxAttempts: 1,
+      transitions: [
+        { condition: "success", target: "__done__" },
+        { condition: "failure", target: "__blocked__" },
+      ],
+    },
+  },
+  terminalStates: ["__done__", "__blocked__"],
+};
+
+export const createRalphLoopWorkflow = async (
+  db: Kysely<Database>,
+): Promise<{ id: string; name: string }> => {
+  const id = "workflow_ralph_loop";
+  const name = "ralph-loop";
+
+  await db
+    .insertInto("workflows")
+    .values({
+      id,
+      name,
+      definition: JSON.stringify(RALPH_LOOP_WORKFLOW_DEFINITION),
+    })
+    .onConflict((oc) => oc.column("id").doNothing())
+    .execute();
+
+  return { id, name };
+};

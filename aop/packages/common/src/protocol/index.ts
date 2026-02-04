@@ -6,6 +6,7 @@ export const ExecutionStatus = {
   COMPLETED: "completed",
   FAILED: "failed",
   ABORTED: "aborted",
+  CANCELLED: "cancelled",
 } as const;
 
 export type ExecutionStatus = (typeof ExecutionStatus)[keyof typeof ExecutionStatus];
@@ -14,6 +15,7 @@ export const StepExecutionStatus = {
   RUNNING: "running",
   SUCCESS: "success",
   FAILURE: "failure",
+  CANCELLED: "cancelled",
 } as const;
 
 export type StepExecutionStatus = (typeof StepExecutionStatus)[keyof typeof StepExecutionStatus];

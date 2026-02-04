@@ -1,8 +1,5 @@
 import { getLogger } from "@aop/infra";
-import type { CommandContext } from "../context.ts";
-import { getFullStatus } from "../daemon/status.ts";
-import type { Task } from "../db/schema.ts";
-import { getTaskStatus } from "../tasks";
+import { fetchServer } from "./client.ts";
 
 const logger = getLogger("aop", "cli", "status");
 
@@ -10,9 +7,15 @@ export interface StatusOptions {
   json?: boolean;
 }
 
-interface DaemonStatus {
-  running: boolean;
-  pid: number | null;
+interface Task {
+  id: string;
+  repo_id: string;
+  change_path: string;
+  worktree_path: string | null;
+  status: string;
+  ready_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface RepoStatus {
@@ -24,8 +27,8 @@ interface RepoStatus {
   tasks: Task[];
 }
 
-interface StatusOutput {
-  daemon: DaemonStatus;
+interface StatusResponse {
+  ready: boolean;
   globalCapacity: { working: number; max: number };
   repos: RepoStatus[];
 }
@@ -35,56 +38,74 @@ const writeJson = (data: unknown): void => {
   Bun.write(Bun.stdout, encoder.encode(`${JSON.stringify(data)}\n`));
 };
 
-const getPidFile = (): string | undefined => process.env.AOP_PID_FILE;
-
 export const statusCommand = async (
-  ctx: CommandContext,
   taskId?: string,
   options: StatusOptions = {},
 ): Promise<void> => {
   if (taskId) {
-    await showSingleTask(ctx, taskId, options);
+    await showSingleTask(taskId, options);
   } else {
-    await showFullStatus(ctx, options);
+    await showFullStatus(options);
   }
 };
 
-const showSingleTask = async (
-  ctx: CommandContext,
-  identifier: string,
-  options: StatusOptions,
-): Promise<void> => {
-  const result = await getTaskStatus(ctx, identifier);
-  if (!result.success) {
+const matchesIdentifier = (task: Task, repo: RepoStatus, identifier: string): boolean => {
+  if (task.id === identifier || task.id.startsWith(identifier)) {
+    return true;
+  }
+  if (task.change_path === identifier || task.change_path.endsWith(`/${identifier}`)) {
+    return true;
+  }
+  const fullChangePath = `${repo.path}/${task.change_path}`;
+  if (identifier === fullChangePath || identifier.endsWith(`/${task.change_path}`)) {
+    return true;
+  }
+  return false;
+};
+
+const showSingleTask = async (identifier: string, options: StatusOptions): Promise<void> => {
+  const result = await fetchServer<StatusResponse>("/api/status");
+
+  if (!result.ok) {
+    logger.error("Error: Failed to fetch status from server");
+    process.exit(1);
+  }
+
+  const { repos } = result.data;
+  let foundTask: Task | undefined;
+  for (const repo of repos) {
+    foundTask = repo.tasks.find((t) => matchesIdentifier(t, repo, identifier));
+    if (foundTask) break;
+  }
+
+  if (!foundTask) {
     if (options.json) {
-      writeJson({ error: "Task not found", identifier: result.error.identifier });
+      writeJson({ error: "Task not found", identifier });
     } else {
-      logger.error("Error: Task '{identifier}' not found", { identifier: result.error.identifier });
+      logger.error("Error: Task '{identifier}' not found", { identifier });
     }
     process.exit(1);
   }
+
   if (options.json) {
-    writeJson(result.task);
+    writeJson(foundTask);
   } else {
-    printTaskDetails(result.task);
+    printTaskDetails(foundTask);
   }
 };
 
-const showFullStatus = async (ctx: CommandContext, options: StatusOptions): Promise<void> => {
-  const result = await getFullStatus(ctx, { pidFile: getPidFile() });
+const showFullStatus = async (options: StatusOptions): Promise<void> => {
+  const result = await fetchServer<StatusResponse>("/api/status");
+
+  if (!result.ok) {
+    logger.error("Error: Failed to fetch status from server");
+    process.exit(1);
+  }
 
   if (options.json) {
-    writeJson(result.status);
+    writeJson(result.data);
   } else {
-    printFullStatus(result.status);
-  }
-};
-
-const printDaemonStatus = (daemon: DaemonStatus): void => {
-  if (daemon.running) {
-    logger.info("Daemon: running (pid {pid})", { pid: daemon.pid });
-  } else {
-    logger.info("Daemon: stopped");
+    printFullStatus(result.data);
   }
 };
 
@@ -104,10 +125,14 @@ const printRepoStatus = (repo: RepoStatus): void => {
   logger.info("");
 };
 
-const printFullStatus = (status: StatusOutput): void => {
-  const { daemon, globalCapacity, repos } = status;
+const printFullStatus = (status: StatusResponse): void => {
+  const { ready, globalCapacity, repos } = status;
 
-  printDaemonStatus(daemon);
+  if (ready) {
+    logger.info("Server: running");
+  } else {
+    logger.info("Server: starting");
+  }
   logger.info("Global capacity: {working}/{max} working", {
     working: globalCapacity.working,
     max: globalCapacity.max,

@@ -177,4 +177,50 @@ describe("ExecutionRepository", () => {
       expect(execution).toBeNull();
     });
   });
+
+  describe("cancelActiveByTask", () => {
+    test("cancels running execution and returns it", async () => {
+      await setupTestData();
+      await executionRepository.create({
+        id: "exec-1",
+        client_id: clientId,
+        task_id: taskId,
+        workflow_id: workflowId,
+        status: "running",
+      });
+
+      const cancelled = await executionRepository.cancelActiveByTask(taskId);
+
+      expect(cancelled).not.toBeNull();
+      expect(cancelled?.id).toBe("exec-1");
+      expect(cancelled?.status).toBe("cancelled");
+      expect(cancelled?.completed_at).not.toBeNull();
+
+      const fetched = await executionRepository.findById("exec-1");
+      expect(fetched?.status).toBe("cancelled");
+    });
+
+    test("returns null when no active execution", async () => {
+      await setupTestData();
+      await executionRepository.create({
+        id: "exec-1",
+        client_id: clientId,
+        task_id: taskId,
+        workflow_id: workflowId,
+        status: "completed",
+      });
+
+      const cancelled = await executionRepository.cancelActiveByTask(taskId);
+
+      expect(cancelled).toBeNull();
+    });
+
+    test("returns null for task with no executions", async () => {
+      await setupTestData();
+
+      const cancelled = await executionRepository.cancelActiveByTask(taskId);
+
+      expect(cancelled).toBeNull();
+    });
+  });
 });

@@ -1,27 +1,56 @@
 import { getLogger } from "@aop/infra";
-import type { CommandContext } from "../context.ts";
-import { type GetSettingError, getAllSettings, getSetting } from "../settings/handlers.ts";
+import { fetchServer } from "./client.ts";
 
 const logger = getLogger("aop", "cli", "config:get");
 
-export const configGetCommand = async (ctx: CommandContext, key?: string): Promise<void> => {
+interface Setting {
+  key: string;
+  value: string;
+}
+
+interface AllSettingsResponse {
+  settings: Setting[];
+}
+
+interface SingleSettingResponse {
+  key: string;
+  value: string;
+}
+
+export const configGetCommand = async (key?: string): Promise<void> => {
   if (key) {
-    const result = await getSetting(ctx, key);
-    if (!result.success) {
-      handleError(result.error);
-      return;
-    }
-    logger.info("{key}={value}", { key: result.key, value: result.value });
+    await getSingleSetting(key);
   } else {
-    const result = await getAllSettings(ctx);
-    for (const { key, value } of result.settings) {
-      logger.info("{key}={value}", { key, value });
-    }
+    await getAllSettings();
   }
 };
 
-const handleError = (error: GetSettingError): void => {
-  logger.error("Error: Unknown setting key: {key}", { key: error.key });
-  logger.info("Valid keys: {keys}", { keys: error.validKeys.join(", ") });
+const getSingleSetting = async (key: string): Promise<void> => {
+  const result = await fetchServer<SingleSettingResponse>(`/api/settings/${key}`);
+  if (!result.ok) {
+    return handleSettingError(key, result.error);
+  }
+  logger.info("{key}={value}", { key: result.data.key, value: result.data.value });
+};
+
+const getAllSettings = async (): Promise<void> => {
+  const result = await fetchServer<AllSettingsResponse>("/api/settings");
+  if (!result.ok) {
+    logger.error("Error: Failed to fetch settings from server");
+    process.exit(1);
+  }
+  for (const { key, value } of result.data.settings) {
+    logger.info("{key}={value}", { key, value });
+  }
+};
+
+const handleSettingError = (key: string, error: { error: string; validKeys?: string[] }): never => {
+  if (error.error === "Invalid key") {
+    const validKeys = error.validKeys ?? [];
+    logger.error("Error: Unknown setting key: {key}", { key });
+    logger.info("Valid keys: {keys}", { keys: validKeys.join(", ") });
+  } else {
+    logger.error("Error: {error}", { error: error.error });
+  }
   process.exit(1);
 };

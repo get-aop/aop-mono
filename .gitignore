@@ -13,3 +13,5 @@ node_modules
 .playwright-mcp
 playwright-report
 link-claude.sh
+
+.worktrees/

@@ -57,6 +57,7 @@ apps/server/src/
 - **Unit/Integration**: Real assertions on return values and state - no `expect(true).toBe(true)`
 - **E2E**: Real agents, real API calls - never mock the agent
 - **Repositories**: Integration tests with real database
+- **Coverage**: NEVER fix coverage thresholds by ignoring files - always add tests
 
 ## IMPORTANT!
 

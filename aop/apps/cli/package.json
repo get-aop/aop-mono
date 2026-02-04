@@ -4,7 +4,19 @@
   "type": "module",
   "exports": {
     ".": "./src/main.ts",
-    "./daemon": "./src/daemon/index.ts"
+    "./daemon": "./src/daemon/index.ts",
+    "./context": "./src/context.ts",
+    "./db": "./src/db/connection.ts",
+    "./db/migrations": "./src/db/migrations.ts",
+    "./repos/handlers": "./src/repos/handlers.ts",
+    "./settings/handlers": "./src/settings/handlers.ts",
+    "./tasks": "./src/tasks/index.ts",
+    "./watcher": "./src/watcher/index.ts",
+    "./queue": "./src/queue/index.ts",
+    "./sync": "./src/sync/server-sync.ts",
+    "./executor": "./src/executor/executor.ts",
+    "./settings/types": "./src/settings/types.ts",
+    "./db/schema": "./src/db/schema.ts"
   },
   "bin": {
     "aop": "./src/main.ts"

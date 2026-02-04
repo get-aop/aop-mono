@@ -1,24 +1,31 @@
 import { getLogger } from "@aop/infra";
-import type { CommandContext } from "../context.ts";
-import { type SetSettingError, setSetting } from "../settings/handlers.ts";
+import { fetchServer } from "./client.ts";
 
 const logger = getLogger("aop", "cli", "config:set");
 
-export const configSetCommand = async (
-  ctx: CommandContext,
-  key: string,
-  value: string,
-): Promise<void> => {
-  const result = await setSetting(ctx, key, value);
-  if (!result.success) {
-    handleError(result.error);
-    return;
-  }
-  logger.info("Setting updated: {key}={value}", { key: result.key, value: result.value });
-};
+interface SetSettingResponse {
+  ok: boolean;
+  key: string;
+  value: string;
+}
 
-const handleError = (error: SetSettingError): void => {
-  logger.error("Error: Unknown setting key: {key}", { key: error.key });
-  logger.info("Valid keys: {keys}", { keys: error.validKeys.join(", ") });
-  process.exit(1);
+export const configSetCommand = async (key: string, value: string): Promise<void> => {
+  const result = await fetchServer<SetSettingResponse>(`/api/settings/${key}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value }),
+  });
+
+  if (!result.ok) {
+    if (result.error.error === "Invalid key") {
+      const validKeys = (result.error as { validKeys?: string[] }).validKeys ?? [];
+      logger.error("Error: Unknown setting key: {key}", { key });
+      logger.info("Valid keys: {keys}", { keys: validKeys.join(", ") });
+    } else {
+      logger.error("Error: {error}", { error: result.error.error });
+    }
+    process.exit(1);
+  }
+
+  logger.info("Setting updated: {key}={value}", { key: result.data.key, value: result.data.value });
 };

@@ -1,21 +1,32 @@
 export {
   AOP_BIN,
   API_KEY,
-  DEFAULT_PID_FILE,
+  DEFAULT_LOCAL_SERVER_PORT,
+  DEFAULT_LOCAL_SERVER_URL,
   E2E_TEST_BASE_DIR,
   getAopEnv,
+  LOCAL_SERVER_BIN,
   SERVER_URL,
   TEST_REPO_PREFIX,
 } from "./constants";
 export {
   type DaemonContext,
   isDaemonRunning,
+  requireLocalServer,
   runAopCommand,
   type StartDaemonOptions,
   type StartDaemonResult,
   startDaemon,
   stopDaemon,
 } from "./daemon";
+export {
+  isLocalServerRunning,
+  type LocalServerContext,
+  type StartLocalServerOptions,
+  startLocalServer,
+  stopLocalServer,
+  triggerServerRefresh,
+} from "./local-server";
 export {
   cleanupTestRepos,
   copyFixture,

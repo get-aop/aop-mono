@@ -1,0 +1,39 @@
+# AOP Local Server - systemd service file
+#
+# Installation:
+#   1. Copy to /etc/systemd/system/ (system-wide) or ~/.config/systemd/user/ (user-only)
+#   2. Update paths in [Service] section
+#   3. Enable and start:
+#      - System: sudo systemctl enable --now aop-local-server
+#      - User:   systemctl --user enable --now aop-local-server
+#
+# Logs: journalctl -u aop-local-server -f
+
+[Unit]
+Description=AOP Local Server
+Documentation=https://github.com/get-aop/aop
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/bun run /path/to/aop/apps/local-server/src/run.ts
+WorkingDirectory=/path/to/aop
+Restart=on-failure
+RestartSec=5
+
+# Environment
+Environment=AOP_PORT=3847
+Environment=NODE_ENV=production
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+# Resource limits
+MemoryMax=1G
+TasksMax=100
+
+[Install]
+WantedBy=multi-user.target

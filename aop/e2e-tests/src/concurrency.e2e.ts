@@ -1,3 +1,5 @@
+// Prerequisites: `bun dev` must be running before executing this test
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   cleanupTestRepos,
@@ -7,11 +9,13 @@ import {
   ensureChangesDir,
   getFullStatus,
   getRepoStatus,
+  isLocalServerRunning,
   runAopCommand,
   setupE2ETestDir,
   startDaemon,
   stopDaemon,
   type TempRepoResult,
+  triggerServerRefresh,
   waitForTask,
   waitForTasksInRepo,
 } from "./helpers";
@@ -49,6 +53,12 @@ describe("concurrency limits", () => {
       context = daemonCtx;
       wasAlreadyRunning = alreadyRunning;
       expect(success).toBe(true);
+
+      // Verify local server is running
+      expect(await isLocalServerRunning()).toBe(true);
+
+      // Trigger refresh to ensure watcher picks up the new repo
+      await triggerServerRefresh();
 
       await copyFixture("concurrency-test-1", repo.path);
       await copyFixture("concurrency-test-2", repo.path);

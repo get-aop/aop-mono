@@ -24,6 +24,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # runtime data
 .aop
+.worktrees
 
 # caches
 .eslintcache

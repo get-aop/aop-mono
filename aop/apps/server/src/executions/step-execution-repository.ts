@@ -11,6 +11,7 @@ export interface StepExecutionRepository {
   update: (id: string, update: StepExecutionUpdate) => Promise<StepExecution | null>;
   findById: (id: string) => Promise<StepExecution | null>;
   findByIdForUpdate: (id: string) => Promise<StepExecution | null>;
+  cancelRunningByExecution: (executionId: string) => Promise<number>;
 }
 
 export const createStepExecutionRepository = (db: Kysely<Database>): StepExecutionRepository => ({
@@ -50,5 +51,16 @@ export const createStepExecutionRepository = (db: Kysely<Database>): StepExecuti
       .skipLocked()
       .executeTakeFirst();
     return stepExecution ?? null;
+  },
+
+  cancelRunningByExecution: async (executionId: string): Promise<number> => {
+    const result = await db
+      .updateTable("step_executions")
+      .set({ status: "cancelled", ended_at: new Date() })
+      .where("execution_id", "=", executionId)
+      .where("status", "=", "running")
+      .executeTakeFirst();
+
+    return Number(result.numUpdatedRows ?? 0);
   },
 });

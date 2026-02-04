@@ -9,7 +9,7 @@ The CLI daemon has evolved into a complex process manager (watcher, ticker, proc
 - **BREAKING**: Remove `aop task:run` command (POC feature, no longer needed)
 - **BREAKING**: CLI commands require local server running - no offline fallback
 - CLI commands (`status`, `task:ready`, `task:remove`, `repo:*`, `config:*`) become thin HTTP clients posting to the local server
-- Background services (watcher, ticker, processor, executor) run within the local server process
+- Orchestrator (watcher, ticker, processor, executor, remote sync) runs within the local server process
 - Simplify lifecycle management: port-based detection replaces PID file management
 - Port configured via `AOP_PORT` environment variable (default: 3847)
 - Add foundation for serving a local dashboard (future)
@@ -18,7 +18,7 @@ The CLI daemon has evolved into a complex process manager (watcher, ticker, proc
 
 ### New Capabilities
 
-- `local-server`: Hono-based HTTP server that hosts the API, runs background services (watcher, ticker, processor, executor), and will serve the dashboard. Includes health/status endpoints and task/repo management endpoints. Handles SIGTERM for graceful shutdown.
+- `local-server`: Hono-based HTTP server that hosts the API, runs the orchestrator (watcher, ticker, processor, executor, remote sync), and will serve the dashboard. Includes health/status endpoints and task/repo management endpoints. Handles SIGTERM for graceful shutdown.
 
 ### Modified Capabilities
 

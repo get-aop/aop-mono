@@ -10,3 +10,6 @@
 [submodule "external/everything-claude-code"]
 	path = external/everything-claude-code
 	url = https://github.com/affaan-m/everything-claude-code
+[submodule "external/OpenSpec"]
+	path = external/OpenSpec
+	url = https://github.com/Fission-AI/OpenSpec

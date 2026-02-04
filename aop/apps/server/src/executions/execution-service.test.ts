@@ -3,6 +3,7 @@ import type { Kysely } from "kysely";
 import type { Client, Database } from "../db/schema.ts";
 import {
   cleanupTestDb,
+  createRalphLoopWorkflow,
   createSimpleWorkflow,
   createTestClient,
   createTestDb,
@@ -130,6 +131,77 @@ describe("ExecutionService", () => {
         .executeTakeFirst();
       expect(stepExecution).toBeDefined();
       expect(stepExecution?.status).toBe("running");
+    });
+
+    test("uses specified workflow name when provided", async () => {
+      const testClient = await setupTestData();
+      await createRalphLoopWorkflow(db);
+      await createTestRepo(testClient.id, "repo-1");
+
+      const result = await executionService.startWorkflow(
+        testClient,
+        "task-1",
+        "repo-1",
+        "ralph-loop",
+      );
+
+      expect(result.status).toBe("WORKING");
+      expect(result.execution).toBeDefined();
+      expect(result.execution?.workflowId).toBe("workflow_ralph_loop");
+      expect(result.step).toBeDefined();
+      expect(result.step?.type).toBe("iterate");
+      expect(result.step?.signals).toContain("TASK_COMPLETE");
+      expect(result.step?.signals).toContain("NEEDS_REVIEW");
+    });
+
+    test("throws error for non-existent workflow name", async () => {
+      const testClient = await setupTestData();
+      await createTestRepo(testClient.id, "repo-1");
+
+      await expect(
+        executionService.startWorkflow(testClient, "task-1", "repo-1", "non-existent"),
+      ).rejects.toThrow('Workflow "non-existent" not found');
+    });
+
+    test("cancels existing active execution when starting new workflow for same task", async () => {
+      const testClient = await setupTestData();
+      await createTestRepo(testClient.id, "repo-1");
+
+      const firstResult = await executionService.startWorkflow(testClient, "task-1", "repo-1");
+      const firstExecutionId = firstResult.execution?.id;
+      const firstStepId = firstResult.step?.id;
+
+      expect(firstExecutionId).toBeDefined();
+      expect(firstStepId).toBeDefined();
+
+      const secondResult = await executionService.startWorkflow(testClient, "task-1", "repo-1");
+      const secondExecutionId = secondResult.execution?.id;
+
+      expect(secondExecutionId).toBeDefined();
+      expect(secondExecutionId).not.toBe(firstExecutionId);
+
+      const firstExecution = await db
+        .selectFrom("executions")
+        .selectAll()
+        .where("id", "=", firstExecutionId ?? "")
+        .executeTakeFirst();
+      expect(firstExecution?.status).toBe("cancelled");
+      expect(firstExecution?.completed_at).not.toBeNull();
+
+      const firstStep = await db
+        .selectFrom("step_executions")
+        .selectAll()
+        .where("id", "=", firstStepId ?? "")
+        .executeTakeFirst();
+      expect(firstStep?.status).toBe("cancelled");
+      expect(firstStep?.ended_at).not.toBeNull();
+
+      const secondExecution = await db
+        .selectFrom("executions")
+        .selectAll()
+        .where("id", "=", secondExecutionId ?? "")
+        .executeTakeFirst();
+      expect(secondExecution?.status).toBe("running");
     });
   });
 

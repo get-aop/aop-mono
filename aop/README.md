@@ -1,33 +1,43 @@
 # AOP - Agents Operating Platform
 
-A platform for orchestrating AI agents. AOP manages agent lifecycle, coordinates task execution, and provides real-time visibility into agent operations through a daemon-based background processing system.
+A platform for orchestrating AI agents. AOP manages agent lifecycle, coordinates task execution, and provides real-time visibility into agent operations.
 
 ## Architecture
 
-AOP uses a daemon-based architecture for background task processing:
+AOP uses a client-server architecture with a local HTTP server for background task processing:
 
-- **Daemon**: Long-running background process that manages task lifecycle
+- **Local Server**: HTTP server that manages task lifecycle and coordinates all background operations
+- **Orchestrator**: Initializes and coordinates the watcher, ticker, processor, and remote sync
 - **Watcher**: Monitors `openspec/changes/` directories for task file changes
 - **Queue Processor**: Polls for READY tasks and dispatches to executor with concurrency control
 - **Executor**: Spawns Claude CLI agents in isolated git worktrees
+- **CLI**: Thin client that communicates with the local server via REST API
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Watcher   │────▶│   Queue     │────▶│  Executor   │
-│ (fs events) │     │ (READY→WORKING)   │ (agent spawn)│
-└─────────────┘     └─────────────┘     └─────────────┘
-        │                  │                    │
-        └──────────────────┴────────────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │   SQLite    │
-                    │ (tasks, repos, executions)
-                    └─────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     Local Server (HTTP)                          │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐        │
+│  │   Watcher   │────▶│   Queue     │────▶│  Executor   │        │
+│  │ (fs events) │     │ (processor) │     │ (agent spawn)│       │
+│  └─────────────┘     └─────────────┘     └─────────────┘        │
+│          │                  │                    │               │
+│          └──────────────────┴────────────────────┘               │
+│                             │                                    │
+│                      ┌──────▼──────┐                             │
+│                      │   SQLite    │                             │
+│                      └─────────────┘                             │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │ REST API
+                        ┌──────▼──────┐
+                        │   CLI       │
+                        │ (thin client)│
+                        └─────────────┘
 ```
 
 ## Documentation
 
 - **[Architecture](docs/ARCHITECTURE.md)** - System design, decisions, and build milestones
+- **[Local Server](apps/local-server/README.md)** - HTTP server, orchestrator, and API reference
 - **[CLI Reference](apps/cli/README.md)** - CLI commands and usage
 
 ## Quick Start
@@ -51,21 +61,32 @@ bun install
 
 ### Usage
 
+**Start the local server** (required for all operations):
+```bash
+# Start the local server (run in a separate terminal or as a service)
+bun run apps/local-server/src/run.ts
+
+# Or use the dev script which also starts the remote server
+bun dev
+```
+
+**CLI commands** (require local server running):
 ```bash
 # Register a repository for task processing
 aop repo:init /path/to/your/repo
 
-# Start the background daemon
-aop start
-
-# Check daemon and task status
+# Check server and task status
 aop status
 
-# Manually run a specific task (bypasses queue)
-aop run <task-id>
+# Mark a task as ready for processing
+aop task:ready <task-id>
 
-# Stop the daemon
-aop stop
+# Remove a task from the backlog
+aop task:remove <task-id>
+
+# Get/set configuration
+aop config:get [key]
+aop config:set <key> <value>
 ```
 
 ### Development
@@ -108,20 +129,28 @@ bun test:coverage # Tests with coverage report
 
 ### Environment Variables
 
-**Server (`apps/server`):**
+**Local Server (`apps/local-server`):**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AOP_PORT` | Port for the local HTTP server | `3847` |
+
+**CLI (`apps/cli`):**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AOP_URL` | URL of the local server | `http://localhost:3847` |
+| `AOP_PORT` | Port for local server (if `AOP_URL` not set) | `3847` |
+| `AOP_SERVER_URL` | URL of the remote AOP server | `https://api.aop.dev` |
+| `AOP_API_KEY` | API key for remote server authentication | Optional (enables sync) |
+
+**Remote Server (`apps/server`):**
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | Required |
 | `PORT` | HTTP server port | `3000` |
 
-**CLI (`apps/cli`):**
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AOP_SERVER_URL` | URL of the AOP server | `https://api.aop.dev` |
-| `AOP_API_KEY` | API key for server authentication | Optional (enables sync) |
-
 **Development defaults (set by `bun dev`):**
 ```bash
+AOP_PORT=3847
 DATABASE_URL=postgres://aop:aop@localhost:5432/aop
 PORT=3000
 AOP_SERVER_URL=http://localhost:3000
@@ -132,8 +161,15 @@ AOP_API_KEY=aop_test_key_dev
 
 ```
 apps/
-  cli/              # AOP command-line interface
-  server/           # AOP REST API server (workflow orchestration)
+  cli/              # AOP command-line interface (thin HTTP client)
+  local-server/     # Local HTTP server (Hono)
+    orchestrator/   #   Background services (watcher, queue, sync)
+    executor/       #   Agent spawning and execution tracking
+    repo/           #   Repository domain
+    task/           #   Task domain
+    settings/       #   Settings domain
+    db/             #   SQLite connection and migrations
+  server/           # Remote AOP server (workflow engine, prompt library)
 packages/
   common/           # Shared types (Task, TaskStatus, protocol schemas)
   git-manager/      # Git worktree lifecycle management

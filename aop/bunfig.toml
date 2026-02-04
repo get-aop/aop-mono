@@ -10,7 +10,8 @@ preload = ["./apps/server/src/db/test-setup.ts"]
 coveragePathIgnorePatterns = [
   "**/migrations/**",
   "**/test-utils.ts",
-  "**/test-setup.ts"
+  "**/test-setup.ts",
+  "**/openspec/**"
 ]
 
 # Coverage thresholds (0.0-1.0) - CI will fail if coverage drops below these
