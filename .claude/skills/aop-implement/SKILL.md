@@ -44,6 +44,7 @@ Run `/opsx:apply {{change}}` for the **next single task only**.
   - Here you should favor happy paths and basic unhappy flows using e2e/playwright tests
   - Apply TDD in E2E imagining you are the user
   - Use the `webapp-testing` skill to run your tests
+  - Use the `frontend-design` skill for design tasks.
 - Pure refactoring with existing test coverage
 
 **IMPORTANT! EARLY EXIT! If no more tasks remain**: 
