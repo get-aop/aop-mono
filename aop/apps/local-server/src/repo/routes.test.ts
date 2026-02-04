@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
-import { type CommandContext, createCommandContext } from "../context.ts";
+import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { type AnyJson, createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
 import { createRepoRoutes } from "./routes.ts";
 
 describe("repo/routes", () => {
   let db: Kysely<Database>;
-  let ctx: CommandContext;
+  let ctx: LocalServerContext;
   let app: Hono;
 
   beforeEach(async () => {
@@ -107,7 +107,9 @@ describe("repo/routes", () => {
 
   describe("DELETE /api/repos/:id", () => {
     test("returns 404 for non-existent repo", async () => {
-      const res = await app.request("/api/repos/non-existent", { method: "DELETE" });
+      const res = await app.request("/api/repos/non-existent", {
+        method: "DELETE",
+      });
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(404);

@@ -1,3 +1,4 @@
+import type { SSEServerStatus, SSETask } from "@aop/common";
 import { getLogger } from "@aop/infra";
 import { fetchServer } from "./client.ts";
 
@@ -7,19 +8,8 @@ export interface TaskReadyOptions {
   workflow?: string;
 }
 
-interface Task {
-  id: string;
-  repo_id: string;
-}
-
-interface RepoStatus {
-  id: string;
-  tasks: Task[];
-}
-
-interface StatusResponse {
-  repos: RepoStatus[];
-}
+type Task = SSETask;
+type StatusResponse = SSEServerStatus;
 
 interface TaskReadyResponse {
   ok: boolean;
@@ -54,7 +44,7 @@ const findTask = async (identifier: string): Promise<Task> => {
 const markTaskReady = async (task: Task, options?: TaskReadyOptions): Promise<void> => {
   const body = options?.workflow ? { workflow: options.workflow } : {};
   const result = await fetchServer<TaskReadyResponse>(
-    `/api/repos/${task.repo_id}/tasks/${task.id}/ready`,
+    `/api/repos/${task.repoId}/tasks/${task.id}/ready`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

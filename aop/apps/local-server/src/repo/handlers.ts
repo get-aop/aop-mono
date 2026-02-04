@@ -1,6 +1,6 @@
 import { getRemoteOrigin } from "@aop/git-manager";
 import { generateTypeId, getLogger } from "@aop/infra";
-import type { CommandContext } from "../context.ts";
+import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { abortTask } from "../executor/index.ts";
 import { extractRepoName } from "./repository.ts";
@@ -24,12 +24,18 @@ export interface RemoveRepoOptions {
   force?: boolean;
 }
 
-export const initRepo = async (ctx: CommandContext, repoPath: string): Promise<InitRepoResult> => {
+export const initRepo = async (
+  ctx: LocalServerContext,
+  repoPath: string,
+): Promise<InitRepoResult> => {
   const { repoRepository } = ctx;
 
   const isGitRepo = await checkGitRepo(repoPath);
   if (!isGitRepo) {
-    return { success: false, error: { code: "NOT_A_GIT_REPO", path: repoPath } };
+    return {
+      success: false,
+      error: { code: "NOT_A_GIT_REPO", path: repoPath },
+    };
   }
 
   const existing = await repoRepository.getByPath(repoPath);
@@ -55,7 +61,7 @@ export const initRepo = async (ctx: CommandContext, repoPath: string): Promise<I
 };
 
 export const removeRepo = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   repoPath: string,
   options: RemoveRepoOptions = {},
 ): Promise<RemoveRepoResult> => {
@@ -66,9 +72,15 @@ export const removeRepo = async (
     return { success: false, error: { code: "NOT_FOUND", path: repoPath } };
   }
 
-  const workingTasks = await taskRepository.list({ status: "WORKING", repo_id: repo.id });
+  const workingTasks = await taskRepository.list({
+    status: "WORKING",
+    repo_id: repo.id,
+  });
   if (workingTasks.length > 0 && !options.force) {
-    return { success: false, error: { code: "HAS_WORKING_TASKS", count: workingTasks.length } };
+    return {
+      success: false,
+      error: { code: "HAS_WORKING_TASKS", count: workingTasks.length },
+    };
   }
 
   let abortedTasks = 0;
@@ -98,17 +110,17 @@ const checkGitRepo = async (path: string): Promise<boolean> => {
   }
 };
 
-export const getRepoById = async (ctx: CommandContext, repoId: string) => {
+export const getRepoById = async (ctx: LocalServerContext, repoId: string) => {
   return ctx.repoRepository.getById(repoId);
 };
 
-export const getRepoTasks = async (ctx: CommandContext, repoId: string) => {
+export const getRepoTasks = async (ctx: LocalServerContext, repoId: string) => {
   return ctx.taskRepository.list({ repo_id: repoId, excludeRemoved: true });
 };
 
 const logger = getLogger("aop", "repos-handlers");
 
-const abortWorkingTasks = async (ctx: CommandContext, tasks: Task[]): Promise<number> => {
+const abortWorkingTasks = async (ctx: LocalServerContext, tasks: Task[]): Promise<number> => {
   let abortedCount = 0;
 
   for (const task of tasks) {

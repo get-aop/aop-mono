@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ExecutionInfo, StepCommand } from "@aop/common/protocol";
 import type { Kysely } from "kysely";
-import { type CommandContext, createCommandContext } from "../../context.ts";
+import { createCommandContext, type LocalServerContext } from "../../context.ts";
 import type { Database, Task } from "../../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../../db/test-utils.ts";
 import { SettingKey } from "../../settings/types.ts";
@@ -9,7 +9,7 @@ import { createQueueProcessor, type QueueProcessor } from "./processor.ts";
 
 describe("QueueProcessor", () => {
   let db: Kysely<Database>;
-  let ctx: CommandContext;
+  let ctx: LocalServerContext;
 
   beforeEach(async () => {
     db = await createTestDb();
@@ -24,7 +24,9 @@ describe("QueueProcessor", () => {
     test("getNextExecutable returns task with preferred_workflow", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
-      await ctx.taskRepository.update("task-1", { preferred_workflow: "ralph-loop" });
+      await ctx.taskRepository.update("task-1", {
+        preferred_workflow: "ralph-loop",
+      });
 
       const task = await ctx.taskRepository.getNextExecutable({
         globalMax: 10,
@@ -43,16 +45,23 @@ describe("QueueProcessor", () => {
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
 
       // Set preferred_workflow on the task
-      await ctx.taskRepository.update("task-1", { preferred_workflow: "ralph-loop" });
+      await ctx.taskRepository.update("task-1", {
+        preferred_workflow: "ralph-loop",
+      });
 
       // Verify task has preferred_workflow after update
       const task = await ctx.taskRepository.get("task-1");
       expect(task?.preferred_workflow).toBe("ralph-loop");
 
-      const capturedCalls: Array<{ taskId: string; repoId: string; options: unknown }> = [];
+      const capturedCalls: Array<{
+        taskId: string;
+        repoId: string;
+        options: unknown;
+      }> = [];
 
       const mockServerSync = {
         isDegraded: () => false,
+        isTaskQueued: () => false,
         markTaskReady: mock(
           async (taskId: string, repoId: string, options?: { workflowName?: string }) => {
             capturedCalls.push({ taskId, repoId, options });
@@ -98,10 +107,15 @@ describe("QueueProcessor", () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
 
-      const capturedCalls: Array<{ taskId: string; repoId: string; options: unknown }> = [];
+      const capturedCalls: Array<{
+        taskId: string;
+        repoId: string;
+        options: unknown;
+      }> = [];
 
       const mockServerSync = {
         isDegraded: () => false,
+        isTaskQueued: () => false,
         markTaskReady: mock(
           async (taskId: string, repoId: string, options?: { workflowName?: string }) => {
             capturedCalls.push({ taskId, repoId, options });
@@ -222,6 +236,7 @@ describe("QueueProcessor", () => {
 
       const mockServerSync = {
         isDegraded: () => false,
+        isTaskQueued: () => false,
         markTaskReady: mock(async () => {
           throw new Error("Connection failed");
         }),
@@ -252,6 +267,7 @@ describe("QueueProcessor", () => {
 
       const mockServerSync = {
         isDegraded: () => false,
+        isTaskQueued: () => false,
         markTaskReady: mock(async () => ({
           status: "QUEUED" as const,
           queued: true,
@@ -283,6 +299,7 @@ describe("QueueProcessor", () => {
 
       const mockServerSync = {
         isDegraded: () => false,
+        isTaskQueued: () => false,
         markTaskReady: mock(async () => ({
           status: "WORKING" as const,
           execution: { id: "exec-1", workflowId: "workflow_simple" },
@@ -314,6 +331,7 @@ describe("QueueProcessor", () => {
 
       const mockServerSync = {
         isDegraded: () => false,
+        isTaskQueued: () => false,
         markTaskReady: mock(async () => ({
           status: "WORKING" as const,
           step: {
@@ -420,6 +438,7 @@ describe("QueueProcessor", () => {
       let processCount = 0;
       const mockServerSync = {
         isDegraded: () => false,
+        isTaskQueued: () => false,
         markTaskReady: mock(async () => {
           processCount++;
           return { queued: true };

@@ -1,5 +1,5 @@
 import type { Kysely } from "kysely";
-import { type CommandContext, createCommandContext } from "../context.ts";
+import { createCommandContext, type LocalServerContext } from "../context.ts";
 import { createDatabase } from "./connection.ts";
 import { runMigrations } from "./migrations.ts";
 import type { Database, Task } from "./schema.ts";
@@ -7,7 +7,7 @@ import type { Database, Task } from "./schema.ts";
 // biome-ignore lint/suspicious/noExplicitAny: JSON responses in tests need flexible typing
 export type AnyJson = any;
 
-export const createTestContext = async (): Promise<CommandContext> => {
+export const createTestContext = async (): Promise<LocalServerContext> => {
   const db = await createTestDb();
   return createCommandContext(db);
 };

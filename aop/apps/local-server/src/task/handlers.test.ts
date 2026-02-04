@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitManager } from "@aop/git-manager";
 import type { Kysely } from "kysely";
-import { type CommandContext, createCommandContext } from "../context.ts";
+import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
 import {
@@ -17,7 +17,7 @@ import {
 
 describe("task/handlers", () => {
   let db: Kysely<Database>;
-  let ctx: CommandContext;
+  let ctx: LocalServerContext;
 
   beforeEach(async () => {
     db = await createTestDb();
@@ -143,7 +143,9 @@ describe("task/handlers", () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
 
-      const result = await markTaskReady(ctx, "task-1", { workflow: "custom-flow" });
+      const result = await markTaskReady(ctx, "task-1", {
+        workflow: "custom-flow",
+      });
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -266,10 +268,14 @@ describe("task/handlers", () => {
       testRepoPath = join(tmpdir(), `aop-test-apply-${Date.now()}`);
       mkdirSync(testRepoPath, { recursive: true });
 
-      const initProc = Bun.spawn(["git", "init", "-b", "main"], { cwd: testRepoPath });
+      const initProc = Bun.spawn(["git", "init", "-b", "main"], {
+        cwd: testRepoPath,
+      });
       await initProc.exited;
 
-      const configName = Bun.spawn(["git", "config", "user.name", "Test"], { cwd: testRepoPath });
+      const configName = Bun.spawn(["git", "config", "user.name", "Test"], {
+        cwd: testRepoPath,
+      });
       await configName.exited;
 
       const configEmail = Bun.spawn(["git", "config", "user.email", "test@test.com"], {
@@ -378,7 +384,9 @@ describe("task/handlers", () => {
       await gitManager.createWorktree("task-1", "main");
 
       // Commit the .gitignore changes created by worktree setup
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], { cwd: testRepoPath });
+      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
+        cwd: testRepoPath,
+      });
       await addIgnore.exited;
       const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
         cwd: testRepoPath,
@@ -402,7 +410,9 @@ describe("task/handlers", () => {
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
 
       // Commit the .gitignore changes created by worktree setup
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], { cwd: testRepoPath });
+      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
+        cwd: testRepoPath,
+      });
       await addIgnore.exited;
       const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
         cwd: testRepoPath,
@@ -411,7 +421,9 @@ describe("task/handlers", () => {
 
       writeFileSync(join(worktreeInfo.path, "new-file.txt"), "New content");
 
-      const addProc = Bun.spawn(["git", "add", "."], { cwd: worktreeInfo.path });
+      const addProc = Bun.spawn(["git", "add", "."], {
+        cwd: worktreeInfo.path,
+      });
       await addProc.exited;
 
       const commitProc = Bun.spawn(["git", "commit", "-m", "Add new file"], {
@@ -436,7 +448,9 @@ describe("task/handlers", () => {
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
 
       // Commit the .gitignore changes created by worktree setup
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], { cwd: testRepoPath });
+      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
+        cwd: testRepoPath,
+      });
       await addIgnore.exited;
       const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
         cwd: testRepoPath,
@@ -445,7 +459,9 @@ describe("task/handlers", () => {
 
       writeFileSync(join(worktreeInfo.path, "blocked-file.txt"), "Blocked content");
 
-      const addProc = Bun.spawn(["git", "add", "."], { cwd: worktreeInfo.path });
+      const addProc = Bun.spawn(["git", "add", "."], {
+        cwd: worktreeInfo.path,
+      });
       await addProc.exited;
 
       const commitProc = Bun.spawn(["git", "commit", "-m", "Add blocked file"], {
@@ -470,7 +486,9 @@ describe("task/handlers", () => {
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
 
       // Commit the .gitignore changes created by worktree setup
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], { cwd: testRepoPath });
+      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
+        cwd: testRepoPath,
+      });
       await addIgnore.exited;
       const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
         cwd: testRepoPath,
@@ -479,7 +497,9 @@ describe("task/handlers", () => {
 
       writeFileSync(join(worktreeInfo.path, "new-file.txt"), "New content");
 
-      const addProc = Bun.spawn(["git", "add", "."], { cwd: worktreeInfo.path });
+      const addProc = Bun.spawn(["git", "add", "."], {
+        cwd: worktreeInfo.path,
+      });
       await addProc.exited;
 
       const commitProc = Bun.spawn(["git", "commit", "-m", "Add new file"], {
@@ -506,7 +526,9 @@ describe("task/handlers", () => {
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
 
       // Commit the .gitignore changes in main before creating worktree changes
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], { cwd: testRepoPath });
+      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
+        cwd: testRepoPath,
+      });
       await addIgnore.exited;
       const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
         cwd: testRepoPath,
@@ -515,7 +537,9 @@ describe("task/handlers", () => {
 
       writeFileSync(join(worktreeInfo.path, "README.md"), "# Modified in worktree");
 
-      const addProc = Bun.spawn(["git", "add", "."], { cwd: worktreeInfo.path });
+      const addProc = Bun.spawn(["git", "add", "."], {
+        cwd: worktreeInfo.path,
+      });
       await addProc.exited;
 
       const commitProc = Bun.spawn(["git", "commit", "-m", "Modify README"], {

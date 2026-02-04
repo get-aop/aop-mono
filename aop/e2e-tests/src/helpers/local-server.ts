@@ -107,3 +107,26 @@ export const triggerServerRefresh = async (url?: string): Promise<boolean> => {
     return false;
   }
 };
+
+/**
+ * Directly set task status via test-only API endpoint.
+ * Requires AOP_TEST_MODE=true on the server.
+ */
+export const setTaskStatus = async (
+  taskId: string,
+  status: string,
+  url?: string,
+): Promise<boolean> => {
+  const serverUrl = url ?? DEFAULT_LOCAL_SERVER_URL;
+  try {
+    const response = await fetch(`${serverUrl}/api/tasks/${taskId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+      signal: AbortSignal.timeout(5000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+};

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Kysely } from "kysely";
 import { createApp } from "./app.ts";
-import { type CommandContext, createCommandContext } from "./context.ts";
+import { createCommandContext, type LocalServerContext } from "./context.ts";
 import type { Database } from "./db/schema.ts";
 import { type AnyJson, createTestDb, createTestRepo, createTestTask } from "./db/test-utils.ts";
 
@@ -13,7 +13,7 @@ const TEST_SERVER_URL = `http://localhost:${TEST_PORT}`;
 
 describe("CLI integration tests", () => {
   let db: Kysely<Database>;
-  let ctx: CommandContext;
+  let ctx: LocalServerContext;
   let server: ReturnType<typeof Bun.serve>;
   let tempDir: string;
 
@@ -58,7 +58,9 @@ describe("CLI integration tests", () => {
     });
 
     test("returns repos with tasks", async () => {
-      await createTestRepo(db, "status-repo", "/path/to/status-repo", { maxConcurrentTasks: 2 });
+      await createTestRepo(db, "status-repo", "/path/to/status-repo", {
+        maxConcurrentTasks: 2,
+      });
       await createTestTask(db, "status-task-1", "status-repo", "changes/feat-1", "DRAFT");
 
       const response = await fetch(`${TEST_SERVER_URL}/api/status`);
@@ -246,7 +248,9 @@ describe("CLI integration tests", () => {
 
   describe("refresh endpoint", () => {
     test("triggers refresh when orchestrator is ready", async () => {
-      const response = await fetch(`${TEST_SERVER_URL}/api/refresh`, { method: "POST" });
+      const response = await fetch(`${TEST_SERVER_URL}/api/refresh`, {
+        method: "POST",
+      });
       const body: AnyJson = await response.json();
 
       expect(response.ok).toBe(true);

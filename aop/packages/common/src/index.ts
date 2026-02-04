@@ -25,5 +25,26 @@ export {
   TaskReadyResponseSchema,
   TaskStatusResponseSchema,
 } from "./protocol";
+export type {
+  DashboardEvent,
+  DashboardHeartbeatEvent,
+  DashboardInitEvent,
+  DashboardTask,
+  DashboardTaskCreatedEvent,
+  DashboardTaskRemovedEvent,
+  DashboardTaskStatusChangedEvent,
+  SSECapacity,
+  SSEEvent,
+  SSEEventType,
+  SSEHeartbeatEvent,
+  SSEInitEvent,
+  SSERepo,
+  SSERepoWithTasks,
+  SSEServerStatus,
+  SSETask,
+  SSETaskCreatedEvent,
+  SSETaskRemovedEvent,
+  SSETaskStatusChangedEvent,
+} from "./types/sse-events";
 export type { Task } from "./types/task";
 export { TaskStatus } from "./types/task";

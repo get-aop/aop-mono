@@ -23,6 +23,7 @@ export {
   isLocalServerRunning,
   type LocalServerContext,
   type StartLocalServerOptions,
+  setTaskStatus,
   startLocalServer,
   stopLocalServer,
   triggerServerRefresh,

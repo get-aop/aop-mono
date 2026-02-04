@@ -2,8 +2,10 @@ import type { Kysely } from "kysely";
 import type {
   Database,
   Execution,
+  ExecutionLog,
   ExecutionUpdate,
   NewExecution,
+  NewExecutionLog,
   NewStepExecution,
   StepExecution,
   StepExecutionUpdate,
@@ -22,6 +24,9 @@ export interface ExecutionRepository {
   getStepExecutionsByExecutionId: (executionId: string) => Promise<StepExecution[]>;
   getLatestStepExecution: (taskId: string) => Promise<StepExecution | null>;
   cancelRunningStepExecutions: () => Promise<number>;
+
+  saveExecutionLogs: (logs: NewExecutionLog[]) => Promise<void>;
+  getExecutionLogs: (executionId: string) => Promise<ExecutionLog[]>;
 }
 
 export const createExecutionRepository = (db: Kysely<Database>): ExecutionRepository => ({
@@ -168,5 +173,19 @@ export const createExecutionRepository = (db: Kysely<Database>): ExecutionReposi
       .execute();
 
     return running.length;
+  },
+
+  saveExecutionLogs: async (logs: NewExecutionLog[]): Promise<void> => {
+    if (logs.length === 0) return;
+    await db.insertInto("execution_logs").values(logs).execute();
+  },
+
+  getExecutionLogs: async (executionId: string): Promise<ExecutionLog[]> => {
+    return db
+      .selectFrom("execution_logs")
+      .selectAll()
+      .where("execution_id", "=", executionId)
+      .orderBy("id", "asc")
+      .execute();
   },
 });

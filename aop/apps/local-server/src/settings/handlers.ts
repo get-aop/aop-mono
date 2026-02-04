@@ -1,11 +1,15 @@
-import type { CommandContext } from "../context.ts";
+import type { LocalServerContext } from "../context.ts";
 import { DEFAULT_SETTINGS, isValidSettingKey, type SettingKey, VALID_KEYS } from "./types.ts";
 
 export type GetSettingResult =
   | { success: true; key: string; value: string }
   | { success: false; error: GetSettingError };
 
-export type GetSettingError = { code: "INVALID_KEY"; key: string; validKeys: SettingKey[] };
+export type GetSettingError = {
+  code: "INVALID_KEY";
+  key: string;
+  validKeys: SettingKey[];
+};
 
 export type GetAllSettingsResult = {
   success: true;
@@ -16,9 +20,16 @@ export type SetSettingResult =
   | { success: true; key: string; value: string }
   | { success: false; error: SetSettingError };
 
-export type SetSettingError = { code: "INVALID_KEY"; key: string; validKeys: SettingKey[] };
+export type SetSettingError = {
+  code: "INVALID_KEY";
+  key: string;
+  validKeys: SettingKey[];
+};
 
-export const getSetting = async (ctx: CommandContext, key: string): Promise<GetSettingResult> => {
+export const getSetting = async (
+  ctx: LocalServerContext,
+  key: string,
+): Promise<GetSettingResult> => {
   if (!isValidSettingKey(key)) {
     return {
       success: false,
@@ -30,7 +41,7 @@ export const getSetting = async (ctx: CommandContext, key: string): Promise<GetS
   return { success: true, key, value };
 };
 
-export const getAllSettings = async (ctx: CommandContext): Promise<GetAllSettingsResult> => {
+export const getAllSettings = async (ctx: LocalServerContext): Promise<GetAllSettingsResult> => {
   const dbSettings = await ctx.settingsRepository.getAll();
   const settingsMap = new Map(dbSettings.map((s) => [s.key, s.value]));
 
@@ -43,7 +54,7 @@ export const getAllSettings = async (ctx: CommandContext): Promise<GetAllSetting
 };
 
 export const setSetting = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   key: string,
   value: string,
 ): Promise<SetSettingResult> => {
@@ -58,7 +69,7 @@ export const setSetting = async (
   return { success: true, key, value };
 };
 
-export const checkDbConnection = async (ctx: CommandContext): Promise<boolean> => {
+export const checkDbConnection = async (ctx: LocalServerContext): Promise<boolean> => {
   try {
     await ctx.settingsRepository.get("max_concurrent_tasks");
     return true;

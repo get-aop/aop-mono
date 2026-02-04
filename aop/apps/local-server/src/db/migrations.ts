@@ -13,6 +13,7 @@ export const runMigrations = async (db: Kysely<Database>): Promise<void> => {
   await createExecutionsTable(db);
   await createStepExecutionsTable(db);
   await addStepExecutionSignalColumns(db);
+  await createExecutionLogsTable(db);
 };
 
 const createSettingsTable = async (db: Kysely<Database>): Promise<void> => {
@@ -162,4 +163,23 @@ const addStepExecutionSignalColumns = async (db: Kysely<Database>): Promise<void
   if (!columns.includes("signal")) {
     await sql`ALTER TABLE step_executions ADD COLUMN signal TEXT`.execute(db);
   }
+};
+
+const createExecutionLogsTable = async (db: Kysely<Database>): Promise<void> => {
+  await db.schema
+    .createTable("execution_logs")
+    .ifNotExists()
+    .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+    .addColumn("execution_id", "text", (col) => col.notNull().references("executions.id"))
+    .addColumn("stream", "text", (col) => col.notNull())
+    .addColumn("content", "text", (col) => col.notNull())
+    .addColumn("timestamp", "text", (col) => col.notNull())
+    .execute();
+
+  await db.schema
+    .createIndex("idx_execution_logs_execution_id")
+    .ifNotExists()
+    .on("execution_logs")
+    .column("execution_id")
+    .execute();
 };

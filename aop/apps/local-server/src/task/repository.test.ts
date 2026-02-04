@@ -474,6 +474,66 @@ describe("task/repository", () => {
 
       expect(task?.id).toBe("task-3");
     });
+
+    test("excludes orphaned tasks whose repo no longer exists", async () => {
+      // Create a READY task referencing a repo that doesn't exist
+      const now = new Date();
+      await db
+        .insertInto("tasks")
+        .values({
+          id: "orphan-task",
+          repo_id: "deleted-repo",
+          change_path: "changes/orphan",
+          status: "READY",
+          ready_at: new Date(now.getTime() - 1000).toISOString(),
+        })
+        .execute();
+
+      // Create a valid READY task
+      await db
+        .insertInto("tasks")
+        .values({
+          id: "valid-task",
+          repo_id: "repo-1",
+          change_path: "changes/valid",
+          status: "READY",
+          ready_at: now.toISOString(),
+        })
+        .execute();
+
+      const limits = {
+        globalMax: 5,
+        getRepoMax: async () => 2,
+      };
+
+      const task = await repo.getNextExecutable(limits);
+
+      // Should return the valid task, not the orphan
+      expect(task?.id).toBe("valid-task");
+    });
+
+    test("returns null when only orphaned tasks exist", async () => {
+      const now = new Date();
+      await db
+        .insertInto("tasks")
+        .values({
+          id: "orphan-task",
+          repo_id: "deleted-repo",
+          change_path: "changes/orphan",
+          status: "READY",
+          ready_at: now.toISOString(),
+        })
+        .execute();
+
+      const limits = {
+        globalMax: 5,
+        getRepoMax: async () => 2,
+      };
+
+      const task = await repo.getNextExecutable(limits);
+
+      expect(task).toBeNull();
+    });
   });
 
   describe("resetStaleWorkingTasks", () => {
@@ -502,6 +562,181 @@ describe("task/repository", () => {
       const count = await repo.resetStaleWorkingTasks();
 
       expect(count).toBe(0);
+    });
+  });
+
+  describe("getMetrics", () => {
+    test("returns zero metrics when no tasks exist", async () => {
+      const metrics = await repo.getMetrics();
+
+      expect(metrics.total).toBe(0);
+      expect(metrics.byStatus.DRAFT).toBe(0);
+      expect(metrics.byStatus.READY).toBe(0);
+      expect(metrics.byStatus.WORKING).toBe(0);
+      expect(metrics.byStatus.BLOCKED).toBe(0);
+      expect(metrics.byStatus.DONE).toBe(0);
+      expect(metrics.byStatus.REMOVED).toBe(0);
+      expect(metrics.successRate).toBe(0);
+      expect(metrics.avgDurationMs).toBe(0);
+      expect(metrics.avgFailedDurationMs).toBe(0);
+    });
+
+    test("counts tasks by status", async () => {
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DRAFT");
+      await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "DRAFT");
+      await createTestTask(db, "task-3", "repo-1", "changes/feat-3", "READY");
+      await createTestTask(db, "task-4", "repo-1", "changes/feat-4", "WORKING");
+      await createTestTask(db, "task-5", "repo-1", "changes/feat-5", "DONE");
+      await createTestTask(db, "task-6", "repo-1", "changes/feat-6", "DONE");
+      await createTestTask(db, "task-7", "repo-1", "changes/feat-7", "DONE");
+      await createTestTask(db, "task-8", "repo-1", "changes/feat-8", "BLOCKED");
+
+      const metrics = await repo.getMetrics();
+
+      expect(metrics.total).toBe(8);
+      expect(metrics.byStatus.DRAFT).toBe(2);
+      expect(metrics.byStatus.READY).toBe(1);
+      expect(metrics.byStatus.WORKING).toBe(1);
+      expect(metrics.byStatus.DONE).toBe(3);
+      expect(metrics.byStatus.BLOCKED).toBe(1);
+      expect(metrics.byStatus.REMOVED).toBe(0);
+    });
+
+    test("calculates success rate as DONE / (DONE + BLOCKED)", async () => {
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DONE");
+      await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "DONE");
+      await createTestTask(db, "task-3", "repo-1", "changes/feat-3", "DONE");
+      await createTestTask(db, "task-4", "repo-1", "changes/feat-4", "BLOCKED");
+
+      const metrics = await repo.getMetrics();
+
+      expect(metrics.successRate).toBe(0.75);
+    });
+
+    test("returns success rate of 0 when no DONE or BLOCKED tasks", async () => {
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DRAFT");
+      await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "READY");
+
+      const metrics = await repo.getMetrics();
+
+      expect(metrics.successRate).toBe(0);
+    });
+
+    test("filters metrics by repoId", async () => {
+      await createTestRepo(db, "repo-2", "/test/repo2");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DONE");
+      await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "DONE");
+      await createTestTask(db, "task-3", "repo-2", "changes/feat-3", "DONE");
+      await createTestTask(db, "task-4", "repo-2", "changes/feat-4", "BLOCKED");
+      await createTestTask(db, "task-5", "repo-2", "changes/feat-5", "BLOCKED");
+
+      const metricsRepo1 = await repo.getMetrics("repo-1");
+      const metricsRepo2 = await repo.getMetrics("repo-2");
+
+      expect(metricsRepo1.total).toBe(2);
+      expect(metricsRepo1.byStatus.DONE).toBe(2);
+      expect(metricsRepo1.successRate).toBe(1);
+
+      expect(metricsRepo2.total).toBe(3);
+      expect(metricsRepo2.byStatus.DONE).toBe(1);
+      expect(metricsRepo2.byStatus.BLOCKED).toBe(2);
+      expect(metricsRepo2.successRate).toBeCloseTo(0.333, 2);
+    });
+
+    test("calculates average duration for completed executions", async () => {
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DONE");
+      await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "DONE");
+
+      const now = new Date();
+      await db
+        .insertInto("executions")
+        .values({
+          id: "exec-1",
+          task_id: "task-1",
+          status: "completed",
+          started_at: new Date(now.getTime() - 10000).toISOString(),
+          completed_at: now.toISOString(),
+        })
+        .execute();
+      await db
+        .insertInto("executions")
+        .values({
+          id: "exec-2",
+          task_id: "task-2",
+          status: "completed",
+          started_at: new Date(now.getTime() - 20000).toISOString(),
+          completed_at: now.toISOString(),
+        })
+        .execute();
+
+      const metrics = await repo.getMetrics();
+
+      expect(metrics.avgDurationMs).toBeCloseTo(15000, -2);
+    });
+
+    test("calculates average duration for failed executions", async () => {
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "BLOCKED");
+      await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "BLOCKED");
+
+      const now = new Date();
+      await db
+        .insertInto("executions")
+        .values({
+          id: "exec-1",
+          task_id: "task-1",
+          status: "failed",
+          started_at: new Date(now.getTime() - 5000).toISOString(),
+          completed_at: now.toISOString(),
+        })
+        .execute();
+      await db
+        .insertInto("executions")
+        .values({
+          id: "exec-2",
+          task_id: "task-2",
+          status: "failed",
+          started_at: new Date(now.getTime() - 15000).toISOString(),
+          completed_at: now.toISOString(),
+        })
+        .execute();
+
+      const metrics = await repo.getMetrics();
+
+      expect(metrics.avgFailedDurationMs).toBeCloseTo(10000, -2);
+    });
+
+    test("filters execution durations by repoId", async () => {
+      await createTestRepo(db, "repo-2", "/test/repo2");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DONE");
+      await createTestTask(db, "task-2", "repo-2", "changes/feat-2", "DONE");
+
+      const now = new Date();
+      await db
+        .insertInto("executions")
+        .values({
+          id: "exec-1",
+          task_id: "task-1",
+          status: "completed",
+          started_at: new Date(now.getTime() - 10000).toISOString(),
+          completed_at: now.toISOString(),
+        })
+        .execute();
+      await db
+        .insertInto("executions")
+        .values({
+          id: "exec-2",
+          task_id: "task-2",
+          status: "completed",
+          started_at: new Date(now.getTime() - 30000).toISOString(),
+          completed_at: now.toISOString(),
+        })
+        .execute();
+
+      const metricsRepo1 = await repo.getMetrics("repo-1");
+      const metricsRepo2 = await repo.getMetrics("repo-2");
+
+      expect(metricsRepo1.avgDurationMs).toBeCloseTo(10000, -2);
+      expect(metricsRepo2.avgDurationMs).toBeCloseTo(30000, -2);
     });
   });
 });

@@ -6,14 +6,15 @@ import { GitManager } from "@aop/git-manager";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
 import { createApp } from "../app.ts";
-import { type CommandContext, createCommandContext } from "../context.ts";
+import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { type AnyJson, createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
+import { ExecutionStatus } from "../executor/execution-types.ts";
 import { createRepoRoutes } from "../repo/routes.ts";
 
 describe("task/routes", () => {
   let db: Kysely<Database>;
-  let ctx: CommandContext;
+  let ctx: LocalServerContext;
   let app: Hono;
 
   beforeEach(async () => {
@@ -25,6 +26,96 @@ describe("task/routes", () => {
 
   afterEach(async () => {
     await db.destroy();
+  });
+
+  describe("GET /api/repos/:repoId/tasks/:taskId/executions", () => {
+    test("returns 404 for non-existent repo", async () => {
+      const res = await app.request("/api/repos/non-existent/tasks/task-1/executions");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("Repo not found");
+    });
+
+    test("returns 404 for non-existent task", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+
+      const res = await app.request("/api/repos/repo-1/tasks/non-existent/executions");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("Task not found");
+    });
+
+    test("returns 404 when task belongs to different repo", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo1");
+      await createTestRepo(db, "repo-2", "/path/to/repo2");
+      await createTestTask(db, "task-1", "repo-2", "changes/feat", "WORKING");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/executions");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("Task not found");
+    });
+
+    test("returns empty array for task with no executions", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/executions");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.executions).toEqual([]);
+    });
+
+    test("returns executions for task", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "WORKING");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: ExecutionStatus.COMPLETED,
+        started_at: "2024-01-01T00:00:00.000Z",
+      });
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/executions");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.executions).toHaveLength(1);
+      expect(body.executions[0].id).toBe("exec-1");
+      expect(body.executions[0].taskId).toBe("task-1");
+      expect(body.executions[0].status).toBe("completed");
+    });
+
+    test("transforms aborted/cancelled status to failed", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "BLOCKED");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: ExecutionStatus.ABORTED,
+        started_at: "2024-01-01T00:00:00.000Z",
+      });
+      await ctx.executionRepository.createExecution({
+        id: "exec-2",
+        task_id: "task-1",
+        status: ExecutionStatus.CANCELLED,
+        started_at: "2024-01-01T00:01:00.000Z",
+      });
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/executions");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.executions).toHaveLength(2);
+      expect(body.executions[0].status).toBe("failed");
+      expect(body.executions[1].status).toBe("failed");
+    });
   });
 
   describe("POST /api/repos/:repoId/tasks/:taskId/ready", () => {
@@ -316,10 +407,14 @@ describe("task/routes", () => {
       testRepoPath = join(tmpdir(), `aop-test-apply-routes-${Date.now()}`);
       mkdirSync(testRepoPath, { recursive: true });
 
-      const initProc = Bun.spawn(["git", "init", "-b", "main"], { cwd: testRepoPath });
+      const initProc = Bun.spawn(["git", "init", "-b", "main"], {
+        cwd: testRepoPath,
+      });
       await initProc.exited;
 
-      const configName = Bun.spawn(["git", "config", "user.name", "Test"], { cwd: testRepoPath });
+      const configName = Bun.spawn(["git", "config", "user.name", "Test"], {
+        cwd: testRepoPath,
+      });
       await configName.exited;
 
       const configEmail = Bun.spawn(["git", "config", "user.email", "test@test.com"], {
@@ -365,7 +460,9 @@ describe("task/routes", () => {
       await gitManager.createWorktree("task-1", "main");
 
       // Commit the .gitignore changes
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], { cwd: testRepoPath });
+      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
+        cwd: testRepoPath,
+      });
       await addIgnore.exited;
       const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
         cwd: testRepoPath,
@@ -391,7 +488,9 @@ describe("task/routes", () => {
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
 
       // Commit the .gitignore changes
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], { cwd: testRepoPath });
+      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
+        cwd: testRepoPath,
+      });
       await addIgnore.exited;
       const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
         cwd: testRepoPath,
@@ -400,7 +499,9 @@ describe("task/routes", () => {
 
       // Add changes to worktree
       writeFileSync(join(worktreeInfo.path, "new-file.txt"), "New content");
-      const addProc = Bun.spawn(["git", "add", "."], { cwd: worktreeInfo.path });
+      const addProc = Bun.spawn(["git", "add", "."], {
+        cwd: worktreeInfo.path,
+      });
       await addProc.exited;
       const commitProc = Bun.spawn(["git", "commit", "-m", "Add new file"], {
         cwd: worktreeInfo.path,
@@ -428,7 +529,9 @@ describe("task/routes", () => {
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
 
       // Commit the .gitignore changes
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], { cwd: testRepoPath });
+      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
+        cwd: testRepoPath,
+      });
       await addIgnore.exited;
       const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
         cwd: testRepoPath,
@@ -437,7 +540,9 @@ describe("task/routes", () => {
 
       // Modify README in worktree
       writeFileSync(join(worktreeInfo.path, "README.md"), "# Modified in worktree");
-      const addProc = Bun.spawn(["git", "add", "."], { cwd: worktreeInfo.path });
+      const addProc = Bun.spawn(["git", "add", "."], {
+        cwd: worktreeInfo.path,
+      });
       await addProc.exited;
       const commitProc = Bun.spawn(["git", "commit", "-m", "Modify README"], {
         cwd: worktreeInfo.path,
@@ -472,7 +577,9 @@ describe("task/routes", () => {
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
 
       // Commit the .gitignore changes
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], { cwd: testRepoPath });
+      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
+        cwd: testRepoPath,
+      });
       await addIgnore.exited;
       const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
         cwd: testRepoPath,
@@ -481,7 +588,9 @@ describe("task/routes", () => {
 
       // Add changes to worktree
       writeFileSync(join(worktreeInfo.path, "new-file.txt"), "New content");
-      const addProc = Bun.spawn(["git", "add", "."], { cwd: worktreeInfo.path });
+      const addProc = Bun.spawn(["git", "add", "."], {
+        cwd: worktreeInfo.path,
+      });
       await addProc.exited;
       const commitProc = Bun.spawn(["git", "commit", "-m", "Add new file"], {
         cwd: worktreeInfo.path,
@@ -502,7 +611,7 @@ describe("task/routes", () => {
 
 describe("task/routes - resolve endpoint", () => {
   let db: Kysely<Database>;
-  let ctx: CommandContext;
+  let ctx: LocalServerContext;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(async () => {

@@ -1,24 +1,25 @@
-import type { CommandContext } from "../context.ts";
-import type { Task } from "../db/schema.ts";
+import type { SSERepoWithTasks, SSEServerStatus, SSETask } from "@aop/common";
+import type { LocalServerContext } from "../context.ts";
+import type { Execution, Task } from "../db/schema.ts";
 
-export interface RepoStatus {
-  id: string;
-  name: string | null;
-  path: string;
-  working: number;
-  max: number;
-  tasks: Task[];
-}
+export type RepoStatus = SSERepoWithTasks;
+export type ServerStatus = SSEServerStatus;
 
-export interface ServerStatus {
-  globalCapacity: {
-    working: number;
-    max: number;
-  };
-  repos: RepoStatus[];
-}
+export const toSSETask = (
+  task: Task,
+  currentExecution?: Pick<Execution, "id"> | null,
+): SSETask => ({
+  id: task.id,
+  repoId: task.repo_id,
+  changePath: task.change_path,
+  status: task.status,
+  createdAt: task.created_at,
+  updatedAt: task.updated_at,
+  errorMessage: undefined,
+  currentExecutionId: currentExecution?.id,
+});
 
-export const getServerStatus = async (ctx: CommandContext): Promise<ServerStatus> => {
+export const getServerStatus = async (ctx: LocalServerContext): Promise<ServerStatus> => {
   const globalMax = Number.parseInt(await ctx.settingsRepository.get("max_concurrent_tasks"), 10);
   const globalWorking = await ctx.taskRepository.countWorking();
 
@@ -26,8 +27,19 @@ export const getServerStatus = async (ctx: CommandContext): Promise<ServerStatus
 
   const repoStatuses = await Promise.all(
     repos.map(async (repo) => {
-      const repoTasks = await ctx.taskRepository.list({ repo_id: repo.id, excludeRemoved: true });
+      const repoTasks = await ctx.taskRepository.list({
+        repo_id: repo.id,
+        excludeRemoved: true,
+      });
       const working = await ctx.taskRepository.countWorking(repo.id);
+
+      const sseTasks = await Promise.all(
+        repoTasks.map(async (task) => {
+          const executions = await ctx.executionRepository.getExecutionsByTaskId(task.id);
+          const runningExecution = executions.find((e) => e.status === "running");
+          return toSSETask(task, runningExecution);
+        }),
+      );
 
       return {
         id: repo.id,
@@ -35,7 +47,7 @@ export const getServerStatus = async (ctx: CommandContext): Promise<ServerStatus
         path: repo.path,
         working,
         max: repo.max_concurrent_tasks ?? 1,
-        tasks: repoTasks,
+        tasks: sseTasks,
       };
     }),
   );

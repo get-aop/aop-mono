@@ -2,7 +2,7 @@
 
 import { configureLogging, getLogger } from "@aop/infra";
 import { createApp } from "./app.ts";
-import { getPort } from "./config.ts";
+import { getDashboardDevOrigin, getDashboardStaticPath, getPort } from "./config.ts";
 import { createCommandContext } from "./context.ts";
 import { createDatabase, getDefaultDbPath } from "./db/connection.ts";
 import { runMigrations } from "./db/migrations.ts";
@@ -29,12 +29,15 @@ const main = async () => {
     orchestratorStatus: () => orchestrator.getStatus(),
     isReady: () => orchestrator.isReady(),
     triggerRefresh: () => orchestrator.triggerRefresh(),
+    dashboardStaticPath: getDashboardStaticPath(),
+    dashboardDevOrigin: getDashboardDevOrigin(),
   });
 
   const server = Bun.serve({
     fetch: app.fetch,
     port,
     hostname: "127.0.0.1",
+    idleTimeout: 60, // Support SSE connections with 30s heartbeat
   });
 
   logger.info("Local server listening on http://127.0.0.1:{port}", { port });

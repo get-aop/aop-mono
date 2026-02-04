@@ -3,14 +3,14 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Kysely } from "kysely";
-import { type CommandContext, createCommandContext } from "../context.ts";
+import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
 import { resolveTask, resolveTaskByChangePath } from "./resolve.ts";
 
 describe("task/resolve", () => {
   let db: Kysely<Database>;
-  let ctx: CommandContext;
+  let ctx: LocalServerContext;
 
   beforeEach(async () => {
     db = await createTestDb();

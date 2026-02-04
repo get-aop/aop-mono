@@ -3,14 +3,14 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Kysely } from "kysely";
-import { type CommandContext, createCommandContext } from "../context.ts";
+import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
 import { executeTask } from "./executor.ts";
 
 describe("executeTask", () => {
   let db: Kysely<Database>;
-  let ctx: CommandContext;
+  let ctx: LocalServerContext;
   let testRepoPath: string;
   let testLogsDir: string;
 
@@ -25,7 +25,9 @@ describe("executeTask", () => {
     mkdirSync(testRepoPath, { recursive: true });
     const proc = Bun.spawn(["git", "init"], { cwd: testRepoPath });
     await proc.exited;
-    const configName = Bun.spawn(["git", "config", "user.name", "Test"], { cwd: testRepoPath });
+    const configName = Bun.spawn(["git", "config", "user.name", "Test"], {
+      cwd: testRepoPath,
+    });
     await configName.exited;
     const configEmail = Bun.spawn(["git", "config", "user.email", "test@test.com"], {
       cwd: testRepoPath,
@@ -35,7 +37,9 @@ describe("executeTask", () => {
     await addFile.exited;
     const gitAdd = Bun.spawn(["git", "add", "."], { cwd: testRepoPath });
     await gitAdd.exited;
-    const gitCommit = Bun.spawn(["git", "commit", "-m", "Initial commit"], { cwd: testRepoPath });
+    const gitCommit = Bun.spawn(["git", "commit", "-m", "Initial commit"], {
+      cwd: testRepoPath,
+    });
     await gitCommit.exited;
   });
 
@@ -50,7 +54,11 @@ describe("executeTask", () => {
   });
 
   const createMockProvider = (
-    runImpl: () => Promise<{ exitCode: number; sessionId?: string; timedOut: boolean }>,
+    runImpl: () => Promise<{
+      exitCode: number;
+      sessionId?: string;
+      timedOut: boolean;
+    }>,
   ) => ({
     run: mock(runImpl),
   });

@@ -65,6 +65,7 @@ export interface ServerSync {
   completeStep(stepId: string, result: StepCompletePayload): Promise<StepCompleteResponse>;
   getTaskStatus(taskId: string): Promise<TaskStatusResponse>;
   isDegraded(): boolean;
+  isTaskQueued(taskId: string): boolean;
   getQueuedReadyTasks(): string[];
   retryQueuedReadyTasks(): Promise<void>;
   flushOfflineQueue(): Promise<void>;
@@ -248,6 +249,10 @@ class ServerSyncImpl implements ServerSync {
     return this.degraded;
   }
 
+  isTaskQueued(taskId: string): boolean {
+    return this.queuedReadyTasks.has(taskId);
+  }
+
   getQueuedReadyTasks(): string[] {
     return Array.from(this.queuedReadyTasks);
   }
@@ -396,6 +401,7 @@ export const createDegradedServerSync = (): ServerSync => {
       throw new Error("Cannot get task status in degraded mode");
     },
     isDegraded: () => true,
+    isTaskQueued: () => false,
     getQueuedReadyTasks: () => [],
     retryQueuedReadyTasks: async () => {},
     flushOfflineQueue: async () => {},

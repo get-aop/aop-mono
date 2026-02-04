@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import type { CommandContext } from "../context.ts";
+import type { LocalServerContext } from "../context.ts";
 import { getAllSettings, getSetting, setSetting } from "./handlers.ts";
 
-export const createSettingsRoutes = (ctx: CommandContext) => {
+export const createSettingsRoutes = (ctx: LocalServerContext) => {
   const routes = new Hono();
 
   routes.get("/", async (c) => {

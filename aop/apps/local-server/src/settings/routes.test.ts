@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
-import { type CommandContext, createCommandContext } from "../context.ts";
+import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { type AnyJson, createTestDb } from "../db/test-utils.ts";
 import { createSettingsRoutes } from "./routes.ts";
@@ -9,7 +9,7 @@ import { VALID_KEYS } from "./types.ts";
 
 describe("settings/routes", () => {
   let db: Kysely<Database>;
-  let ctx: CommandContext;
+  let ctx: LocalServerContext;
   let app: Hono;
 
   beforeEach(async () => {

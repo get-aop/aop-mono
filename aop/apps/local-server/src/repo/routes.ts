@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import type { CommandContext } from "../context.ts";
+import type { LocalServerContext } from "../context.ts";
 import { createTaskRoutes } from "../task/routes";
 import { getRepoById, getRepoTasks, initRepo, removeRepo } from "./handlers.ts";
 
-export const createRepoRoutes = (ctx: CommandContext) => {
+export const createRepoRoutes = (ctx: LocalServerContext) => {
   const routes = new Hono();
 
   routes.post("/", async (c) => {
@@ -41,7 +41,10 @@ export const createRepoRoutes = (ctx: CommandContext) => {
     if (!result.success) {
       if (result.error.code === "HAS_WORKING_TASKS") {
         return c.json(
-          { error: "Cannot remove repo with working tasks", count: result.error.count },
+          {
+            error: "Cannot remove repo with working tasks",
+            count: result.error.count,
+          },
           409,
         );
       }

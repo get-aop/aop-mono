@@ -5,17 +5,20 @@ import {
   NoChangesError,
   WorktreeNotFoundError,
 } from "@aop/git-manager";
-import type { CommandContext } from "../context.ts";
+import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { abortTask } from "../executor/index.ts";
 import { resolveTask } from "./resolve.ts";
 
-export const getTaskById = async (ctx: CommandContext, taskId: string): Promise<Task | null> => {
+export const getTaskById = async (
+  ctx: LocalServerContext,
+  taskId: string,
+): Promise<Task | null> => {
   return ctx.taskRepository.get(taskId);
 };
 
 export const resolveTaskByIdentifier = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   identifier: string,
 ): Promise<Task | null> => {
   return resolveTask(ctx.taskRepository, ctx.repoRepository, identifier);
@@ -36,7 +39,7 @@ export interface MarkTaskReadyOptions {
 }
 
 export const markTaskReady = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   identifier: string,
   options?: MarkTaskReadyOptions,
 ): Promise<MarkTaskReadyResult> => {
@@ -46,11 +49,17 @@ export const markTaskReady = async (
   }
 
   if (task.status === "READY") {
-    return { success: false, error: { code: "ALREADY_READY", taskId: task.id } };
+    return {
+      success: false,
+      error: { code: "ALREADY_READY", taskId: task.id },
+    };
   }
 
   if (task.status !== "DRAFT" && task.status !== "BLOCKED") {
-    return { success: false, error: { code: "INVALID_STATUS", status: task.status } };
+    return {
+      success: false,
+      error: { code: "INVALID_STATUS", status: task.status },
+    };
   }
 
   const updated = await ctx.taskRepository.update(task.id, {
@@ -81,7 +90,7 @@ export interface RemoveTaskOptions {
 }
 
 export const removeTask = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   identifier: string,
   options: RemoveTaskOptions = {},
 ): Promise<RemoveTaskResult> => {
@@ -91,12 +100,18 @@ export const removeTask = async (
   }
 
   if (task.status === "REMOVED") {
-    return { success: false, error: { code: "ALREADY_REMOVED", taskId: task.id } };
+    return {
+      success: false,
+      error: { code: "ALREADY_REMOVED", taskId: task.id },
+    };
   }
 
   if (task.status === "WORKING") {
     if (!options.force) {
-      return { success: false, error: { code: "TASK_WORKING", taskId: task.id } };
+      return {
+        success: false,
+        error: { code: "TASK_WORKING", taskId: task.id },
+      };
     }
 
     await abortTask(ctx, task.id);
@@ -125,7 +140,7 @@ export type ApplyTaskError =
   | { code: "WORKTREE_NOT_FOUND"; taskId: string };
 
 export const applyTask = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   identifier: string,
 ): Promise<ApplyTaskResult> => {
   const task = await resolveTask(ctx.taskRepository, ctx.repoRepository, identifier);
@@ -134,12 +149,18 @@ export const applyTask = async (
   }
 
   if (task.status !== "DONE" && task.status !== "BLOCKED") {
-    return { success: false, error: { code: "INVALID_STATUS", status: task.status } };
+    return {
+      success: false,
+      error: { code: "INVALID_STATUS", status: task.status },
+    };
   }
 
   const repo = await ctx.repoRepository.getById(task.repo_id);
   if (!repo) {
-    return { success: false, error: { code: "REPO_NOT_FOUND", taskId: task.id } };
+    return {
+      success: false,
+      error: { code: "REPO_NOT_FOUND", taskId: task.id },
+    };
   }
 
   const gitManager = new GitManager({ repoPath: repo.path });

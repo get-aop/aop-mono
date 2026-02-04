@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import type { ExecutionInfo, StepCommand } from "@aop/common/protocol";
 import { getLogger } from "@aop/infra";
 import type { OrchestratorStatus } from "../app.ts";
-import type { CommandContext } from "../context.ts";
+import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { executeTask } from "../executor/executor.ts";
 import { SettingKey } from "../settings/types.ts";
@@ -32,7 +32,7 @@ interface ExecutingTask {
   promise: Promise<void>;
 }
 
-export const createOrchestrator = (ctx: CommandContext): Orchestrator => {
+export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
   let watcher: WatcherManager | null = null;
   let ticker: Ticker | null = null;
   let queueProcessor: QueueProcessor | null = null;
@@ -155,7 +155,10 @@ export const createOrchestrator = (ctx: CommandContext): Orchestrator => {
     )
       .then(() => {})
       .catch((err) => {
-        logger.error("Task execution failed: {error}", { taskId: task.id, error: String(err) });
+        logger.error("Task execution failed: {error}", {
+          taskId: task.id,
+          error: String(err),
+        });
       })
       .finally(() => {
         executingTasks.delete(task.id);
@@ -239,11 +242,15 @@ export const createOrchestrator = (ctx: CommandContext): Orchestrator => {
 
     const queueSize = serverSync.getOfflineQueueSize();
     if (queueSize > 0) {
-      logger.info("Flushing {count} queued server requests before shutdown", { count: queueSize });
+      logger.info("Flushing {count} queued server requests before shutdown", {
+        count: queueSize,
+      });
       try {
         await serverSync.flushOfflineQueue();
       } catch (err) {
-        logger.warn("Failed to flush offline queue: {error}", { error: String(err) });
+        logger.warn("Failed to flush offline queue: {error}", {
+          error: String(err),
+        });
       }
     }
   };
@@ -257,7 +264,11 @@ export const createOrchestrator = (ctx: CommandContext): Orchestrator => {
     if (resetTasks > 0 || cancelledExecutions > 0 || cancelledSteps > 0) {
       logger.info(
         "Reset {taskCount} stale tasks, cancelled {execCount} executions and {stepCount} steps",
-        { taskCount: resetTasks, execCount: cancelledExecutions, stepCount: cancelledSteps },
+        {
+          taskCount: resetTasks,
+          execCount: cancelledExecutions,
+          stepCount: cancelledSteps,
+        },
       );
     }
   };

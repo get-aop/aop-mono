@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@theme {
+  /* Foundation */
+  --color-aop-black: #0a0a0b;
+  --color-aop-darkest: #101012;
+  --color-aop-dark: #18181b;
+  --color-aop-charcoal: #27272a;
+
+  /* Content */
+  --color-aop-cream: #fafaf9;
+  --color-aop-off-white: #f4f4f5;
+  --color-aop-warm-gray: #e4e4e7;
+
+  /* Neutral */
+  --color-aop-slate: #71717a;
+  --color-aop-slate-dark: #52525b;
+  --color-aop-slate-light: #a1a1aa;
+
+  /* Accent */
+  --color-aop-amber: #d97706;
+  --color-aop-amber-light: #f59e0b;
+  --color-aop-amber-muted: #b45309;
+
+  /* Status */
+  --color-aop-success: #059669;
+  --color-aop-working: #2563eb;
+  --color-aop-blocked: #dc2626;
+
+  /* Fonts */
+  --font-display: "Jura", system-ui, sans-serif;
+  --font-body: "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "Geist Mono", monospace;
+
+  /* Border radius */
+  --radius-aop: 4px;
+  --radius-aop-lg: 8px;
+}
+
+/* Base styles */
+html {
+  font-family: var(--font-body);
+}
+
+/* Shimmer animation for working status */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.2) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Pulse animation for idle status */
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-aop-darkest);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-aop-charcoal);
+  border-radius: var(--radius-aop);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-aop-slate-dark);
+}

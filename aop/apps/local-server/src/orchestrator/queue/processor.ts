@@ -58,6 +58,10 @@ export const createQueueProcessor = (
     if (!serverSync || serverSync.isDegraded()) {
       return null;
     }
+    // Skip if already queued - return queued response to avoid re-requesting
+    if (serverSync.isTaskQueued(task.id)) {
+      return { status: task.status, queued: true };
+    }
 
     try {
       const options = task.preferred_workflow
@@ -85,7 +89,6 @@ export const createQueueProcessor = (
     }
 
     const log = logger.with({ taskId: task.id, changePath: task.change_path });
-
     const readyResult = await tryMarkTaskReady(task);
 
     if (!readyResult) {
@@ -94,7 +97,7 @@ export const createQueueProcessor = (
     }
 
     if (readyResult.queued) {
-      log.info("Task queued by server, skipping execution");
+      log.debug("Task queued by server, skipping execution");
       return null;
     }
 

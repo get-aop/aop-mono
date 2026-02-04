@@ -51,12 +51,21 @@ export interface StepExecutionsTable {
   ended_at: string | null;
 }
 
+export interface ExecutionLogsTable {
+  id: Generated<number>;
+  execution_id: string;
+  stream: "stdout" | "stderr";
+  content: string;
+  timestamp: string;
+}
+
 export interface Database {
   settings: SettingsTable;
   repos: ReposTable;
   tasks: TasksTable;
   executions: ExecutionsTable;
   step_executions: StepExecutionsTable;
+  execution_logs: ExecutionLogsTable;
 }
 
 export type Setting = Selectable<SettingsTable>;
@@ -77,3 +86,6 @@ export type ExecutionUpdate = Updateable<ExecutionsTable>;
 export type StepExecution = Selectable<StepExecutionsTable>;
 export type NewStepExecution = Insertable<StepExecutionsTable>;
 export type StepExecutionUpdate = Updateable<StepExecutionsTable>;
+
+export type ExecutionLog = Selectable<ExecutionLogsTable>;
+export type NewExecutionLog = Insertable<ExecutionLogsTable>;

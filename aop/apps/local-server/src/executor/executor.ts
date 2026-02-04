@@ -9,9 +9,10 @@ import type {
 } from "@aop/common/protocol";
 import { GitManager, WorktreeExistsError, type WorktreeInfo } from "@aop/git-manager";
 import { createFileOutputHandler, generateTypeId, getLogger } from "@aop/infra";
-import { ClaudeCodeProvider, extractAssistantText } from "@aop/llm-provider";
-import type { CommandContext } from "../context.ts";
+import { ClaudeCodeProvider, extractAssistantText, formatToolInput } from "@aop/llm-provider";
+import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
+import type { LogBuffer } from "../events/log-buffer.ts";
 import type { ServerSync } from "../orchestrator/sync/server-sync.ts";
 import { detectSignal } from "../orchestrator/sync/signal-detector.ts";
 import { createTemplateContext, resolveTemplate } from "../orchestrator/sync/template-resolver.ts";
@@ -22,7 +23,7 @@ import type { ExecuteResult, ExecutorContext } from "./types.ts";
 const logger = getLogger("aop", "executor");
 
 export interface ExecuteTaskOptions {
-  ctx: CommandContext;
+  ctx: LocalServerContext;
   task: Task;
   stepCommand: StepCommand;
   executionInfo: ExecutionInfo;
@@ -32,7 +33,7 @@ export interface ExecuteTaskOptions {
 }
 
 export const executeTask = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   task: Task,
   stepCommand: StepCommand,
   executionInfo: ExecutionInfo,
@@ -65,13 +66,16 @@ export const executeTask = async (
       stepCommand: currentStep,
       executionId: currentExecution.id,
     });
-    log.info("Prompt rendered for step {stepType}, starting agent", { stepType: currentStep.type });
+    log.info("Prompt rendered for step {stepType}, starting agent", {
+      stepType: currentStep.type,
+    });
 
     const result = await runAgentWithTimeout({
       ctx,
       executorCtx,
       prompt,
       stepId,
+      executionId,
       signals: currentStep.signals,
       provider,
     });
@@ -81,6 +85,11 @@ export const executeTask = async (
       status: result.status,
       signal: result.signal,
     });
+
+    const completionStatus = result.status === "success" ? "completed" : "failed";
+    ctx.logBuffer.markComplete(executionId, completionStatus);
+
+    await persistExecutionLogs(ctx, executionId);
 
     const nextStepInfo = await finalizeExecutionAndGetNextStep(
       ctx,
@@ -102,12 +111,14 @@ export const executeTask = async (
 
     currentStep = nextStepInfo.step;
     currentExecution = nextStepInfo.execution;
-    log.info("Continuing to next step: {stepType}", { stepType: currentStep.type });
+    log.info("Continuing to next step: {stepType}", {
+      stepType: currentStep.type,
+    });
   }
 };
 
 export const buildContext = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   task: Task,
   logsDir = join(homedir(), ".aop", "logs"),
 ): Promise<ExecutorContext> => {
@@ -137,12 +148,15 @@ export const buildContext = async (
 };
 
 export const markTaskWorking = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   task: Task,
   worktreePath: string,
   serverSync?: ServerSync,
 ): Promise<void> => {
-  await ctx.taskRepository.update(task.id, { status: "WORKING", worktree_path: worktreePath });
+  await ctx.taskRepository.update(task.id, {
+    status: "WORKING",
+    worktree_path: worktreePath,
+  });
 
   if (serverSync) {
     await syncTaskStatus(serverSync, task.id, task.repo_id, "WORKING");
@@ -167,7 +181,7 @@ const syncTaskStatus = async (
 };
 
 export const createExecutionRecords = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   taskId: string,
   stepType?: string,
 ): Promise<{ executionId: string; stepId: string }> => {
@@ -202,7 +216,9 @@ export const createWorktree = async (ctx: ExecutorContext): Promise<WorktreeInfo
     return res;
   } catch (error) {
     if (error instanceof WorktreeExistsError) {
-      logger.warn("Worktree already exists, skipping creation", { taskId: ctx.task.id });
+      logger.warn("Worktree already exists, skipping creation", {
+        taskId: ctx.task.id,
+      });
       return {
         path: join(ctx.repoPath, ".worktrees", ctx.task.id),
         branch: ctx.task.id,
@@ -236,10 +252,11 @@ export const buildPromptForExecution = async (opts: BuildPromptOptions): Promise
 };
 
 export interface RunAgentOptions {
-  ctx: CommandContext;
+  ctx: LocalServerContext;
   executorCtx: ExecutorContext;
   prompt: string;
   stepId: string;
+  executionId: string;
   /** Signal keywords to detect in agent output */
   signals?: string[];
   /** For testing: inject a custom provider */
@@ -252,6 +269,7 @@ export const runAgentWithTimeout = async (opts: RunAgentOptions): Promise<Execut
     executorCtx,
     prompt,
     stepId,
+    executionId,
     signals = [],
     provider = new ClaudeCodeProvider(),
   } = opts;
@@ -263,7 +281,22 @@ export const runAgentWithTimeout = async (opts: RunAgentOptions): Promise<Execut
     logFile,
     onOutput: (data) => {
       const text = extractAssistantText(data);
-      if (text) collectedText.push(text);
+      if (text) {
+        collectedText.push(text);
+        pushLogLine(ctx.logBuffer, executionId, text, "stdout");
+      }
+
+      if (data.type === "tool_use") {
+        const toolName = (data.tool_name ?? data.name ?? "tool") as string;
+        const input = (data.input ?? {}) as Record<string, unknown>;
+        const formatted = formatToolInput(toolName, input);
+        pushLogLine(ctx.logBuffer, executionId, `[${toolName}] ${formatted}`, "stdout");
+      }
+
+      if (data.type === "result" && data.subtype === "error") {
+        const errorMsg = String(data.result ?? "Unknown error");
+        pushLogLine(ctx.logBuffer, executionId, errorMsg, "stderr");
+      }
     },
   });
 
@@ -275,14 +308,62 @@ export const runAgentWithTimeout = async (opts: RunAgentOptions): Promise<Execut
   });
 
   if (result.sessionId) {
-    await ctx.executionRepository.updateStepExecution(stepId, { session_id: result.sessionId });
+    await ctx.executionRepository.updateStepExecution(stepId, {
+      session_id: result.sessionId,
+    });
   }
 
   const status = result.timedOut ? "timeout" : result.exitCode === 0 ? "success" : "failure";
   const fullOutput = collectedText.join("\n");
   const { signal } = detectSignal(fullOutput, signals);
 
-  return { exitCode: result.exitCode, sessionId: result.sessionId, status, signal };
+  return {
+    exitCode: result.exitCode,
+    sessionId: result.sessionId,
+    status,
+    signal,
+  };
+};
+
+const pushLogLine = (
+  logBuffer: LogBuffer,
+  executionId: string,
+  content: string,
+  stream: "stdout" | "stderr",
+): void => {
+  logBuffer.push(executionId, {
+    stream,
+    content,
+    timestamp: new Date().toISOString(),
+  });
+};
+
+const persistExecutionLogs = async (
+  ctx: LocalServerContext,
+  executionId: string,
+): Promise<void> => {
+  const lines = ctx.logBuffer.getLines(executionId);
+  if (lines.length === 0) return;
+
+  const logs = lines.map((line) => ({
+    execution_id: executionId,
+    stream: line.stream,
+    content: line.content,
+    timestamp: line.timestamp,
+  }));
+
+  try {
+    await ctx.executionRepository.saveExecutionLogs(logs);
+    logger.debug("Persisted {count} log lines for execution {executionId}", {
+      count: logs.length,
+      executionId,
+    });
+  } catch (err) {
+    logger.warn("Failed to persist execution logs: {error}", {
+      executionId,
+      error: String(err),
+    });
+  }
 };
 
 export interface ServerStepInfo {
@@ -302,7 +383,7 @@ interface ServerCompletionResult {
 }
 
 const tryServerCompletion = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   taskId: string,
   result: ExecuteResult,
   serverSync?: ServerSync,
@@ -346,7 +427,7 @@ const tryServerCompletion = async (
 };
 
 export const finalizeExecutionAndGetNextStep = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   taskId: string,
   executionId: string,
   stepId: string,
@@ -378,7 +459,7 @@ export const finalizeExecutionAndGetNextStep = async (
 };
 
 const updateLocalExecutionRecords = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   executionId: string,
   stepId: string,
   result: ExecuteResult,
@@ -418,7 +499,10 @@ const completeStepOnServer = async (
         result.status === "timeout"
           ? { code: "agent_timeout" as const, message: "Agent timed out" }
           : result.status === "failure"
-            ? { code: "agent_crash" as const, message: `Agent exited with code ${result.exitCode}` }
+            ? {
+                code: "agent_crash" as const,
+                message: `Agent exited with code ${result.exitCode}`,
+              }
             : undefined,
       durationMs: 0,
     };

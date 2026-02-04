@@ -1,5 +1,5 @@
 import { getLogger } from "@aop/infra";
-import type { CommandContext } from "../context.ts";
+import type { LocalServerContext } from "../context.ts";
 import type { ServerSync } from "../orchestrator/sync/server-sync.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import { isProcessAlive } from "./process-utils.ts";
@@ -14,7 +14,7 @@ export interface AbortResult {
 }
 
 export const abortTask = async (
-  ctx: CommandContext,
+  ctx: LocalServerContext,
   taskId: string,
   serverSync?: ServerSync,
 ): Promise<AbortResult> => {
@@ -78,7 +78,7 @@ const killAgent = async (pid: number, log: ReturnType<typeof logger.with>): Prom
   return true;
 };
 
-const updateExecutionStatus = async (ctx: CommandContext, taskId: string): Promise<void> => {
+const updateExecutionStatus = async (ctx: LocalServerContext, taskId: string): Promise<void> => {
   const executions = await ctx.executionRepository.getExecutionsByTaskId(taskId);
   const now = new Date().toISOString();
 

@@ -31,13 +31,17 @@ export interface StatusOutput {
 }
 
 export const getTaskStatus = async (taskId: string): Promise<TaskInfo | null> => {
-  const { exitCode, stdout } = await runAopCommand(["status", taskId, "--json"]);
-  if (exitCode !== 0) {
-    return null;
-  }
-
+  // Use resolve endpoint which returns tasks regardless of status (including REMOVED)
+  // The status command filters out REMOVED tasks, so we use the resolve API directly
   try {
-    return JSON.parse(stdout) as TaskInfo;
+    const response = await fetch(`http://localhost:3847/api/tasks/resolve/${taskId}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const data = (await response.json()) as { task: TaskInfo };
+    return data.task;
   } catch {
     return null;
   }

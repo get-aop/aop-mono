@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Kysely } from "kysely";
 import type { OrchestratorStatus } from "../app.ts";
-import { type CommandContext, createCommandContext } from "../context.ts";
+import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { createTestDb } from "../db/test-utils.ts";
 
@@ -15,7 +15,7 @@ interface MockOrchestrator {
   simulateTaskExecution: (taskId: string, durationMs: number) => void;
 }
 
-const createMockOrchestrator = (_ctx: CommandContext): MockOrchestrator => {
+const createMockOrchestrator = (_ctx: LocalServerContext): MockOrchestrator => {
   let ready = false;
   const executingTasks = new Map<string, Promise<void>>();
 
@@ -62,7 +62,7 @@ const createMockOrchestrator = (_ctx: CommandContext): MockOrchestrator => {
 
 describe("orchestrator graceful shutdown", () => {
   let db: Kysely<Database>;
-  let ctx: CommandContext;
+  let ctx: LocalServerContext;
 
   beforeEach(async () => {
     db = await createTestDb();

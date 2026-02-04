@@ -1,6 +1,8 @@
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
 import type { Database, NewTask, Task, TaskUpdate } from "../db/schema.ts";
+import type { TaskEventEmitter } from "../events/task-events.ts";
+import { toSSETask } from "../status/handlers.ts";
 import type { TaskStatus } from "./types.ts";
 
 export interface ListFilters {
@@ -8,6 +10,14 @@ export interface ListFilters {
   repo_id?: string;
   orderByReadyAt?: "asc" | "desc";
   excludeRemoved?: boolean;
+}
+
+export interface TaskMetrics {
+  total: number;
+  byStatus: Record<TaskStatus, number>;
+  successRate: number;
+  avgDurationMs: number;
+  avgFailedDurationMs: number;
 }
 
 export interface ConcurrencyLimits {
@@ -26,176 +36,326 @@ export interface TaskRepository {
   countWorking: (repoId?: string) => Promise<number>;
   getNextExecutable: (limits: ConcurrencyLimits) => Promise<Task | null>;
   resetStaleWorkingTasks: () => Promise<number>;
+  getMetrics: (repoId?: string) => Promise<TaskMetrics>;
 }
 
-export const createTaskRepository = (db: Kysely<Database>): TaskRepository => ({
-  create: async (task: NewTask): Promise<Task> => {
-    return db.insertInto("tasks").values(task).returningAll().executeTakeFirstOrThrow();
-  },
+export interface TaskRepositoryOptions {
+  eventEmitter?: TaskEventEmitter;
+}
 
-  createIdempotent: async (task: NewTask): Promise<Task | null> => {
-    const result = await db
-      .insertInto("tasks")
-      .values(task)
-      .onConflict((oc) =>
-        oc.columns(["repo_id", "change_path"]).doUpdateSet({ repo_id: task.repo_id }),
-      )
-      .returningAll()
-      .executeTakeFirst();
-    return result ?? null;
-  },
+export const createTaskRepository = (
+  db: Kysely<Database>,
+  options: TaskRepositoryOptions = {},
+): TaskRepository => {
+  const { eventEmitter } = options;
 
-  get: async (id: string): Promise<Task | null> => {
-    const task = await db.selectFrom("tasks").selectAll().where("id", "=", id).executeTakeFirst();
-    return task ?? null;
-  },
+  const emitTaskCreated = (task: Task): void => {
+    eventEmitter?.emit({ type: "task-created", task: toSSETask(task) });
+  };
 
-  getByChangePath: async (repoId: string, changePath: string): Promise<Task | null> => {
-    const task = await db
-      .selectFrom("tasks")
-      .selectAll()
-      .where("repo_id", "=", repoId)
-      .where("change_path", "=", changePath)
-      .executeTakeFirst();
-    return task ?? null;
-  },
-
-  update: async (id: string, updates: TaskUpdate): Promise<Task | null> => {
-    const existing = await db
-      .selectFrom("tasks")
-      .select("id")
-      .where("id", "=", id)
-      .executeTakeFirst();
-
-    if (!existing) {
-      return null;
+  const emitStatusChanged = (task: Task, previousStatus: TaskStatus): void => {
+    if (task.status !== previousStatus) {
+      eventEmitter?.emit({
+        type: "task-status-changed",
+        taskId: task.id,
+        previousStatus,
+        newStatus: task.status as TaskStatus,
+        task: toSSETask(task),
+      });
     }
+  };
 
-    await db
-      .updateTable("tasks")
-      .set({
-        ...updates,
-        updated_at: sql`datetime('now')`,
-      })
-      .where("id", "=", id)
-      .execute();
+  const emitTaskRemoved = (task: Task): void => {
+    eventEmitter?.emit({ type: "task-removed", taskId: task.id, task: toSSETask(task) });
+  };
 
-    return db.selectFrom("tasks").selectAll().where("id", "=", id).executeTakeFirstOrThrow();
-  },
+  return {
+    create: async (task: NewTask): Promise<Task> => {
+      const created = await db
+        .insertInto("tasks")
+        .values(task)
+        .returningAll()
+        .executeTakeFirstOrThrow();
+      emitTaskCreated(created);
+      return created;
+    },
 
-  markRemoved: async (id: string): Promise<boolean> => {
-    const existing = await db
-      .selectFrom("tasks")
-      .select(["id", "status"])
-      .where("id", "=", id)
-      .executeTakeFirst();
+    createIdempotent: async (task: NewTask): Promise<Task | null> => {
+      const existing = await db
+        .selectFrom("tasks")
+        .selectAll()
+        .where("repo_id", "=", task.repo_id)
+        .where("change_path", "=", task.change_path)
+        .executeTakeFirst();
 
-    if (!existing || existing.status === "WORKING") {
-      return false;
-    }
+      if (existing) {
+        return existing;
+      }
 
-    await db
-      .updateTable("tasks")
-      .set({
-        status: "REMOVED",
-        updated_at: sql`datetime('now')`,
-      })
-      .where("id", "=", id)
-      .where("status", "!=", "WORKING")
-      .execute();
+      const result = await db
+        .insertInto("tasks")
+        .values(task)
+        .onConflict((oc) =>
+          oc.columns(["repo_id", "change_path"]).doUpdateSet({ repo_id: task.repo_id }),
+        )
+        .returningAll()
+        .executeTakeFirst();
 
-    return true;
-  },
+      if (result) {
+        emitTaskCreated(result);
+      }
+      return result ?? null;
+    },
 
-  list: async (filters?: ListFilters): Promise<Task[]> => {
-    let query = db.selectFrom("tasks").selectAll();
+    get: async (id: string): Promise<Task | null> => {
+      const task = await db.selectFrom("tasks").selectAll().where("id", "=", id).executeTakeFirst();
+      return task ?? null;
+    },
 
-    if (filters?.status) {
-      query = query.where("status", "=", filters.status);
-    }
-    if (filters?.excludeRemoved) {
-      query = query.where("status", "!=", "REMOVED");
-    }
-    if (filters?.repo_id) {
-      query = query.where("repo_id", "=", filters.repo_id);
-    }
-    if (filters?.orderByReadyAt) {
-      query = query.orderBy("ready_at", filters.orderByReadyAt);
-    }
+    getByChangePath: async (repoId: string, changePath: string): Promise<Task | null> => {
+      const task = await db
+        .selectFrom("tasks")
+        .selectAll()
+        .where("repo_id", "=", repoId)
+        .where("change_path", "=", changePath)
+        .executeTakeFirst();
+      return task ?? null;
+    },
 
-    return query.execute();
-  },
+    update: async (id: string, updates: TaskUpdate): Promise<Task | null> => {
+      const existing = await db
+        .selectFrom("tasks")
+        .selectAll()
+        .where("id", "=", id)
+        .executeTakeFirst();
 
-  countWorking: async (repoId?: string): Promise<number> => {
-    let query = db
-      .selectFrom("tasks")
-      .select((eb) => eb.fn.countAll<number>().as("count"))
-      .where("status", "=", "WORKING");
+      if (!existing) {
+        return null;
+      }
 
-    if (repoId) {
-      query = query.where("repo_id", "=", repoId);
-    }
+      const previousStatus = existing.status as TaskStatus;
 
-    const result = await query.executeTakeFirstOrThrow();
-    return result.count;
-  },
+      await db
+        .updateTable("tasks")
+        .set({
+          ...updates,
+          updated_at: sql`datetime('now')`,
+        })
+        .where("id", "=", id)
+        .execute();
 
-  getNextExecutable: async (limits: ConcurrencyLimits): Promise<Task | null> => {
-    const globalWorking = await db
-      .selectFrom("tasks")
-      .select((eb) => eb.fn.countAll<number>().as("count"))
-      .where("status", "=", "WORKING")
-      .executeTakeFirstOrThrow();
+      const updated = await db
+        .selectFrom("tasks")
+        .selectAll()
+        .where("id", "=", id)
+        .executeTakeFirstOrThrow();
 
-    if (globalWorking.count >= limits.globalMax) {
-      return null;
-    }
+      if (updates.status) {
+        emitStatusChanged(updated, previousStatus);
+      }
 
-    const readyTasks = await db
-      .selectFrom("tasks")
-      .selectAll()
-      .where("status", "=", "READY")
-      .orderBy("ready_at", "asc")
-      .execute();
+      return updated;
+    },
 
-    for (const task of readyTasks) {
-      const repoWorking = await db
+    markRemoved: async (id: string): Promise<boolean> => {
+      const existing = await db
+        .selectFrom("tasks")
+        .selectAll()
+        .where("id", "=", id)
+        .executeTakeFirst();
+
+      if (!existing || existing.status === "WORKING") {
+        return false;
+      }
+
+      const previousStatus = existing.status as TaskStatus;
+
+      await db
+        .updateTable("tasks")
+        .set({
+          status: "REMOVED",
+          updated_at: sql`datetime('now')`,
+        })
+        .where("id", "=", id)
+        .where("status", "!=", "WORKING")
+        .execute();
+
+      const updated = await db
+        .selectFrom("tasks")
+        .selectAll()
+        .where("id", "=", id)
+        .executeTakeFirstOrThrow();
+
+      emitStatusChanged(updated, previousStatus);
+      emitTaskRemoved(updated);
+
+      return true;
+    },
+
+    list: async (filters?: ListFilters): Promise<Task[]> => {
+      let query = db.selectFrom("tasks").selectAll();
+
+      if (filters?.status) {
+        query = query.where("status", "=", filters.status);
+      }
+      if (filters?.excludeRemoved) {
+        query = query.where("status", "!=", "REMOVED");
+      }
+      if (filters?.repo_id) {
+        query = query.where("repo_id", "=", filters.repo_id);
+      }
+      if (filters?.orderByReadyAt) {
+        query = query.orderBy("ready_at", filters.orderByReadyAt);
+      }
+
+      return query.execute();
+    },
+
+    countWorking: async (repoId?: string): Promise<number> => {
+      let query = db
+        .selectFrom("tasks")
+        .select((eb) => eb.fn.countAll<number>().as("count"))
+        .where("status", "=", "WORKING");
+
+      if (repoId) {
+        query = query.where("repo_id", "=", repoId);
+      }
+
+      const result = await query.executeTakeFirstOrThrow();
+      return result.count;
+    },
+
+    getNextExecutable: async (limits: ConcurrencyLimits): Promise<Task | null> => {
+      const globalWorking = await db
         .selectFrom("tasks")
         .select((eb) => eb.fn.countAll<number>().as("count"))
         .where("status", "=", "WORKING")
-        .where("repo_id", "=", task.repo_id)
         .executeTakeFirstOrThrow();
 
-      const repoMax = await limits.getRepoMax(task.repo_id);
-
-      if (repoWorking.count < repoMax) {
-        return task;
+      if (globalWorking.count >= limits.globalMax) {
+        return null;
       }
-    }
 
-    return null;
-  },
+      // Join with repos to exclude orphaned tasks whose repo was deleted
+      const readyTasks = await db
+        .selectFrom("tasks")
+        .innerJoin("repos", "tasks.repo_id", "repos.id")
+        .selectAll("tasks")
+        .where("tasks.status", "=", "READY")
+        .orderBy("tasks.ready_at", "asc")
+        .execute();
 
-  resetStaleWorkingTasks: async (): Promise<number> => {
-    const workingTasks = await db
-      .selectFrom("tasks")
-      .select("id")
-      .where("status", "=", "WORKING")
-      .execute();
+      for (const task of readyTasks) {
+        const repoWorking = await db
+          .selectFrom("tasks")
+          .select((eb) => eb.fn.countAll<number>().as("count"))
+          .where("status", "=", "WORKING")
+          .where("repo_id", "=", task.repo_id)
+          .executeTakeFirstOrThrow();
 
-    if (workingTasks.length === 0) {
-      return 0;
-    }
+        const repoMax = await limits.getRepoMax(task.repo_id);
 
-    await db
-      .updateTable("tasks")
-      .set({
-        status: "READY",
-        updated_at: sql`datetime('now')`,
-      })
-      .where("status", "=", "WORKING")
-      .execute();
+        if (repoWorking.count < repoMax) {
+          return task;
+        }
+      }
 
-    return workingTasks.length;
-  },
-});
+      return null;
+    },
+
+    resetStaleWorkingTasks: async (): Promise<number> => {
+      const workingTasks = await db
+        .selectFrom("tasks")
+        .selectAll()
+        .where("status", "=", "WORKING")
+        .execute();
+
+      if (workingTasks.length === 0) {
+        return 0;
+      }
+
+      await db
+        .updateTable("tasks")
+        .set({
+          status: "READY",
+          updated_at: sql`datetime('now')`,
+        })
+        .where("status", "=", "WORKING")
+        .execute();
+
+      for (const task of workingTasks) {
+        const updated = await db
+          .selectFrom("tasks")
+          .selectAll()
+          .where("id", "=", task.id)
+          .executeTakeFirstOrThrow();
+        emitStatusChanged(updated, "WORKING");
+      }
+
+      return workingTasks.length;
+    },
+
+    getMetrics: async (repoId?: string): Promise<TaskMetrics> => {
+      let baseQuery = db.selectFrom("tasks");
+      if (repoId) {
+        baseQuery = baseQuery.where("repo_id", "=", repoId);
+      }
+
+      const tasks = await baseQuery.selectAll().execute();
+
+      const byStatus: Record<TaskStatus, number> = {
+        DRAFT: 0,
+        READY: 0,
+        WORKING: 0,
+        BLOCKED: 0,
+        DONE: 0,
+        REMOVED: 0,
+      };
+
+      for (const task of tasks) {
+        byStatus[task.status as TaskStatus]++;
+      }
+
+      const total = tasks.length;
+      const doneCount = byStatus.DONE;
+      const blockedCount = byStatus.BLOCKED;
+      const successRate = doneCount + blockedCount > 0 ? doneCount / (doneCount + blockedCount) : 0;
+
+      let completedDurationQuery = db
+        .selectFrom("executions")
+        .innerJoin("tasks", "tasks.id", "executions.task_id")
+        .select(
+          sql<number>`AVG((julianday(executions.completed_at) - julianday(executions.started_at)) * 86400000)`.as(
+            "avg_duration",
+          ),
+        )
+        .where("executions.status", "=", "completed");
+
+      let failedDurationQuery = db
+        .selectFrom("executions")
+        .innerJoin("tasks", "tasks.id", "executions.task_id")
+        .select(
+          sql<number>`AVG((julianday(executions.completed_at) - julianday(executions.started_at)) * 86400000)`.as(
+            "avg_duration",
+          ),
+        )
+        .where("executions.status", "=", "failed");
+
+      if (repoId) {
+        completedDurationQuery = completedDurationQuery.where("tasks.repo_id", "=", repoId);
+        failedDurationQuery = failedDurationQuery.where("tasks.repo_id", "=", repoId);
+      }
+
+      const completedDuration = await completedDurationQuery.executeTakeFirst();
+      const failedDuration = await failedDurationQuery.executeTakeFirst();
+
+      return {
+        total,
+        byStatus,
+        successRate,
+        avgDurationMs: completedDuration?.avg_duration ?? 0,
+        avgFailedDurationMs: failedDuration?.avg_duration ?? 0,
+      };
+    },
+  };
+};

@@ -6,11 +6,13 @@
  * 1. PostgreSQL via docker-compose
  * 2. AOP Server (apps/server) - remote API server
  * 3. AOP Local Server (apps/local-server) - local task orchestrator
+ * 4. Dashboard (apps/dashboard) - web UI with HMR
  *
  * Usage:
  *   bun dev                   # Start all services
  *   bun dev --db-only         # Start only PostgreSQL
  *   bun dev --no-local        # Start db + server (no local-server)
+ *   bun dev --no-dashboard    # Start without dashboard
  */
 
 import { configureLogging, getLogger } from "@aop/infra";
@@ -19,10 +21,12 @@ const log = getLogger("dev", "orchestrator");
 
 const SERVER_PORT = 3000;
 const LOCAL_SERVER_PORT = 3847;
+const DASHBOARD_PORT = 5173;
 
 interface ParsedArgs {
   dbOnly: boolean;
   noLocal: boolean;
+  noDashboard: boolean;
 }
 
 interface PortProcess {
@@ -158,6 +162,7 @@ const parseArgs = (): ParsedArgs => {
   return {
     dbOnly: args.includes("--db-only"),
     noLocal: args.includes("--no-local"),
+    noDashboard: args.includes("--no-dashboard"),
   };
 };
 
@@ -226,11 +231,27 @@ const startLocalServer = (): ProcessHandle => {
       AOP_SERVER_URL: `http://localhost:${SERVER_PORT}`,
       AOP_API_KEY: "aop_test_key_dev",
       AOP_PORT: String(LOCAL_SERVER_PORT),
+      AOP_TEST_MODE: "true",
     },
     stdout: "inherit",
     stderr: "inherit",
   });
   return { name: "local-server", proc };
+};
+
+const startDashboard = (): ProcessHandle => {
+  log.info("Starting AOP dashboard...");
+  const proc = Bun.spawn(["bun", "run", "./dev.ts"], {
+    cwd: "./apps/dashboard",
+    env: {
+      ...process.env,
+      DASHBOARD_PORT: String(DASHBOARD_PORT),
+      API_URL: `http://localhost:${LOCAL_SERVER_PORT}`,
+    },
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  return { name: "dashboard", proc };
 };
 
 const shutdown = async (processes: ProcessHandle[], includeDb: boolean): Promise<void> => {
@@ -252,10 +273,15 @@ const shutdown = async (processes: ProcessHandle[], includeDb: boolean): Promise
 const main = async () => {
   await configureLogging({ format: "pretty" });
 
-  const { dbOnly, noLocal } = parseArgs();
+  const { dbOnly, noLocal, noDashboard } = parseArgs();
 
   // Check for existing services on ports we need
-  const portsToCheck = dbOnly ? [] : noLocal ? [SERVER_PORT] : [SERVER_PORT, LOCAL_SERVER_PORT];
+  const portsToCheck: number[] = [];
+  if (!dbOnly) {
+    portsToCheck.push(SERVER_PORT);
+    if (!noLocal) portsToCheck.push(LOCAL_SERVER_PORT);
+    if (!noDashboard) portsToCheck.push(DASHBOARD_PORT);
+  }
   await checkAndKillExistingServices(portsToCheck);
 
   await startPostgres();
@@ -277,6 +303,11 @@ const main = async () => {
 
   if (!noLocal) {
     processes.push(startLocalServer());
+  }
+
+  if (!noDashboard) {
+    processes.push(startDashboard());
+    log.info("Dashboard available at http://localhost:{port}", { port: DASHBOARD_PORT });
   }
 
   log.info("Dev environment started. Press Ctrl+C to stop.");

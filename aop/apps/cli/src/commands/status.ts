@@ -1,3 +1,4 @@
+import type { SSERepoWithTasks, SSEServerStatus, SSETask } from "@aop/common";
 import { getLogger } from "@aop/infra";
 import { fetchServer } from "./client.ts";
 
@@ -7,31 +8,9 @@ export interface StatusOptions {
   json?: boolean;
 }
 
-interface Task {
-  id: string;
-  repo_id: string;
-  change_path: string;
-  worktree_path: string | null;
-  status: string;
-  ready_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface RepoStatus {
-  id: string;
-  name: string | null;
-  path: string;
-  working: number;
-  max: number;
-  tasks: Task[];
-}
-
-interface StatusResponse {
-  ready: boolean;
-  globalCapacity: { working: number; max: number };
-  repos: RepoStatus[];
-}
+type Task = SSETask;
+type RepoStatus = SSERepoWithTasks;
+type StatusResponse = SSEServerStatus;
 
 const writeJson = (data: unknown): void => {
   const encoder = new TextEncoder();
@@ -53,12 +32,17 @@ const matchesIdentifier = (task: Task, repo: RepoStatus, identifier: string): bo
   if (task.id === identifier || task.id.startsWith(identifier)) {
     return true;
   }
-  if (task.change_path === identifier || task.change_path.endsWith(`/${identifier}`)) {
+  if (task.changePath === identifier || task.changePath.endsWith(`/${identifier}`)) {
     return true;
   }
-  const fullChangePath = `${repo.path}/${task.change_path}`;
-  if (identifier === fullChangePath || identifier.endsWith(`/${task.change_path}`)) {
+  const fullChangePath = `${repo.path}/${task.changePath}`;
+  // Only match if identifier exactly equals fullChangePath or starts with repo.path
+  if (identifier === fullChangePath) {
     return true;
+  }
+  // If identifier is an absolute path, it must belong to this repo
+  if (identifier.startsWith("/") && identifier.startsWith(repo.path)) {
+    return identifier === fullChangePath || identifier.endsWith(`/${task.changePath}`);
   }
   return false;
 };
@@ -117,7 +101,7 @@ const printRepoStatus = (repo: RepoStatus): void => {
     logger.info("  (no tasks)");
   } else {
     for (const task of repo.tasks) {
-      const changeName = task.change_path.split("/").pop();
+      const changeName = task.changePath.split("/").pop();
       const taskLine = `${task.id}  ${task.status.padEnd(7)}  ${changeName}`;
       logger.info(taskLine);
     }
@@ -126,13 +110,8 @@ const printRepoStatus = (repo: RepoStatus): void => {
 };
 
 const printFullStatus = (status: StatusResponse): void => {
-  const { ready, globalCapacity, repos } = status;
+  const { globalCapacity, repos } = status;
 
-  if (ready) {
-    logger.info("Server: running");
-  } else {
-    logger.info("Server: starting");
-  }
   logger.info("Global capacity: {working}/{max} working", {
     working: globalCapacity.working,
     max: globalCapacity.max,
@@ -150,16 +129,8 @@ const printFullStatus = (status: StatusResponse): void => {
 const printTaskDetails = (task: Task): void => {
   logger.info("Task: {id}", { id: task.id });
   logger.info("Status: {status}", { status: task.status });
-  logger.info("Repository ID: {repoId}", { repoId: task.repo_id });
-  logger.info("Change: {changePath}", { changePath: task.change_path });
-
-  if (task.worktree_path) {
-    logger.info("Worktree: {worktreePath}", { worktreePath: task.worktree_path });
-  }
-  if (task.ready_at) {
-    logger.info("Ready At: {readyAt}", { readyAt: task.ready_at });
-  }
-
-  logger.info("Created: {createdAt}", { createdAt: task.created_at });
-  logger.info("Updated: {updatedAt}", { updatedAt: task.updated_at });
+  logger.info("Repository ID: {repoId}", { repoId: task.repoId });
+  logger.info("Change: {changePath}", { changePath: task.changePath });
+  logger.info("Created: {createdAt}", { createdAt: task.createdAt });
+  logger.info("Updated: {updatedAt}", { updatedAt: task.updatedAt });
 };

@@ -435,4 +435,131 @@ describe("ExecutionRepository", () => {
       expect(count).toBe(0);
     });
   });
+
+  describe("saveExecutionLogs", () => {
+    test("saves execution logs to database", async () => {
+      await repo.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+
+      await repo.saveExecutionLogs([
+        {
+          execution_id: "exec-1",
+          stream: "stdout",
+          content: "line 1",
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+        {
+          execution_id: "exec-1",
+          stream: "stderr",
+          content: "error 1",
+          timestamp: "2024-01-01T00:00:02Z",
+        },
+        {
+          execution_id: "exec-1",
+          stream: "stdout",
+          content: "line 2",
+          timestamp: "2024-01-01T00:00:03Z",
+        },
+      ]);
+
+      const logs = await repo.getExecutionLogs("exec-1");
+      expect(logs).toHaveLength(3);
+      expect(logs[0]?.content).toBe("line 1");
+      expect(logs[0]?.stream).toBe("stdout");
+      expect(logs[1]?.content).toBe("error 1");
+      expect(logs[1]?.stream).toBe("stderr");
+      expect(logs[2]?.content).toBe("line 2");
+    });
+
+    test("does nothing when logs array is empty", async () => {
+      await repo.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+
+      await repo.saveExecutionLogs([]);
+
+      const logs = await repo.getExecutionLogs("exec-1");
+      expect(logs).toEqual([]);
+    });
+  });
+
+  describe("getExecutionLogs", () => {
+    test("returns logs in order by id", async () => {
+      await repo.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+
+      await repo.saveExecutionLogs([
+        {
+          execution_id: "exec-1",
+          stream: "stdout",
+          content: "first",
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+        {
+          execution_id: "exec-1",
+          stream: "stdout",
+          content: "second",
+          timestamp: "2024-01-01T00:00:02Z",
+        },
+      ]);
+
+      const logs = await repo.getExecutionLogs("exec-1");
+      expect(logs[0]?.content).toBe("first");
+      expect(logs[1]?.content).toBe("second");
+    });
+
+    test("returns empty array for unknown execution", async () => {
+      const logs = await repo.getExecutionLogs("non-existent");
+      expect(logs).toEqual([]);
+    });
+
+    test("only returns logs for specified execution", async () => {
+      await repo.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "completed",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+      await repo.createExecution({
+        id: "exec-2",
+        task_id: "task-1",
+        status: "completed",
+        started_at: "2024-01-02T00:00:00Z",
+      });
+
+      await repo.saveExecutionLogs([
+        {
+          execution_id: "exec-1",
+          stream: "stdout",
+          content: "exec1-log",
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+        {
+          execution_id: "exec-2",
+          stream: "stdout",
+          content: "exec2-log",
+          timestamp: "2024-01-02T00:00:01Z",
+        },
+      ]);
+
+      const logs1 = await repo.getExecutionLogs("exec-1");
+      const logs2 = await repo.getExecutionLogs("exec-2");
+
+      expect(logs1).toHaveLength(1);
+      expect(logs1[0]?.content).toBe("exec1-log");
+      expect(logs2).toHaveLength(1);
+      expect(logs2[0]?.content).toBe("exec2-log");
+    });
+  });
 });

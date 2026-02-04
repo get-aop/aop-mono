@@ -1,10 +1,37 @@
 import { Hono } from "hono";
-import type { CommandContext } from "../context.ts";
+import type { LocalServerContext } from "../context.ts";
 import { getRepoById } from "../repo/handlers.ts";
 import { applyTask, getTaskById, markTaskReady, removeTask } from "./handlers.ts";
 
-export const createTaskRoutes = (ctx: CommandContext) => {
+export const createTaskRoutes = (ctx: LocalServerContext) => {
   const routes = new Hono();
+
+  routes.get("/:taskId/executions", async (c) => {
+    const repoId = c.req.param("repoId") as string;
+    const taskId = c.req.param("taskId");
+
+    const repo = await getRepoById(ctx, repoId);
+    if (!repo) {
+      return c.json({ error: "Repo not found" }, 404);
+    }
+
+    const task = await getTaskById(ctx, taskId);
+    if (!task || task.repo_id !== repoId) {
+      return c.json({ error: "Task not found" }, 404);
+    }
+
+    const executions = await ctx.executionRepository.getExecutionsByTaskId(taskId);
+
+    const transformedExecutions = executions.map((e) => ({
+      id: e.id,
+      taskId: e.task_id,
+      status: e.status === "aborted" || e.status === "cancelled" ? "failed" : e.status,
+      startedAt: e.started_at,
+      finishedAt: e.completed_at ?? undefined,
+    }));
+
+    return c.json({ executions: transformedExecutions });
+  });
 
   routes.post("/:taskId/ready", async (c) => {
     const repoId = c.req.param("repoId") as string;
@@ -21,14 +48,20 @@ export const createTaskRoutes = (ctx: CommandContext) => {
     }
 
     const body = await c.req.json<{ workflow?: string }>().catch(() => ({ workflow: undefined }));
-    const result = await markTaskReady(ctx, taskId, { workflow: body.workflow });
+    const result = await markTaskReady(ctx, taskId, {
+      workflow: body.workflow,
+    });
 
     if (!result.success) {
       switch (result.error.code) {
         case "NOT_FOUND":
           return c.json({ error: "Task not found" }, 404);
         case "ALREADY_READY":
-          return c.json({ ok: true, taskId: result.error.taskId, alreadyReady: true });
+          return c.json({
+            ok: true,
+            taskId: result.error.taskId,
+            alreadyReady: true,
+          });
         case "INVALID_STATUS":
           return c.json({ error: "Invalid task status", status: result.error.status }, 409);
         case "UPDATE_FAILED":
@@ -67,7 +100,10 @@ export const createTaskRoutes = (ctx: CommandContext) => {
           return c.json({ error: "Main repository has uncommitted changes" }, 409);
         case "CONFLICT":
           return c.json(
-            { error: "Conflicts detected", conflictingFiles: result.error.conflictingFiles },
+            {
+              error: "Conflicts detected",
+              conflictingFiles: result.error.conflictingFiles,
+            },
             409,
           );
         case "NO_CHANGES":
@@ -102,7 +138,11 @@ export const createTaskRoutes = (ctx: CommandContext) => {
         case "NOT_FOUND":
           return c.json({ error: "Task not found" }, 404);
         case "ALREADY_REMOVED":
-          return c.json({ ok: true, taskId: result.error.taskId, alreadyRemoved: true });
+          return c.json({
+            ok: true,
+            taskId: result.error.taskId,
+            alreadyRemoved: true,
+          });
         case "TASK_WORKING":
           return c.json({ error: "Task is currently working, use force=true to abort" }, 409);
         case "REMOVE_FAILED":
