@@ -43,3 +43,4 @@ playwright-report/
 
 # e2e test temp directories
 e2e-tests/tmp/
+.worktrees/

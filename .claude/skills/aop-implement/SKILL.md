@@ -67,7 +67,7 @@ Ensure full completion:
 
 Verify task completion:
 - If it's new code functionality, run the unit tests to it, write new ones if necessary.
-- If it's a UI/frontend task use the Playwright MCP tools to verify it works
+- If it's a UI/frontend task use the `webapp-testing` skill to verify it works
 - If the task is about creating an e2e test, run the e2e test to verify it works
 - If it's an infrastructure task, verify it works by running the relevant commands, even if isolated
 - Always run the verification commands that the repository has (it can be lint, typecheck, build, etc. eg `bun run check`)
