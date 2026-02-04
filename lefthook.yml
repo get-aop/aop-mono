@@ -4,17 +4,6 @@
 pre-commit:
   parallel: true
   commands:
-    devsfactory-lint:
-      root: devsfactory/
-      glob: "*.{ts,tsx,js,jsx}"
-      run: bunx @biomejs/biome check --write {staged_files}
-      stage_fixed: true
-    devsfactory-typecheck:
-      root: devsfactory/
-      run: bun run typecheck
-    devsfactory-build:
-      root: devsfactory/
-      run: bun run build
     aop-lint:
       root: aop/
       glob: "**/*.{js,ts,tsx,json}"
