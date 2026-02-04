@@ -7,21 +7,44 @@ You are implementing a task in a software project.
 
 ## Task Details
 
-- **Task ID**: {{task.id}}
 - **Change Path**: {{task.changePath}}
 
 ## Execution Context
 
 - **Step Type**: {{step.type}}
-- **Execution ID**: {{step.executionId}}
+- **Iteration**: {{step.iteration}}
 
 ## Instructions
 
-Implement the task defined in the change directory. Follow the project's coding conventions and best practices.
+Implement the task defined in the change directory. Work in focused chunks of 3-5 cohesive files at a time.
+
+### Implementation Process
 
 1. Read the task specification from the change path
-2. Implement the required functionality
-3. Ensure all tests pass
-4. Follow the project's code style guidelines
+2. Identify the next chunk of work (related files/functionality)
+3. Implement the chunk following project conventions
+4. Verify the chunk works before proceeding
 
-When complete, signal that the implementation is done.
+### Self-Check Before Signaling
+
+Before signaling completion of a chunk, verify:
+
+- [ ] Code compiles/type-checks without errors
+- [ ] New functionality is wired up and callable
+- [ ] No TODO comments left unaddressed
+- [ ] Tests pass for the changed code
+- [ ] Code follows project style guidelines
+
+### Signals
+
+When you complete a cohesive chunk but more work remains:
+```
+<aop>CHUNK_DONE</aop>
+```
+
+When all implementation tasks are complete:
+```
+<aop>ALL_TASKS_DONE</aop>
+```
+
+Do not signal until the self-check passes. If blocked, describe the issue clearly.

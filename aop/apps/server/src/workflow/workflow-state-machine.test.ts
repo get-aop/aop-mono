@@ -251,4 +251,242 @@ describe("WorkflowStateMachine", () => {
       expect(result.type).toBe("done");
     });
   });
+
+  describe("iteration tracking", () => {
+    const createIterationWorkflow = (): WorkflowDefinition => ({
+      version: 1,
+      name: "iteration-workflow",
+      initialStep: "implement",
+      steps: {
+        implement: {
+          id: "implement",
+          type: "implement",
+          promptTemplate: "implement.md.hbs",
+          maxAttempts: 1,
+          transitions: [
+            { condition: "success", target: "review" },
+            { condition: "failure", target: "__blocked__" },
+          ],
+        },
+        review: {
+          id: "review",
+          type: "review",
+          promptTemplate: "review.md.hbs",
+          maxAttempts: 1,
+          transitions: [
+            { condition: "success", target: "__done__" },
+            {
+              condition: "failure",
+              target: "fix",
+              maxIterations: 2,
+              onMaxIterations: "__blocked__",
+            },
+          ],
+        },
+        fix: {
+          id: "fix",
+          type: "debug",
+          promptTemplate: "fix.md.hbs",
+          maxAttempts: 1,
+          transitions: [{ condition: "success", target: "review" }],
+        },
+      },
+      terminalStates: ["__done__", "__blocked__"],
+    });
+
+    test("sets shouldIncrementIteration when transitioning to visited step", () => {
+      const sm = createWorkflowStateMachine(createIterationWorkflow());
+
+      const result = sm.evaluateTransition(
+        "fix",
+        { status: "success" },
+        { iteration: 0, visitedSteps: ["implement", "review", "fix"] },
+      );
+
+      expect(result.type).toBe("step");
+      expect(result.stepId).toBe("review");
+      expect(result.shouldIncrementIteration).toBe(true);
+    });
+
+    test("does not set shouldIncrementIteration when step not yet visited", () => {
+      const sm = createWorkflowStateMachine(createIterationWorkflow());
+
+      const result = sm.evaluateTransition(
+        "implement",
+        { status: "success" },
+        { iteration: 0, visitedSteps: ["implement"] },
+      );
+
+      expect(result.type).toBe("step");
+      expect(result.stepId).toBe("review");
+      expect(result.shouldIncrementIteration).toBeFalsy();
+    });
+
+    test("blocks when maxIterations exceeded", () => {
+      const sm = createWorkflowStateMachine(createIterationWorkflow());
+
+      const result = sm.evaluateTransition(
+        "review",
+        { status: "failure" },
+        { iteration: 2, visitedSteps: ["implement", "review", "fix"] },
+      );
+
+      expect(result.type).toBe("blocked");
+    });
+
+    test("allows transition when under maxIterations", () => {
+      const sm = createWorkflowStateMachine(createIterationWorkflow());
+
+      const result = sm.evaluateTransition(
+        "review",
+        { status: "failure" },
+        { iteration: 1, visitedSteps: ["implement", "review", "fix"] },
+      );
+
+      expect(result.type).toBe("step");
+      expect(result.stepId).toBe("fix");
+    });
+
+    test("redirects to custom onMaxIterations target", () => {
+      const workflow = createIterationWorkflow();
+      const reviewStep = workflow.steps.review;
+      if (reviewStep) {
+        reviewStep.transitions = [
+          { condition: "success", target: "__done__" },
+          {
+            condition: "failure",
+            target: "fix",
+            maxIterations: 2,
+            onMaxIterations: "implement",
+          },
+        ];
+      }
+
+      const sm = createWorkflowStateMachine(workflow);
+      const result = sm.evaluateTransition(
+        "review",
+        { status: "failure" },
+        { iteration: 2, visitedSteps: ["implement", "review", "fix"] },
+      );
+
+      expect(result.type).toBe("step");
+      expect(result.stepId).toBe("implement");
+    });
+
+    test("works without context (backward compatibility)", () => {
+      const sm = createWorkflowStateMachine(createIterationWorkflow());
+
+      const result = sm.evaluateTransition("implement", { status: "success" });
+
+      expect(result.type).toBe("step");
+      expect(result.stepId).toBe("review");
+    });
+  });
+
+  describe("afterIteration routing", () => {
+    const createAfterIterationWorkflow = (): WorkflowDefinition => ({
+      version: 1,
+      name: "after-iteration-workflow",
+      initialStep: "implement",
+      steps: {
+        implement: {
+          id: "implement",
+          type: "implement",
+          promptTemplate: "implement.md.hbs",
+          maxAttempts: 1,
+          transitions: [
+            { condition: "success", target: "full-review" },
+            { condition: "failure", target: "__blocked__" },
+          ],
+        },
+        "full-review": {
+          id: "full-review",
+          type: "review",
+          promptTemplate: "full-review.md.hbs",
+          maxAttempts: 1,
+          transitions: [
+            { condition: "success", target: "__done__" },
+            { condition: "failure", target: "fix" },
+          ],
+        },
+        fix: {
+          id: "fix",
+          type: "debug",
+          promptTemplate: "fix.md.hbs",
+          maxAttempts: 1,
+          transitions: [
+            {
+              condition: "success",
+              target: "quick-review",
+              afterIteration: 1,
+              thenTarget: "full-review",
+            },
+          ],
+        },
+        "quick-review": {
+          id: "quick-review",
+          type: "review",
+          promptTemplate: "quick-review.md.hbs",
+          maxAttempts: 1,
+          transitions: [
+            { condition: "success", target: "__done__" },
+            { condition: "failure", target: "fix" },
+          ],
+        },
+      },
+      terminalStates: ["__done__", "__blocked__"],
+    });
+
+    test("uses default target on iteration 0", () => {
+      const sm = createWorkflowStateMachine(createAfterIterationWorkflow());
+
+      const result = sm.evaluateTransition(
+        "fix",
+        { status: "success" },
+        { iteration: 0, visitedSteps: ["implement", "full-review", "fix"] },
+      );
+
+      expect(result.type).toBe("step");
+      expect(result.stepId).toBe("quick-review");
+    });
+
+    test("uses thenTarget when iteration >= afterIteration", () => {
+      const sm = createWorkflowStateMachine(createAfterIterationWorkflow());
+
+      const result = sm.evaluateTransition(
+        "fix",
+        { status: "success" },
+        { iteration: 1, visitedSteps: ["implement", "full-review", "fix", "quick-review"] },
+      );
+
+      expect(result.type).toBe("step");
+      expect(result.stepId).toBe("full-review");
+    });
+
+    test("sets shouldIncrementIteration when thenTarget loops back", () => {
+      const sm = createWorkflowStateMachine(createAfterIterationWorkflow());
+
+      const result = sm.evaluateTransition(
+        "fix",
+        { status: "success" },
+        { iteration: 1, visitedSteps: ["implement", "full-review", "fix", "quick-review"] },
+      );
+
+      expect(result.stepId).toBe("full-review");
+      expect(result.shouldIncrementIteration).toBe(true);
+    });
+
+    test("does not increment iteration on first visit via afterIteration", () => {
+      const sm = createWorkflowStateMachine(createAfterIterationWorkflow());
+
+      const result = sm.evaluateTransition(
+        "fix",
+        { status: "success" },
+        { iteration: 0, visitedSteps: ["implement", "full-review", "fix"] },
+      );
+
+      expect(result.stepId).toBe("quick-review");
+      expect(result.shouldIncrementIteration).toBeFalsy();
+    });
+  });
 });

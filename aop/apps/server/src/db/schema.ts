@@ -42,6 +42,8 @@ export interface ExecutionsTable {
   task_id: string;
   workflow_id: string;
   status: ExecutionStatus;
+  iteration: Generated<number>;
+  visited_steps: Generated<string>;
   started_at: Generated<Date>;
   completed_at: Date | null;
 }

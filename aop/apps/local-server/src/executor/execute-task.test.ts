@@ -76,6 +76,7 @@ describe("executeTask", () => {
       promptTemplate: "Implement feature for {{task.id}}",
       signals: [],
       attempt: 1,
+      iteration: 0,
     };
 
     const executionInfo = {
@@ -129,6 +130,7 @@ describe("executeTask", () => {
       promptTemplate: "Implement feature",
       signals: [],
       attempt: 1,
+      iteration: 0,
     };
 
     const executionInfo = {
@@ -171,6 +173,7 @@ describe("executeTask", () => {
       promptTemplate: "Implement feature",
       signals: [],
       attempt: 1,
+      iteration: 0,
     };
 
     const executionInfo = {
@@ -212,6 +215,7 @@ describe("executeTask", () => {
       promptTemplate: "Implement feature",
       signals: [],
       attempt: 1,
+      iteration: 0,
     };
 
     const executionInfo = {
@@ -263,6 +267,7 @@ describe("executeTask", () => {
       promptTemplate: "Implement feature",
       signals: [],
       attempt: 1,
+      iteration: 0,
     };
 
     const executionInfo = {
@@ -284,6 +289,7 @@ describe("executeTask", () => {
               promptTemplate: "Review changes",
               signals: [],
               attempt: 1,
+              iteration: 0,
             },
             execution: {
               id: "exec-info-5-2",

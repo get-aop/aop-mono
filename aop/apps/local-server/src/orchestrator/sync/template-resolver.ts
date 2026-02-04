@@ -16,6 +16,7 @@ export interface TaskContext {
 export interface StepContext {
   type: string;
   executionId: string;
+  iteration: number;
 }
 
 export interface TemplateContext {
@@ -48,6 +49,7 @@ export const validateTemplate = (template: string): string[] => {
     "task.changePath",
     "step.type",
     "step.executionId",
+    "step.iteration",
   ]);
 
   const unknownPlaceholders: string[] = [];
@@ -77,6 +79,7 @@ export const createTemplateContext = (params: {
   changePath: string;
   stepType: string;
   executionId: string;
+  iteration: number;
 }): TemplateContext => ({
   worktree: {
     path: params.worktreePath,
@@ -89,5 +92,6 @@ export const createTemplateContext = (params: {
   step: {
     type: params.stepType,
     executionId: params.executionId,
+    iteration: params.iteration,
   },
 });

@@ -12,22 +12,29 @@ export interface StepResult {
   signal?: string;
 }
 
+export interface IterationContext {
+  iteration: number;
+  visitedSteps: string[];
+}
+
 export interface TransitionResult {
   type: "step" | "done" | "blocked";
   stepId?: string;
   step?: WorkflowStep;
+  shouldIncrementIteration?: boolean;
 }
 
 export interface WorkflowStateMachine {
   getInitialStep: () => WorkflowStep;
-  evaluateTransition: (stepId: string, result: StepResult) => TransitionResult;
+  evaluateTransition: (
+    stepId: string,
+    result: StepResult,
+    context?: IterationContext,
+  ) => TransitionResult;
   getStep: (stepId: string) => WorkflowStep | undefined;
 }
 
-const resolveTransitionTarget = (
-  target: string,
-  steps: Record<string, WorkflowStep>,
-): TransitionResult => {
+const resolveTarget = (target: string, steps: Record<string, WorkflowStep>): TransitionResult => {
   if (target === TERMINAL_SUCCESS) {
     return { type: "done" };
   }
@@ -40,6 +47,35 @@ const resolveTransitionTarget = (
     throw new Error(`Target step "${target}" not found`);
   }
   return { type: "step", stepId: target, step: nextStep };
+};
+
+const isLoopingBack = (result: TransitionResult, visitedSteps: string[]): boolean =>
+  result.type === "step" && result.stepId !== undefined && visitedSteps.includes(result.stepId);
+
+const withIterationFlag = (result: TransitionResult, shouldIncrement: boolean): TransitionResult =>
+  shouldIncrement ? { ...result, shouldIncrementIteration: true } : result;
+
+const resolveTransitionWithIteration = (
+  transition: Transition,
+  steps: Record<string, WorkflowStep>,
+  context?: IterationContext,
+): TransitionResult => {
+  const { maxIterations, onMaxIterations, afterIteration, thenTarget, target } = transition;
+  const iteration = context?.iteration ?? 0;
+  const visitedSteps = context?.visitedSteps ?? [];
+
+  if (maxIterations !== undefined && iteration >= maxIterations) {
+    return resolveTarget(onMaxIterations ?? TERMINAL_BLOCKED, steps);
+  }
+
+  if (afterIteration !== undefined && thenTarget !== undefined && iteration >= afterIteration) {
+    const result = resolveTarget(thenTarget, steps);
+    return withIterationFlag(result, isLoopingBack(result, visitedSteps));
+  }
+
+  const result = resolveTarget(target, steps);
+  const shouldIncrement = afterIteration === undefined && isLoopingBack(result, visitedSteps);
+  return withIterationFlag(result, shouldIncrement);
 };
 
 const findMatchingTransition = (
@@ -73,7 +109,11 @@ export const createWorkflowStateMachine = (
     return step;
   };
 
-  const evaluateTransition = (stepId: string, result: StepResult): TransitionResult => {
+  const evaluateTransition = (
+    stepId: string,
+    result: StepResult,
+    context?: IterationContext,
+  ): TransitionResult => {
     const step = definition.steps[stepId];
     if (!step) {
       throw new Error(`Step "${stepId}" not found`);
@@ -84,7 +124,7 @@ export const createWorkflowStateMachine = (
       return { type: "blocked" };
     }
 
-    return resolveTransitionTarget(transition.target, definition.steps);
+    return resolveTransitionWithIteration(transition, definition.steps, context);
   };
 
   return { getInitialStep, evaluateTransition, getStep };

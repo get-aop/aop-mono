@@ -1,4 +1,9 @@
-import { isTerminalState, type WorkflowDefinition, WorkflowDefinitionSchema } from "./types.ts";
+import {
+  isTerminalState,
+  type Transition,
+  type WorkflowDefinition,
+  WorkflowDefinitionSchema,
+} from "./types.ts";
 
 export class WorkflowParseError extends Error {
   constructor(message: string) {
@@ -24,6 +29,30 @@ export const validateAndParseWorkflow = (data: unknown): WorkflowDefinition => {
   return definition;
 };
 
+const isValidTarget = (target: string, steps: WorkflowDefinition["steps"]): boolean =>
+  isTerminalState(target) || !!steps[target];
+
+const validateTransitionTarget = (
+  stepId: string,
+  target: string | undefined,
+  fieldName: string,
+  steps: WorkflowDefinition["steps"],
+): void => {
+  if (target && !isValidTarget(target, steps)) {
+    throw new WorkflowParseError(`Step "${stepId}" has ${fieldName} to unknown step "${target}"`);
+  }
+};
+
+const validateTransition = (
+  stepId: string,
+  transition: Transition,
+  steps: WorkflowDefinition["steps"],
+): void => {
+  validateTransitionTarget(stepId, transition.target, "transition", steps);
+  validateTransitionTarget(stepId, transition.onMaxIterations, "onMaxIterations", steps);
+  validateTransitionTarget(stepId, transition.thenTarget, "thenTarget", steps);
+};
+
 const validateWorkflowStructure = (definition: WorkflowDefinition): void => {
   if (!definition.steps[definition.initialStep]) {
     throw new WorkflowParseError(`Initial step "${definition.initialStep}" not found in steps`);
@@ -31,11 +60,7 @@ const validateWorkflowStructure = (definition: WorkflowDefinition): void => {
 
   for (const [stepId, step] of Object.entries(definition.steps)) {
     for (const transition of step.transitions) {
-      if (!isTerminalState(transition.target) && !definition.steps[transition.target]) {
-        throw new WorkflowParseError(
-          `Step "${stepId}" has transition to unknown step "${transition.target}"`,
-        );
-      }
+      validateTransition(stepId, transition, definition.steps);
     }
   }
 };

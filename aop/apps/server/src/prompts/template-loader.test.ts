@@ -18,10 +18,8 @@ describe("TemplateLoader", () => {
 
         expect(template).toContain("{{worktree.path}}");
         expect(template).toContain("{{worktree.branch}}");
-        expect(template).toContain("{{task.id}}");
         expect(template).toContain("{{task.changePath}}");
         expect(template).toContain("{{step.type}}");
-        expect(template).toContain("{{step.executionId}}");
       });
     }
 

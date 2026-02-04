@@ -3,7 +3,12 @@ import type { TemplateLoader } from "../prompts/template-loader.ts";
 import type { WorkflowStep } from "./types.ts";
 
 export interface StepCommandGenerator {
-  generate: (step: WorkflowStep, stepExecutionId: string, attempt: number) => Promise<StepCommand>;
+  generate: (
+    step: WorkflowStep,
+    stepExecutionId: string,
+    attempt: number,
+    iteration: number,
+  ) => Promise<StepCommand>;
 }
 
 export const createStepCommandGenerator = (
@@ -13,6 +18,7 @@ export const createStepCommandGenerator = (
     step: WorkflowStep,
     stepExecutionId: string,
     attempt: number,
+    iteration: number,
   ): Promise<StepCommand> => {
     const promptTemplate = await templateLoader.load(step.type);
 
@@ -22,6 +28,7 @@ export const createStepCommandGenerator = (
       promptTemplate,
       attempt,
       signals: step.signals,
+      iteration,
     };
   },
 });

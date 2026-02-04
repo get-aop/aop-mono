@@ -1,6 +1,6 @@
 import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { E2E_TEST_BASE_DIR, FIXTURES_DIR, TEST_REPO_PREFIX } from "./constants";
+import { E2E_TEST_BASE_DIR, FIXTURES_DIR, TEST_REPO_PREFIX, WORKTREES_DIR } from "./constants";
 import { runAopCommand } from "./daemon";
 
 export interface TempRepoResult {
@@ -56,4 +56,31 @@ export const ensureChangesDir = async (repoPath: string): Promise<string> => {
 
 export const cleanupTestRepos = async (): Promise<void> => {
   await rm(E2E_TEST_BASE_DIR, { recursive: true, force: true });
+};
+
+export interface TempWorktreeResult {
+  path: string;
+  name: string;
+  branch: string;
+}
+
+export const createTempWorktree = async (testName: string): Promise<TempWorktreeResult> => {
+  const timestamp = Date.now();
+  const randomSuffix = Math.random().toString(36).slice(2, 6);
+  const name = `e2e-${testName}-${timestamp}-${randomSuffix}`;
+  const worktreePath = join(WORKTREES_DIR, name);
+
+  await mkdir(WORKTREES_DIR, { recursive: true });
+
+  const branchResult = await Bun.$`git rev-parse --abbrev-ref HEAD`.quiet();
+  const currentBranch = branchResult.stdout.toString().trim();
+
+  const newBranch = `e2e/${name}`;
+  await Bun.$`git worktree add -b ${newBranch} ${worktreePath} ${currentBranch}`.quiet();
+
+  return {
+    path: worktreePath,
+    name,
+    branch: newBranch,
+  };
 };

@@ -8,13 +8,31 @@ import { createTaskRepository } from "../tasks/task-repository.ts";
 import { createStepCommandGenerator } from "../workflow/step-command-generator.ts";
 import { parseWorkflow } from "../workflow/workflow-parser.ts";
 import { createWorkflowRepository } from "../workflow/workflow-repository.ts";
-import type { StepResult, TransitionResult } from "../workflow/workflow-state-machine.ts";
+import type {
+  IterationContext,
+  StepResult,
+  TransitionResult,
+} from "../workflow/workflow-state-machine.ts";
 import { createWorkflowStateMachine } from "../workflow/workflow-state-machine.ts";
 import { createExecutionRepository } from "./execution-repository.ts";
 import { createStepExecutionRepository } from "./step-execution-repository.ts";
 
 const DEFAULT_WORKFLOW_NAME = "simple";
 const logger = getLogger("aop", "execution-service");
+
+const parseVisitedSteps = (visitedSteps: string): string[] => {
+  try {
+    const parsed = JSON.parse(visitedSteps);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const buildIterationContext = (execution: Execution): IterationContext => ({
+  iteration: execution.iteration,
+  visitedSteps: parseVisitedSteps(execution.visited_steps),
+});
 
 export interface ProcessStepResultInput {
   stepId: string;
@@ -81,7 +99,7 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
 
     const executionId = generateTypeId("exec");
     const stepExecutionId = generateTypeId("step");
-    const stepCommand = await stepCommandGen.generate(initialStep, stepExecutionId, 1);
+    const stepCommand = await stepCommandGen.generate(initialStep, stepExecutionId, 1, 0);
 
     await db.transaction().execute(async (trx) => {
       const repoRepoTrx = createRepoRepository(trx);
@@ -126,6 +144,7 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
         task_id: taskId,
         workflow_id: workflow.id,
         status: "running",
+        visited_steps: JSON.stringify([initialStep.id]),
       });
 
       await stepExecutionRepoTrx.create({
@@ -157,7 +176,7 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
         return buildIdempotentResponse(repos, lockedStep);
       }
 
-      return processStep(repos, client, input, lockedStep);
+      return processStep(repos, client, input);
     });
   };
 
@@ -201,7 +220,6 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
     repos: TransactionRepositories,
     client: Client,
     input: ProcessStepResultInput,
-    lockedStep: StepExecution,
   ): Promise<StepCompleteResponse> => {
     const execution = await repos.executionRepo.findById(input.executionId);
     if (!execution) {
@@ -216,7 +234,15 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
     const workflowDef = parseWorkflow(workflow.definition);
     const stateMachine = createWorkflowStateMachine(workflowDef);
     const stepResult: StepResult = { status: input.status, signal: input.signal };
-    const transition = stateMachine.evaluateTransition(lockedStep.step_type, stepResult);
+    const iterationContext = buildIterationContext(execution);
+
+    // Use the step ID from visited_steps (not step_type which stores the type like "review")
+    const currentStepId = iterationContext.visitedSteps.at(-1);
+    if (!currentStepId) {
+      throw new Error(`No visited steps found for execution "${input.executionId}"`);
+    }
+
+    const transition = stateMachine.evaluateTransition(currentStepId, stepResult, iterationContext);
 
     await repos.stepExecutionRepo.update(input.stepId, {
       status: input.status === "success" ? "success" : "failure",
@@ -225,7 +251,7 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
       ended_at: new Date(),
     });
 
-    return handleTransition(repos, transition, execution, client);
+    return handleTransition(repos, transition, execution, client, iterationContext);
   };
 
   const handleTransition = async (
@@ -233,6 +259,7 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
     transition: TransitionResult,
     execution: Execution,
     client: Client,
+    iterationContext: IterationContext,
   ): Promise<StepCompleteResponse> => {
     if (transition.type === "done") {
       await repos.executionRepo.update(execution.id, {
@@ -262,7 +289,24 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
       throw new Error("Expected next step in transition but none provided");
     }
 
-    const stepCommand = await stepCommandGen.generate(nextStep, nextStepExecutionId, 1);
+    const updatedVisitedSteps = iterationContext.visitedSteps.includes(nextStep.id)
+      ? iterationContext.visitedSteps
+      : [...iterationContext.visitedSteps, nextStep.id];
+    const newIteration = transition.shouldIncrementIteration
+      ? iterationContext.iteration + 1
+      : iterationContext.iteration;
+
+    await repos.executionRepo.update(execution.id, {
+      iteration: newIteration,
+      visited_steps: JSON.stringify(updatedVisitedSteps),
+    });
+
+    const stepCommand = await stepCommandGen.generate(
+      nextStep,
+      nextStepExecutionId,
+      1,
+      newIteration,
+    );
 
     await repos.stepExecutionRepo.create({
       id: nextStepExecutionId,

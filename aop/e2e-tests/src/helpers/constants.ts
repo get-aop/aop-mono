@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 export const E2E_TEST_BASE_DIR = resolve(dirname(import.meta.path), "../../tmp/aop-e2e-test");
+export const WORKTREES_DIR = resolve(dirname(import.meta.path), "../../../.worktrees");
 export const FIXTURES_DIR = resolve(dirname(import.meta.path), "../../fixtures");
 export const AOP_BIN = resolve(dirname(import.meta.path), "../../../apps/cli/src/main.ts");
 export const LOCAL_SERVER_BIN = resolve(

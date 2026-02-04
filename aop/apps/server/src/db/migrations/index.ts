@@ -11,6 +11,7 @@ import { seedSimpleWorkflowMigration } from "./008-seed-simple-workflow.ts";
 import { addSignalToStepExecutionsMigration } from "./009-add-signal-to-step-executions.ts";
 import { seedRalphLoopWorkflowMigration } from "./010-seed-ralph-loop-workflow.ts";
 import { addCancelledStatusMigration } from "./011-add-cancelled-status.ts";
+import { addIterationTrackingMigration } from "./012-add-iteration-tracking.ts";
 
 export interface Migration {
   name: string;
@@ -31,5 +32,6 @@ export const getMigrations = (): Migration[] => {
     addSignalToStepExecutionsMigration,
     seedRalphLoopWorkflowMigration,
     addCancelledStatusMigration,
+    addIterationTrackingMigration,
   ];
 };

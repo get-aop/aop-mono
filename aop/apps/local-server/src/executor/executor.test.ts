@@ -261,6 +261,7 @@ describe("executor", () => {
           promptTemplate: "Task: {{task.id}}, Branch: {{worktree.branch}}, Step: {{step.type}}",
           signals: [],
           attempt: 1,
+          iteration: 0,
         },
         executionId: "exec-1",
       });
@@ -294,10 +295,45 @@ describe("executor", () => {
           promptTemplate: "Execution: {{step.executionId}}",
           signals: [],
           attempt: 1,
+          iteration: 0,
         },
       });
 
       expect(result).toBe("Execution: ");
+    });
+
+    test("resolves step.iteration placeholder from stepCommand", async () => {
+      const task = createMockTask({ worktree_path: "/test/worktree" });
+
+      const executorCtx: ExecutorContext = {
+        task,
+        repoPath: "/test/repo",
+        changePath: "/test/repo/changes/feat-1",
+        worktreePath: "/test/worktree",
+        logsDir: tmpdir(),
+        timeoutSecs: 300,
+      };
+
+      const result = await buildPromptForExecution({
+        executorCtx,
+        worktreeInfo: {
+          path: "/test/worktree",
+          branch: "task-1",
+          baseBranch: "main",
+          baseCommit: "abc123",
+        },
+        stepCommand: {
+          id: "step-1",
+          type: "review",
+          promptTemplate: "This is iteration {{step.iteration}} of the review",
+          signals: [],
+          attempt: 1,
+          iteration: 2,
+        },
+        executionId: "exec-1",
+      });
+
+      expect(result).toBe("This is iteration 2 of the review");
     });
   });
 

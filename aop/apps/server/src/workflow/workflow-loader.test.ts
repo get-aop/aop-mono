@@ -94,9 +94,10 @@ describe("loadWorkflowsFromDirectory", () => {
 
     const workflows = await loadWorkflowsFromDirectory(realWorkflowsDir);
 
-    expect(workflows.length).toBeGreaterThanOrEqual(2);
+    expect(workflows.length).toBeGreaterThanOrEqual(3);
     const names = workflows.map((w) => w.name);
     expect(names).toContain("simple");
     expect(names).toContain("ralph-loop");
+    expect(names).toContain("aop-default");
   });
 });

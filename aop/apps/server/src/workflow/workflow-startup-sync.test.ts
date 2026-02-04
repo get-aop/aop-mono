@@ -29,7 +29,7 @@ describe("workflow startup sync integration", () => {
     const workflows = await loadWorkflowsFromDirectory(workflowsDir);
     const result = await syncWorkflows(repository, workflows);
 
-    expect(result.inserted).toBe(2);
+    expect(result.inserted).toBe(3);
     expect(result.updated).toBe(0);
 
     const simple = await repository.findByName("simple");
@@ -52,6 +52,21 @@ describe("workflow startup sync integration", () => {
     expect(ralphDefinition.initialStep).toBe("iterate");
     expect(ralphDefinition.steps.iterate.type).toBe("iterate");
     expect(ralphDefinition.steps.review.type).toBe("review");
+
+    const aopDefault = await repository.findByName("aop-default");
+    expect(aopDefault).not.toBeNull();
+    expect(aopDefault?.name).toBe("aop-default");
+
+    if (!aopDefault) throw new Error("Expected aop-default workflow to exist");
+    const aopDefinition = JSON.parse(aopDefault.definition);
+    expect(aopDefinition.version).toBe(1);
+    expect(aopDefinition.initialStep).toBe("implement");
+    expect(Object.keys(aopDefinition.steps).sort()).toEqual([
+      "fix-issues",
+      "full-review",
+      "implement",
+      "quick-review",
+    ]);
   });
 
   test("updates workflows on subsequent syncs", async () => {
@@ -63,7 +78,7 @@ describe("workflow startup sync integration", () => {
 
     const secondResult = await syncWorkflows(repository, workflows);
     expect(secondResult.inserted).toBe(0);
-    expect(secondResult.updated).toBe(2);
+    expect(secondResult.updated).toBe(3);
 
     const updatedSimple = await repository.findByName("simple");
     expect(updatedSimple?.version).toBe(2);
@@ -73,7 +88,7 @@ describe("workflow startup sync integration", () => {
   test("loads correct workflow definitions from YAML files", async () => {
     const workflows = await loadWorkflowsFromDirectory(workflowsDir);
 
-    expect(workflows).toHaveLength(2);
+    expect(workflows).toHaveLength(3);
 
     const simple = workflows.find((w) => w.name === "simple");
     expect(simple).toBeDefined();
@@ -85,5 +100,10 @@ describe("workflow startup sync integration", () => {
     const iterateStep = ralphLoop?.steps.iterate;
     expect(iterateStep?.signals).toContain("TASK_COMPLETE");
     expect(iterateStep?.signals).toContain("NEEDS_REVIEW");
+
+    const aopDefault = workflows.find((w) => w.name === "aop-default");
+    expect(aopDefault).toBeDefined();
+    expect(aopDefault?.steps.implement?.signals).toContain("CHUNK_DONE");
+    expect(aopDefault?.steps.implement?.signals).toContain("ALL_TASKS_DONE");
   });
 });

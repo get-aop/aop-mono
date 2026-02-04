@@ -92,6 +92,7 @@ export const StepCommandSchema = z.object({
   promptTemplate: z.string(),
   attempt: z.number().int().positive(),
   signals: z.array(z.string()).optional(),
+  iteration: z.number().int().nonnegative(),
 });
 
 export type StepCommand = z.infer<typeof StepCommandSchema>;

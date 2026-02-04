@@ -23,6 +23,10 @@ export type TransitionCondition = (typeof TransitionCondition)[keyof typeof Tran
 export const TransitionSchema = z.object({
   condition: z.string(),
   target: z.string(),
+  maxIterations: z.number().int().positive().optional(),
+  onMaxIterations: z.string().optional(),
+  afterIteration: z.number().int().nonnegative().optional(),
+  thenTarget: z.string().optional(),
 });
 
 export type Transition = z.infer<typeof TransitionSchema>;

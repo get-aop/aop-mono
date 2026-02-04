@@ -247,6 +247,7 @@ export const buildPromptForExecution = async (opts: BuildPromptOptions): Promise
     changePath: executorCtx.changePath,
     stepType: stepCommand.type,
     executionId: executionId ?? "",
+    iteration: stepCommand.iteration,
   });
   return resolveTemplate(stepCommand.promptTemplate, templateContext);
 };

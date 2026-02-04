@@ -8,6 +8,7 @@ export {
   LOCAL_SERVER_BIN,
   SERVER_URL,
   TEST_REPO_PREFIX,
+  WORKTREES_DIR,
 } from "./constants";
 export {
   type DaemonContext,
@@ -32,9 +33,11 @@ export {
   cleanupTestRepos,
   copyFixture,
   createTempRepo,
+  createTempWorktree,
   ensureChangesDir,
   setupE2ETestDir,
   type TempRepoResult,
+  type TempWorktreeResult,
 } from "./repo";
 export {
   checkDevEnvironment,

@@ -15,6 +15,7 @@ describe("createTemplateContext", () => {
       changePath: "changes/my-change",
       stepType: "implement",
       executionId: "exec-456",
+      iteration: 2,
     });
 
     expect(context.worktree.path).toBe("/path/to/worktree");
@@ -23,6 +24,7 @@ describe("createTemplateContext", () => {
     expect(context.task.changePath).toBe("changes/my-change");
     expect(context.step.type).toBe("implement");
     expect(context.step.executionId).toBe("exec-456");
+    expect(context.step.iteration).toBe(2);
   });
 });
 
@@ -34,6 +36,7 @@ describe("resolveTemplate", () => {
     changePath: "changes/feature",
     stepType: "implement",
     executionId: "exec-1",
+    iteration: 0,
   });
 
   test("resolves worktree placeholders", () => {
@@ -55,6 +58,22 @@ describe("resolveTemplate", () => {
     const result = resolveTemplate(template, baseContext);
 
     expect(result).toBe("Step implement execution exec-1");
+  });
+
+  test("resolves step.iteration placeholder", () => {
+    const contextWithIteration = createTemplateContext({
+      worktreePath: "/repo/.worktrees/task-1",
+      worktreeBranch: "aop/task-1",
+      taskId: "task-1",
+      changePath: "changes/feature",
+      stepType: "review",
+      executionId: "exec-2",
+      iteration: 3,
+    });
+    const template = "Review iteration {{step.iteration}}";
+    const result = resolveTemplate(template, contextWithIteration);
+
+    expect(result).toBe("Review iteration 3");
   });
 
   test("resolves multiple placeholders", () => {
@@ -103,6 +122,7 @@ describe("validateTemplate", () => {
       {{task.changePath}}
       {{step.type}}
       {{step.executionId}}
+      {{step.iteration}}
     `;
     const result = validateTemplate(template);
 

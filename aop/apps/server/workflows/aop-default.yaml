@@ -1,0 +1,71 @@
+version: 1
+name: aop-default
+initialStep: implement
+steps:
+  implement:
+    id: implement
+    type: implement
+    promptTemplate: implement.md.hbs
+    maxAttempts: 1
+    signals:
+      - CHUNK_DONE
+      - ALL_TASKS_DONE
+    transitions:
+      - condition: CHUNK_DONE
+        target: implement
+      - condition: ALL_TASKS_DONE
+        target: full-review
+      - condition: failure
+        target: __blocked__
+
+  full-review:
+    id: full-review
+    type: review
+    promptTemplate: full-review.md.hbs
+    maxAttempts: 1
+    signals:
+      - REVIEW_PASSED
+      - REVIEW_FAILED
+    transitions:
+      - condition: REVIEW_PASSED
+        target: __done__
+      - condition: REVIEW_FAILED
+        target: fix-issues
+        maxIterations: 2
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+
+  fix-issues:
+    id: fix-issues
+    type: implement
+    promptTemplate: fix-issues.md.hbs
+    maxAttempts: 1
+    signals:
+      - FIX_COMPLETE
+    transitions:
+      - condition: FIX_COMPLETE
+        target: quick-review
+        afterIteration: 1
+        thenTarget: full-review
+      - condition: failure
+        target: __blocked__
+
+  quick-review:
+    id: quick-review
+    type: review
+    promptTemplate: quick-review.md.hbs
+    maxAttempts: 1
+    signals:
+      - REVIEW_PASSED
+      - REVIEW_FAILED
+    transitions:
+      - condition: REVIEW_PASSED
+        target: __done__
+      - condition: REVIEW_FAILED
+        target: fix-issues
+      - condition: failure
+        target: __blocked__
+terminalStates:
+  - __done__
+  - __blocked__

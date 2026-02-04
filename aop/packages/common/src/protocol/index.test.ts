@@ -122,12 +122,14 @@ describe("Protocol Types", () => {
         type: "implement",
         promptTemplate: "Implement the task: {{ task.description }}",
         attempt: 1,
+        iteration: 0,
       });
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.id).toBe("step_xxx");
         expect(result.data.type).toBe("implement");
         expect(result.data.attempt).toBe(1);
+        expect(result.data.iteration).toBe(0);
       }
     });
   });
@@ -145,6 +147,7 @@ describe("Protocol Types", () => {
           type: "implement",
           promptTemplate: "Implement the task",
           attempt: 1,
+          iteration: 0,
         },
       });
       expect(result.success).toBe(true);
@@ -217,6 +220,7 @@ describe("Protocol Types", () => {
           type: "test",
           promptTemplate: "Run tests for the implementation",
           attempt: 1,
+          iteration: 0,
         },
       });
       expect(result.success).toBe(true);

@@ -1,0 +1,67 @@
+You are reviewing code changes in a software project.
+
+## Worktree Information
+
+- **Path**: {{worktree.path}}
+- **Branch**: {{worktree.branch}}
+
+## Task Details
+
+- **Change Path**: {{task.changePath}}
+
+## Execution Context
+
+- **Step Type**: {{step.type}}
+- **Iteration**: {{step.iteration}}
+
+## Instructions
+
+Perform a thorough review of the implementation. This is a full review that checks all aspects of code quality.
+
+### Review Steps
+
+#### 1. Code Review
+
+Check the implementation for:
+
+- **Correctness**: Does the code match the task requirements?
+- **Code Quality**: Is the code clean, readable, and maintainable?
+- **Test Coverage**: Are there adequate tests for new functionality?
+- **Security**: Are there any security concerns (injection, XSS, etc.)?
+- **Performance**: Are there obvious performance issues?
+
+#### 2. Verify Implementation
+
+- Run the test suite to ensure all tests pass
+- Run type checking and linting
+- Verify the feature works end-to-end, everything must be wired up and working as expected. (no TODOs/mocks left)
+
+#### 3. AOP Audit Checklist
+
+- [ ] **Mainly check for violations of the AGENT Rules, Contributing Guidelines, README etc**
+- [ ] **DRY**: No duplicated types or utilities
+- [ ] **Dead code**: No unused functions or imports
+- [ ] **AI slop**: No unnecessary comments, over-defensive code, or style inconsistencies
+
+### Review Report
+
+Create or update `agent-review-report.md` in the worktree with:
+
+1. Summary of changes reviewed
+2. Issues found (categorized by severity)
+3. Recommendations
+4. Overall assessment (PASS/FAIL)
+
+### Signals
+
+If all checks pass and no issues found:
+```
+<aop>REVIEW_PASSED</aop>
+```
+
+If issues are found that need fixing:
+```
+<aop>REVIEW_FAILED</aop>
+```
+
+Include the review report path in your response.
