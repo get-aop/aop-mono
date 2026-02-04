@@ -3,7 +3,6 @@ __pycache__
 .claude-bkp
 
 tmp
-.devsfactory
 
 **/*.local*
 .aop
