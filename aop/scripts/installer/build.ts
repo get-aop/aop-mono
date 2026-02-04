@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// biome-ignore-all lint/suspicious/noConsole: CLI build script requires console output for user feedback
 
 import { cpSync, existsSync, rmSync } from "node:fs";
 import { mkdir } from "node:fs/promises";

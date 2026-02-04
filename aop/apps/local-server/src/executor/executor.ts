@@ -52,9 +52,12 @@ export const executeTask = async (
   let currentStep = stepCommand;
   let currentExecution = executionInfo;
 
+  const executionId = await createExecutionRecord(ctx, task.id);
+  log.info("Created execution record", { executionId });
+
   while (true) {
-    const { executionId, stepId } = await createExecutionRecords(ctx, task.id, currentStep.type);
-    log.info("Created execution records for step", {
+    const stepId = await createStepRecord(ctx, executionId, currentStep.type);
+    log.info("Created step record", {
       executionId,
       stepId,
       stepType: currentStep.type,
@@ -180,13 +183,11 @@ const syncTaskStatus = async (
   }
 };
 
-export const createExecutionRecords = async (
+export const createExecutionRecord = async (
   ctx: LocalServerContext,
   taskId: string,
-  stepType?: string,
-): Promise<{ executionId: string; stepId: string }> => {
+): Promise<string> => {
   const executionId = generateTypeId("exec");
-  const stepId = generateTypeId("step");
   const now = new Date().toISOString();
 
   await ctx.executionRepository.createExecution({
@@ -196,6 +197,17 @@ export const createExecutionRecords = async (
     started_at: now,
   });
 
+  return executionId;
+};
+
+export const createStepRecord = async (
+  ctx: LocalServerContext,
+  executionId: string,
+  stepType?: string,
+): Promise<string> => {
+  const stepId = generateTypeId("step");
+  const now = new Date().toISOString();
+
   await ctx.executionRepository.createStepExecution({
     id: stepId,
     execution_id: executionId,
@@ -204,7 +216,7 @@ export const createExecutionRecords = async (
     started_at: now,
   });
 
-  return { executionId, stepId };
+  return stepId;
 };
 
 export const createWorktree = async (ctx: ExecutorContext): Promise<WorktreeInfo> => {
@@ -436,18 +448,25 @@ export const finalizeExecutionAndGetNextStep = async (
   serverSync?: ServerSync,
   serverStepInfo?: ServerStepInfo,
 ): Promise<NextStepInfo | null> => {
-  await updateLocalExecutionRecords(ctx, executionId, stepId, result);
+  await updateStepExecutionRecord(ctx, stepId, result);
 
   const task = await ctx.taskRepository.get(taskId);
   if (!task) {
     logger.error("Task not found during finalization", { taskId });
+    await finalizeExecutionRecord(ctx, executionId, result);
     return null;
   }
 
   const serverResult = await tryServerCompletion(ctx, taskId, result, serverSync, serverStepInfo);
   if (serverResult.handled) {
-    return serverResult.nextStep ?? null;
+    if (serverResult.nextStep) {
+      return serverResult.nextStep;
+    }
+    await finalizeExecutionRecord(ctx, executionId, result);
+    return null;
   }
+
+  await finalizeExecutionRecord(ctx, executionId, result);
 
   const taskStatus: TaskStatus = result.status === "success" ? "DONE" : "BLOCKED";
   await ctx.taskRepository.update(taskId, { status: taskStatus });
@@ -459,9 +478,8 @@ export const finalizeExecutionAndGetNextStep = async (
   return null;
 };
 
-const updateLocalExecutionRecords = async (
+const updateStepExecutionRecord = async (
   ctx: LocalServerContext,
-  executionId: string,
   stepId: string,
   result: ExecuteResult,
 ): Promise<void> => {
@@ -476,7 +494,14 @@ const updateLocalExecutionRecords = async (
     ended_at: now,
     error: result.status === "timeout" ? "Inactivity timeout" : null,
   });
+};
 
+const finalizeExecutionRecord = async (
+  ctx: LocalServerContext,
+  executionId: string,
+  result: ExecuteResult,
+): Promise<void> => {
+  const now = new Date().toISOString();
   await ctx.executionRepository.updateExecution(executionId, {
     status: result.status === "success" ? ExecutionStatus.COMPLETED : ExecutionStatus.FAILED,
     completed_at: now,

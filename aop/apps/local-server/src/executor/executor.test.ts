@@ -10,7 +10,8 @@ import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import {
   buildContext,
   buildPromptForExecution,
-  createExecutionRecords,
+  createExecutionRecord,
+  createStepRecord,
   createWorktree,
   ensureDir,
   finalizeExecutionAndGetNextStep,
@@ -142,23 +143,46 @@ describe("executor", () => {
     });
   });
 
-  describe("createExecutionRecords", () => {
-    test("creates execution and step execution records", async () => {
+  describe("createExecutionRecord", () => {
+    test("creates execution record", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
 
-      const { executionId, stepId } = await createExecutionRecords(ctx, "task-1");
+      const executionId = await createExecutionRecord(ctx, "task-1");
 
       expect(executionId).toMatch(/^exec_/);
-      expect(stepId).toMatch(/^step_/);
 
       const execution = await ctx.executionRepository.getExecution(executionId);
       expect(execution?.task_id).toBe("task-1");
       expect(execution?.status).toBe(ExecutionStatus.RUNNING);
+    });
+  });
+
+  describe("createStepRecord", () => {
+    test("creates step execution record", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+
+      const executionId = await createExecutionRecord(ctx, "task-1");
+      const stepId = await createStepRecord(ctx, executionId, "implement");
+
+      expect(stepId).toMatch(/^step_/);
 
       const step = await ctx.executionRepository.getStepExecution(stepId);
       expect(step?.execution_id).toBe(executionId);
       expect(step?.status).toBe(StepExecutionStatus.RUNNING);
+      expect(step?.step_type).toBe("implement");
+    });
+
+    test("creates step without step type", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+
+      const executionId = await createExecutionRecord(ctx, "task-1");
+      const stepId = await createStepRecord(ctx, executionId);
+
+      const step = await ctx.executionRepository.getStepExecution(stepId);
+      expect(step?.step_type).toBeNull();
     });
   });
 

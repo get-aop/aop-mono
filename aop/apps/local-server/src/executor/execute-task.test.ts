@@ -323,4 +323,96 @@ describe("executeTask", () => {
     expect(callCount).toBe(2);
     expect(mockServerSync.completeStep).toHaveBeenCalledTimes(2);
   });
+
+  test("multi-step workflow creates single execution with multiple steps", async () => {
+    let callCount = 0;
+
+    await createTestRepo(db, "repo-1", testRepoPath);
+    await createTestTask(db, "task-exec-6", "repo-1", "changes/feat-6", "READY");
+
+    const task = await ctx.taskRepository.get("task-exec-6");
+    if (!task) throw new Error("Task should exist");
+
+    const stepCommand = {
+      id: "step-1",
+      type: "implement",
+      promptTemplate: "Implement feature",
+      signals: [],
+      attempt: 1,
+      iteration: 0,
+    };
+
+    const executionInfo = {
+      id: "exec-info-6",
+      workflowId: "workflow-6",
+    };
+
+    let completeStepCallCount = 0;
+    const mockServerSync = {
+      syncTask: mock(() => Promise.resolve()),
+      completeStep: mock(() => {
+        completeStepCallCount++;
+        if (completeStepCallCount === 1) {
+          return Promise.resolve({
+            taskStatus: "WORKING",
+            step: {
+              id: "step-2",
+              type: "review",
+              promptTemplate: "Review changes",
+              signals: [],
+              attempt: 1,
+              iteration: 0,
+            },
+            execution: {
+              id: "exec-info-6-2",
+              workflowId: "workflow-6",
+            },
+          });
+        }
+        return Promise.resolve({ taskStatus: "DONE" });
+      }),
+    };
+
+    const mockProvider = createMockProvider(async () => {
+      callCount++;
+      return {
+        exitCode: 0,
+        sessionId: `session-${callCount}`,
+        timedOut: false,
+      };
+    });
+
+    await executeTask(
+      ctx,
+      task,
+      stepCommand,
+      executionInfo,
+      mockServerSync as never,
+      mockProvider as never,
+    );
+
+    // Verify exactly 1 execution record was created
+    const executions = await db
+      .selectFrom("executions")
+      .selectAll()
+      .where("task_id", "=", "task-exec-6")
+      .execute();
+    expect(executions.length).toBe(1);
+    expect(executions[0]?.status).toBe("completed");
+
+    // Verify 2 step execution records were created under the same execution
+    const executionId = executions[0]?.id;
+    if (!executionId) throw new Error("Execution should have an id");
+    const steps = await db
+      .selectFrom("step_executions")
+      .selectAll()
+      .where("execution_id", "=", executionId)
+      .orderBy("started_at", "asc")
+      .execute();
+    expect(steps.length).toBe(2);
+    expect(steps[0]?.step_type).toBe("implement");
+    expect(steps[1]?.step_type).toBe("review");
+    expect(steps[0]?.status).toBe("success");
+    expect(steps[1]?.status).toBe("success");
+  });
 });
