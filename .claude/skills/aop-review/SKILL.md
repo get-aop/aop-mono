@@ -55,13 +55,14 @@ Execute `/opsx:verify {{change}}` to confirm:
 
 **Continue to Step 3**
 
-### 3. AOP Checklist
+### 3. AOP Audit & Checklist
 
-Evaluate against these criteria:
+**IMPORTANT!** Run `/aop:audit-changes current diff` to generate an audit report.
+
+Furthermore, also evaluate against these criteria:
 
 #### Structural
-- [ ] No file exceeds 300 lines
-- [ ] No function exceeds 50 lines
+- [ ] No file exceeds 500 lines
 - [ ] Vertical slice structure maintained
 - [ ] No duplicate filenames introduced
 

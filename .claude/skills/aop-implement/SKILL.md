@@ -72,8 +72,6 @@ Verify task completion:
 - If it's an infrastructure task, verify it works by running the relevant commands, even if isolated
 - Always run the verification commands that the repository has (it can be lint, typecheck, build, etc. eg `bun run check`)
 
-**IMPORTANT!** Run `/aop:audit-changes current diff` to audit the changes and fix any issues.
-
 YOU MUST VERIFY TASK COMPLETION BEFORE PROCEEDING TO THE NEXT STEP.
 
 **Gate**: Mark Step 2 complete in tracker. Do not proceed until task is completed.
