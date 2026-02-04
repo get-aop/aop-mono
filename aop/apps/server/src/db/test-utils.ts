@@ -1,7 +1,11 @@
+import { join } from "node:path";
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
+import { parseWorkflowYaml } from "../workflow/yaml-parser.ts";
 import { createDatabase, runMigrations } from "./connection.ts";
 import type { Database } from "./schema.ts";
+
+const WORKFLOWS_DIR = join(import.meta.dir, "../../workflows");
 
 export const createTestDb = async (): Promise<Kysely<Database>> => {
   const uri = process.env.TEST_DATABASE_URL;
@@ -154,4 +158,28 @@ export const createRalphLoopWorkflow = async (
     .execute();
 
   return { id, name };
+};
+
+const loadWorkflowYaml = async (filename: string) => {
+  const content = await Bun.file(join(WORKFLOWS_DIR, filename)).text();
+  return parseWorkflowYaml(content);
+};
+
+export const createAopDefaultWorkflow = async (
+  db: Kysely<Database>,
+): Promise<{ id: string; name: string }> => {
+  const workflow = await loadWorkflowYaml("aop-default.yaml");
+  const id = "workflow_aop_default";
+
+  await db
+    .insertInto("workflows")
+    .values({
+      id,
+      name: workflow.name,
+      definition: JSON.stringify(workflow),
+    })
+    .onConflict((oc) => oc.column("id").doNothing())
+    .execute();
+
+  return { id, name: workflow.name };
 };

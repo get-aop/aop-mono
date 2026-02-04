@@ -3,6 +3,7 @@ import type { Kysely } from "kysely";
 import type { Client, Database } from "../db/schema.ts";
 import {
   cleanupTestDb,
+  createAopDefaultWorkflow,
   createRalphLoopWorkflow,
   createSimpleWorkflow,
   createTestClient,
@@ -30,6 +31,7 @@ describe("ExecutionService", () => {
 
   const setupTestData = async (maxConcurrent = 5): Promise<Client> => {
     const { id } = await createTestClient(db, { maxConcurrentTasks: maxConcurrent });
+    await createAopDefaultWorkflow(db);
     await createSimpleWorkflow(db);
 
     const clientRow = await db
@@ -91,7 +93,7 @@ describe("ExecutionService", () => {
 
       expect(result.status).toBe("WORKING");
       expect(result.execution).toBeDefined();
-      expect(result.execution?.workflowId).toBe("workflow_simple");
+      expect(result.execution?.workflowId).toBe("workflow_aop_default");
       expect(result.step).toBeDefined();
       expect(result.step?.type).toBe("implement");
       expect(result.step?.attempt).toBe(1);
@@ -210,7 +212,13 @@ describe("ExecutionService", () => {
       const testClient = await setupTestData();
       await createTestRepo(testClient.id, "repo-1");
 
-      const startResult = await executionService.startWorkflow(testClient, "task-1", "repo-1");
+      // Use simple workflow which has direct success -> done transition
+      const startResult = await executionService.startWorkflow(
+        testClient,
+        "task-1",
+        "repo-1",
+        "simple",
+      );
       const stepId = startResult.step?.id;
       const executionId = startResult.execution?.id;
 
@@ -233,7 +241,13 @@ describe("ExecutionService", () => {
       const testClient = await setupTestData();
       await createTestRepo(testClient.id, "repo-1");
 
-      const startResult = await executionService.startWorkflow(testClient, "task-1", "repo-1");
+      // Use simple workflow which has direct failure -> blocked transition
+      const startResult = await executionService.startWorkflow(
+        testClient,
+        "task-1",
+        "repo-1",
+        "simple",
+      );
       const stepId = startResult.step?.id;
       const executionId = startResult.execution?.id;
 
@@ -258,7 +272,13 @@ describe("ExecutionService", () => {
       const testClient = await setupTestData();
       await createTestRepo(testClient.id, "repo-1");
 
-      const startResult = await executionService.startWorkflow(testClient, "task-1", "repo-1");
+      // Use simple workflow which has direct success -> done transition
+      const startResult = await executionService.startWorkflow(
+        testClient,
+        "task-1",
+        "repo-1",
+        "simple",
+      );
       const stepId = startResult.step?.id;
       const executionId = startResult.execution?.id;
 

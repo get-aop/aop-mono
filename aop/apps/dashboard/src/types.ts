@@ -8,12 +8,24 @@ export interface Repo {
   name: string;
 }
 
+export type StepStatus = "running" | "success" | "failure" | "cancelled";
+
+export interface Step {
+  id: string;
+  stepType: string | null;
+  status: StepStatus;
+  startedAt: string;
+  endedAt?: string;
+  error?: string;
+}
+
 export interface Execution {
   id: string;
   taskId: string;
   status: "running" | "completed" | "failed";
   startedAt: string;
   finishedAt?: string;
+  steps: Step[];
 }
 
 export interface Metrics {

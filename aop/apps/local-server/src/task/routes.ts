@@ -22,13 +22,26 @@ export const createTaskRoutes = (ctx: LocalServerContext) => {
 
     const executions = await ctx.executionRepository.getExecutionsByTaskId(taskId);
 
-    const transformedExecutions = executions.map((e) => ({
-      id: e.id,
-      taskId: e.task_id,
-      status: e.status === "aborted" || e.status === "cancelled" ? "failed" : e.status,
-      startedAt: e.started_at,
-      finishedAt: e.completed_at ?? undefined,
-    }));
+    const transformedExecutions = await Promise.all(
+      executions.map(async (e) => {
+        const stepExecutions = await ctx.executionRepository.getStepExecutionsByExecutionId(e.id);
+        return {
+          id: e.id,
+          taskId: e.task_id,
+          status: e.status === "aborted" || e.status === "cancelled" ? "failed" : e.status,
+          startedAt: e.started_at,
+          finishedAt: e.completed_at ?? undefined,
+          steps: stepExecutions.map((s) => ({
+            id: s.id,
+            stepType: s.step_type,
+            status: s.status,
+            startedAt: s.started_at,
+            endedAt: s.ended_at ?? undefined,
+            error: s.error ?? undefined,
+          })),
+        };
+      }),
+    );
 
     return c.json({ executions: transformedExecutions });
   });

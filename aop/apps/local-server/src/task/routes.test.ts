@@ -116,6 +116,136 @@ describe("task/routes", () => {
       expect(body.executions[0].status).toBe("failed");
       expect(body.executions[1].status).toBe("failed");
     });
+
+    test("returns executions with empty steps array when no steps exist", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "WORKING");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: ExecutionStatus.COMPLETED,
+        started_at: "2024-01-01T00:00:00.000Z",
+      });
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/executions");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.executions).toHaveLength(1);
+      expect(body.executions[0].steps).toEqual([]);
+    });
+
+    test("returns executions with step data including stepType", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "WORKING");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: ExecutionStatus.RUNNING,
+        started_at: "2024-01-01T00:00:00.000Z",
+      });
+
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        step_type: "implement",
+        status: "success",
+        started_at: "2024-01-01T00:00:00.000Z",
+        ended_at: "2024-01-01T00:05:00.000Z",
+      });
+
+      await ctx.executionRepository.createStepExecution({
+        id: "step-2",
+        execution_id: "exec-1",
+        step_type: "review",
+        status: "running",
+        started_at: "2024-01-01T00:05:00.000Z",
+      });
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/executions");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.executions).toHaveLength(1);
+      expect(body.executions[0].steps).toHaveLength(2);
+
+      expect(body.executions[0].steps[0].id).toBe("step-1");
+      expect(body.executions[0].steps[0].stepType).toBe("implement");
+      expect(body.executions[0].steps[0].status).toBe("success");
+      expect(body.executions[0].steps[0].startedAt).toBe("2024-01-01T00:00:00.000Z");
+      expect(body.executions[0].steps[0].endedAt).toBe("2024-01-01T00:05:00.000Z");
+
+      expect(body.executions[0].steps[1].id).toBe("step-2");
+      expect(body.executions[0].steps[1].stepType).toBe("review");
+      expect(body.executions[0].steps[1].status).toBe("running");
+      expect(body.executions[0].steps[1].endedAt).toBeUndefined();
+    });
+
+    test("returns steps ordered by startedAt ascending", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "WORKING");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: ExecutionStatus.RUNNING,
+        started_at: "2024-01-01T00:00:00.000Z",
+      });
+
+      await ctx.executionRepository.createStepExecution({
+        id: "step-2",
+        execution_id: "exec-1",
+        step_type: "review",
+        status: "running",
+        started_at: "2024-01-01T00:05:00.000Z",
+      });
+
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        step_type: "implement",
+        status: "success",
+        started_at: "2024-01-01T00:00:00.000Z",
+        ended_at: "2024-01-01T00:05:00.000Z",
+      });
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/executions");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.executions[0].steps[0].stepType).toBe("implement");
+      expect(body.executions[0].steps[1].stepType).toBe("review");
+    });
+
+    test("returns step error when present", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "BLOCKED");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: ExecutionStatus.FAILED,
+        started_at: "2024-01-01T00:00:00.000Z",
+      });
+
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        step_type: "implement",
+        status: "failure",
+        started_at: "2024-01-01T00:00:00.000Z",
+        ended_at: "2024-01-01T00:05:00.000Z",
+        error: "Build failed: syntax error",
+      });
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/executions");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.executions[0].steps[0].error).toBe("Build failed: syntax error");
+    });
   });
 
   describe("POST /api/repos/:repoId/tasks/:taskId/ready", () => {

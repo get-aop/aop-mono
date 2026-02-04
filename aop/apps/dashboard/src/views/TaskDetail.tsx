@@ -3,6 +3,7 @@ import { markReady, removeTask } from "../api/client";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { type LogLine, LogViewer } from "../components/LogViewer";
 import { StatusBadge } from "../components/StatusBadge";
+import { StepList } from "../components/StepList";
 import { useSSE } from "../hooks/useSSE";
 import { useTaskEvents } from "../hooks/useTaskEvents";
 import type { Execution, Task } from "../types";
@@ -336,8 +337,15 @@ const ExecutionHistory = ({
                 </button>
 
                 {isExpanded && (
-                  <div className="mt-2 h-64 rounded-aop border border-aop-charcoal bg-aop-black">
-                    <LogViewer lines={logLines} />
+                  <div className="mt-2 flex flex-col gap-2">
+                    {execution.steps.length > 0 && (
+                      <div className="rounded-aop border border-aop-charcoal bg-aop-dark">
+                        <StepList steps={execution.steps} />
+                      </div>
+                    )}
+                    <div className="h-64 rounded-aop border border-aop-charcoal bg-aop-black">
+                      <LogViewer lines={logLines} />
+                    </div>
                   </div>
                 )}
               </div>

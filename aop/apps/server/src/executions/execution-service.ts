@@ -17,7 +17,7 @@ import { createWorkflowStateMachine } from "../workflow/workflow-state-machine.t
 import { createExecutionRepository } from "./execution-repository.ts";
 import { createStepExecutionRepository } from "./step-execution-repository.ts";
 
-const DEFAULT_WORKFLOW_NAME = "simple";
+const DEFAULT_WORKFLOW_NAME = "aop-default";
 const logger = getLogger("aop", "execution-service");
 
 const parseVisitedSteps = (visitedSteps: string): string[] => {
