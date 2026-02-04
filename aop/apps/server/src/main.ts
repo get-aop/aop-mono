@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { AOP_PORTS, AOP_URLS } from "@aop/common";
 import { configureLogging, getLogger } from "@aop/infra";
 import { createServer } from "./api/server.ts";
 import { createDatabase, runMigrations } from "./db/connection.ts";
@@ -13,17 +14,11 @@ const logger = getLogger("aop-server", "main");
 const main = async () => {
   await configureLogging({ format: "json" });
 
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    logger.error("DATABASE_URL environment variable is required");
-    process.exit(1);
-  }
-
-  const port = Number.parseInt(process.env.PORT ?? "3000", 10);
+  const port = AOP_PORTS.SERVER;
 
   logger.info("Starting AOP server on port {port}", { port });
 
-  const db = createDatabase(databaseUrl);
+  const db = createDatabase(AOP_URLS.DATABASE);
 
   logger.info("Running database migrations");
   await runMigrations(db);

@@ -12,6 +12,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { AOP_URLS } from "@aop/common";
 import { type Browser, chromium, type Page } from "playwright";
 import {
   cleanupTestRepos,
@@ -28,7 +29,7 @@ import {
 import { checkDevEnvironment } from "./helpers/server";
 
 const E2E_TIMEOUT = 300_000;
-const DASHBOARD_URL = "http://localhost:5173";
+const DASHBOARD_URL = AOP_URLS.DASHBOARD;
 const SCREENSHOT_DIR = join(import.meta.dir, "../tmp/screenshots");
 
 const waitForElement = async (

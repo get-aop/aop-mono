@@ -1,6 +1,6 @@
 import { getLogger } from "@aop/infra";
 import { createApp } from "./app.ts";
-import { DEFAULT_PORT, getDashboardDevOrigin, getDashboardStaticPath } from "./config.ts";
+import { getDashboardDevOrigin, getDashboardStaticPath, getPort } from "./config.ts";
 import { createCommandContext } from "./context.ts";
 import { createDatabase, getDefaultDbPath } from "./db/connection.ts";
 import { runMigrations } from "./db/migrations.ts";
@@ -19,7 +19,7 @@ export interface ServerHandle {
 }
 
 export const startServer = async (options?: ServerOptions): Promise<ServerHandle> => {
-  const port = options?.port ?? DEFAULT_PORT;
+  const port = options?.port ?? getPort();
   const startTimeMs = Date.now();
 
   const dbPath = options?.dbPath ?? process.env.AOP_DB_PATH ?? getDefaultDbPath();

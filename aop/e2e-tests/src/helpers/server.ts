@@ -1,3 +1,4 @@
+import { AOP_URLS } from "@aop/common";
 import type { Database } from "@aop/server/db";
 import { Kysely } from "kysely";
 import { PostgresJSDialect } from "kysely-postgres-js";
@@ -8,8 +9,7 @@ let serverDb: Kysely<Database> | null = null;
 
 const getServerDb = (): Kysely<Database> => {
   if (!serverDb) {
-    const databaseUrl = process.env.DATABASE_URL ?? "postgres://aop:aop@localhost:5433/aop";
-    const pg = postgres(databaseUrl, { max: 5, idle_timeout: 20 });
+    const pg = postgres(AOP_URLS.DATABASE, { max: 5, idle_timeout: 20 });
     serverDb = new Kysely<Database>({ dialect: new PostgresJSDialect({ postgres: pg }) });
   }
   return serverDb;

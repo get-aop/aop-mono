@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { AOP_URLS } from "@aop/common";
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
 import { parseWorkflowYaml } from "../workflow/yaml-parser.ts";
@@ -8,13 +9,7 @@ import type { Database } from "./schema.ts";
 const WORKFLOWS_DIR = join(import.meta.dir, "../../workflows");
 
 export const createTestDb = async (): Promise<Kysely<Database>> => {
-  const uri = process.env.TEST_DATABASE_URL;
-  if (!uri) {
-    throw new Error(
-      "TEST_DATABASE_URL is required. Start the database with: docker compose up -d postgres",
-    );
-  }
-  const db = createDatabase(uri);
+  const db = createDatabase(AOP_URLS.DATABASE_TEST);
   await runMigrations(db);
   return db;
 };

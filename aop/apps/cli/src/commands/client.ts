@@ -1,12 +1,11 @@
+import { AOP_URLS } from "@aop/common";
 import { getLogger } from "@aop/infra";
 
 const logger = getLogger("aop", "cli", "client");
 
-const DEFAULT_PORT = 3847;
 const HEALTH_CHECK_TIMEOUT_MS = 1000;
 
-export const getServerUrl = (): string =>
-  process.env.AOP_URL ?? `http://localhost:${process.env.AOP_PORT ?? DEFAULT_PORT}`;
+export const getServerUrl = (): string => AOP_URLS.LOCAL_SERVER;
 
 export const isServerRunning = async (): Promise<boolean> => {
   const serverUrl = getServerUrl();

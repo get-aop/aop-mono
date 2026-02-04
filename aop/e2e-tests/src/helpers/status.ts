@@ -1,4 +1,5 @@
 import type { TaskStatus } from "@aop/common";
+import { DEFAULT_LOCAL_SERVER_URL } from "./constants";
 import { runAopCommand } from "./daemon";
 
 export interface TaskInfo {
@@ -34,7 +35,7 @@ export const getTaskStatus = async (taskId: string): Promise<TaskInfo | null> =>
   // Use resolve endpoint which returns tasks regardless of status (including REMOVED)
   // The status command filters out REMOVED tasks, so we use the resolve API directly
   try {
-    const response = await fetch(`http://localhost:3847/api/tasks/resolve/${taskId}`, {
+    const response = await fetch(`${DEFAULT_LOCAL_SERVER_URL}/api/tasks/resolve/${taskId}`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) {

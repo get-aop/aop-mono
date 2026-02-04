@@ -5,12 +5,13 @@
  * Proxies /api/* requests to local-server.
  */
 
+import { AOP_PORTS, AOP_URLS } from "@aop/common";
 import { configureLogging, getLogger } from "@aop/infra";
 
 const log = getLogger("dashboard", "dev");
 
-const PORT = Number(process.env.DASHBOARD_PORT) || 5173;
-const API_URL = process.env.API_URL || "http://localhost:3847";
+const PORT = AOP_PORTS.DASHBOARD;
+const API_URL = AOP_URLS.LOCAL_SERVER;
 
 const streamSSEResponse = async (response: Response): Promise<Response> => {
   const { readable, writable } = new TransformStream();

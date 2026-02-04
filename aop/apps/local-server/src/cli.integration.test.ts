@@ -8,7 +8,7 @@ import { createCommandContext, type LocalServerContext } from "./context.ts";
 import type { Database } from "./db/schema.ts";
 import { type AnyJson, createTestDb, createTestRepo, createTestTask } from "./db/test-utils.ts";
 
-const TEST_PORT = 13847;
+const TEST_PORT = 25151;
 const TEST_SERVER_URL = `http://localhost:${TEST_PORT}`;
 
 describe("CLI integration tests", () => {

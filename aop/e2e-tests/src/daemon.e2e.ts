@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { AOP_URLS } from "@aop/common";
 import {
   cleanupTestRepos,
   createTempRepo,
@@ -33,7 +34,7 @@ describe("local server lifecycle", () => {
       const alreadyRunning = await isLocalServerRunning();
       if (alreadyRunning) {
         // Just verify health check works
-        const response = await fetch("http://localhost:3847/api/health");
+        const response = await fetch(`${AOP_URLS.LOCAL_SERVER}/api/health`);
         expect(response.ok).toBe(true);
         const health = (await response.json()) as { ok: boolean };
         expect(health.ok).toBe(true);

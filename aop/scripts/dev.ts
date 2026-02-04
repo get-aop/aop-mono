@@ -15,13 +15,81 @@
  *   bun dev --no-dashboard    # Start without dashboard
  */
 
+import { resolve } from "node:path";
+
+const ROOT_DIR = resolve(import.meta.dirname, "..");
+const ENV_FILE = resolve(ROOT_DIR, ".env");
+const ENV_EXAMPLE_FILE = resolve(ROOT_DIR, ".env.example");
+
+const parseEnvFile = (content: string): Map<string, string> => {
+  const vars = new Map<string, string>();
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex === -1) continue;
+    const key = trimmed.slice(0, eqIndex);
+    const value = trimmed.slice(eqIndex + 1);
+    vars.set(key, value);
+  }
+  return vars;
+};
+
+const syncEnvFile = async (): Promise<void> => {
+  const exampleFile = Bun.file(ENV_EXAMPLE_FILE);
+  if (!(await exampleFile.exists())) {
+    throw new Error(".env.example not found. Cannot configure environment.");
+  }
+
+  const exampleContent = await exampleFile.text();
+  const exampleVars = parseEnvFile(exampleContent);
+
+  const envFile = Bun.file(ENV_FILE);
+  if (!(await envFile.exists())) {
+    await Bun.write(ENV_FILE, exampleContent);
+    process.stdout.write("Created .env from .env.example\n");
+    return;
+  }
+
+  const envContent = await envFile.text();
+  const envVars = parseEnvFile(envContent);
+
+  const missingVars: string[] = [];
+  for (const [key, value] of exampleVars) {
+    if (!envVars.has(key)) {
+      missingVars.push(`${key}=${value}`);
+    }
+  }
+
+  if (missingVars.length > 0) {
+    const newContent = `${envContent.trimEnd()}\n\n# Added from .env.example\n${missingVars.join("\n")}\n`;
+    await Bun.write(ENV_FILE, newContent);
+    const addedKeys = missingVars.map((v) => v.split("=")[0]).join(", ");
+    process.stdout.write(`Added missing env vars to .env: ${addedKeys}\n`);
+  }
+};
+
+const loadEnvFile = async (): Promise<void> => {
+  const envFile = Bun.file(ENV_FILE);
+  if (!(await envFile.exists())) return;
+
+  const content = await envFile.text();
+  const vars = parseEnvFile(content);
+  for (const [key, value] of vars) {
+    if (!(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+};
+
+// Sync and load .env before importing modules that depend on env vars
+await syncEnvFile();
+await loadEnvFile();
+
+import { AOP_PORTS, AOP_URLS } from "@aop/common";
 import { configureLogging, getLogger } from "@aop/infra";
 
 const log = getLogger("dev", "orchestrator");
-
-const SERVER_PORT = 3000;
-const LOCAL_SERVER_PORT = 3847;
-const DASHBOARD_PORT = 5173;
 
 interface ParsedArgs {
   dbOnly: boolean;
@@ -211,11 +279,7 @@ const startServer = (): ProcessHandle => {
   log.info("Starting AOP server...");
   const proc = Bun.spawn(["bun", "run", "--watch", "./src/main.ts"], {
     cwd: "./apps/server",
-    env: {
-      ...process.env,
-      DATABASE_URL: "postgres://aop:aop@localhost:5433/aop",
-      PORT: String(SERVER_PORT),
-    },
+    env: process.env,
     stdout: "inherit",
     stderr: "inherit",
   });
@@ -228,9 +292,8 @@ const startLocalServer = (): ProcessHandle => {
     cwd: "./apps/local-server",
     env: {
       ...process.env,
-      AOP_SERVER_URL: `http://localhost:${SERVER_PORT}`,
+      AOP_SERVER_URL: AOP_URLS.SERVER,
       AOP_API_KEY: "aop_test_key_dev",
-      AOP_PORT: String(LOCAL_SERVER_PORT),
       AOP_TEST_MODE: "true",
     },
     stdout: "inherit",
@@ -245,8 +308,7 @@ const startDashboard = (): ProcessHandle => {
     cwd: "./apps/dashboard",
     env: {
       ...process.env,
-      DASHBOARD_PORT: String(DASHBOARD_PORT),
-      API_URL: `http://localhost:${LOCAL_SERVER_PORT}`,
+      API_URL: AOP_URLS.LOCAL_SERVER,
     },
     stdout: "inherit",
     stderr: "inherit",
@@ -278,9 +340,9 @@ const main = async () => {
   // Check for existing services on ports we need
   const portsToCheck: number[] = [];
   if (!dbOnly) {
-    portsToCheck.push(SERVER_PORT);
-    if (!noLocal) portsToCheck.push(LOCAL_SERVER_PORT);
-    if (!noDashboard) portsToCheck.push(DASHBOARD_PORT);
+    portsToCheck.push(AOP_PORTS.SERVER);
+    if (!noLocal) portsToCheck.push(AOP_PORTS.LOCAL_SERVER);
+    if (!noDashboard) portsToCheck.push(AOP_PORTS.DASHBOARD);
   }
   await checkAndKillExistingServices(portsToCheck);
 
@@ -307,7 +369,7 @@ const main = async () => {
 
   if (!noDashboard) {
     processes.push(startDashboard());
-    log.info("Dashboard available at http://localhost:{port}", { port: DASHBOARD_PORT });
+    log.info("Dashboard available at {url}", { url: AOP_URLS.DASHBOARD });
   }
 
   log.info("Dev environment started. Press Ctrl+C to stop.");
