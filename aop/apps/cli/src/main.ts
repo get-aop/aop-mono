@@ -2,7 +2,7 @@
 
 import { mkdir } from "node:fs/promises";
 import { configureLogging, type LoggingOptions, type LogLevel } from "@aop/infra";
-import cac from "cac";
+import cac, { type CAC } from "cac";
 import {
   applyCommand,
   configGetCommand,
@@ -14,7 +14,7 @@ import {
   taskRemoveCommand,
 } from "./commands/index.ts";
 
-const formatTimestamp = (date: Date): string => {
+export const formatTimestamp = (date: Date): string => {
   const pad = (n: number) => String(n).padStart(2, "0");
   return [
     date.getFullYear(),
@@ -26,7 +26,7 @@ const formatTimestamp = (date: Date): string => {
   ].join("");
 };
 
-const setupLogging = async (): Promise<void> => {
+export const setupLogging = async (): Promise<void> => {
   const logDir = process.env.AOP_LOG_DIR;
   const logLevel = (process.env.AOP_LOG_LEVEL as LogLevel) || "info";
   const options: LoggingOptions = { level: logLevel, format: "pretty" };
@@ -46,50 +46,54 @@ const setupLogging = async (): Promise<void> => {
   await configureLogging(options);
 };
 
-const cli = cac("aop");
+export const registerCommands = (cli: CAC): void => {
+  // Status
+  cli
+    .command("status [taskId]", "Show status")
+    .option("--json", "Output as JSON")
+    .action((taskId, options) => statusCommand(taskId, { json: options.json }));
 
-// Status
-cli
-  .command("status [taskId]", "Show status")
-  .option("--json", "Output as JSON")
-  .action((taskId, options) => statusCommand(taskId, { json: options.json }));
+  // Repository commands
+  cli.command("repo:init [path]", "Register repository").action((path) => repoInitCommand(path));
 
-// Repository commands
-cli.command("repo:init [path]", "Register repository").action((path) => repoInitCommand(path));
+  cli
+    .command("repo:remove [path]", "Unregister repository")
+    .option("--force", "Abort working tasks")
+    .action((path, options) => repoRemoveCommand(path, { force: options.force }));
 
-cli
-  .command("repo:remove [path]", "Unregister repository")
-  .option("--force", "Abort working tasks")
-  .action((path, options) => repoRemoveCommand(path, { force: options.force }));
+  // Task commands
+  cli
+    .command("task:ready <identifier>", "Mark task as READY")
+    .option("--workflow <name>", "Workflow name")
+    .action((identifier, options) => taskReadyCommand(identifier, { workflow: options.workflow }));
 
-// Task commands
-cli
-  .command("task:ready <identifier>", "Mark task as READY")
-  .option("--workflow <name>", "Workflow name")
-  .action((identifier, options) => taskReadyCommand(identifier, { workflow: options.workflow }));
+  cli
+    .command("task:remove <identifier>", "Remove task")
+    .option("--force", "Abort working task")
+    .action((identifier, options) => taskRemoveCommand(identifier, { force: options.force }));
 
-cli
-  .command("task:remove <identifier>", "Remove task")
-  .option("--force", "Abort working task")
-  .action((identifier, options) => taskRemoveCommand(identifier, { force: options.force }));
+  cli
+    .command("apply <taskId>", "Apply worktree changes to main repo")
+    .action((taskId) => applyCommand(taskId));
 
-cli
-  .command("apply <taskId>", "Apply worktree changes to main repo")
-  .action((taskId) => applyCommand(taskId));
+  // Config commands
+  cli.command("config:get [key]", "Get config value(s)").action((key) => configGetCommand(key));
 
-// Config commands
-cli.command("config:get [key]", "Get config value(s)").action((key) => configGetCommand(key));
-
-cli
-  .command("config:set <key> <value>", "Set config value")
-  .action((key, value) => configSetCommand(key, value));
-
-cli.help();
-cli.version("0.1.0");
-
-const main = async (): Promise<void> => {
-  await setupLogging();
-  cli.parse();
+  cli
+    .command("config:set <key> <value>", "Set config value")
+    .action((key, value) => configSetCommand(key, value));
 };
 
-main();
+if (import.meta.main) {
+  const cli = cac("aop");
+  registerCommands(cli);
+  cli.help();
+  cli.version("0.1.0");
+
+  const main = async (): Promise<void> => {
+    await setupLogging();
+    cli.parse();
+  };
+
+  main();
+}

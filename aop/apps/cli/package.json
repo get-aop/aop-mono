@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/main.ts",
+    "./commands": "./src/main.ts",
     "./daemon": "./src/daemon/index.ts",
     "./context": "./src/context.ts",
     "./db": "./src/db/connection.ts",

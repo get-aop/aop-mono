@@ -6,7 +6,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aop/cli": "workspace:*",
     "@aop/infra": "workspace:*",
-    "@aop/llm-provider": "workspace:*"
+    "@aop/llm-provider": "workspace:*",
+    "@aop/local-server": "workspace:*"
   }
 }

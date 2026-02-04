@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/run.ts",
+    "./server": "./src/server.ts",
     "./context": "./src/context.ts",
     "./db": "./src/db/connection.ts",
     "./db/migrations": "./src/db/migrations.ts",

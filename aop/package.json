@@ -1,5 +1,6 @@
 {
   "name": "aop",
+  "version": "0.1.0",
   "type": "module",
   "private": true,
   "bin": {
@@ -25,7 +26,8 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "prepare": "lefthook install",
-    "ralph-loop": "bun run ./scripts/ralph-loop.ts"
+    "ralph-loop": "bun run ./scripts/ralph-loop.ts",
+    "build:release": "bun run ./scripts/installer/build.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",

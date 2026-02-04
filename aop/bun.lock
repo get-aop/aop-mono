@@ -156,8 +156,10 @@
     "scripts": {
       "name": "@aop/scripts",
       "dependencies": {
+        "@aop/cli": "workspace:*",
         "@aop/infra": "workspace:*",
         "@aop/llm-provider": "workspace:*",
+        "@aop/local-server": "workspace:*",
       },
     },
   },
