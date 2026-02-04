@@ -20,7 +20,7 @@ export const createStepCommandGenerator = (
     attempt: number,
     iteration: number,
   ): Promise<StepCommand> => {
-    const promptTemplate = await templateLoader.load(step.type);
+    const promptTemplate = await templateLoader.load(step.promptTemplate);
 
     return {
       id: stepExecutionId,

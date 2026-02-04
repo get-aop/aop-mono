@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { StepType } from "../workflow/types.ts";
 import { createTemplateLoader, type TemplateLoader } from "./template-loader.ts";
 
 describe("TemplateLoader", () => {
@@ -10,11 +9,20 @@ describe("TemplateLoader", () => {
   });
 
   describe("load", () => {
-    const stepTypes: StepType[] = ["implement", "test", "review", "debug", "iterate"];
+    const templateFiles = [
+      "implement.md.hbs",
+      "test.md.hbs",
+      "review.md.hbs",
+      "debug.md.hbs",
+      "iterate.md.hbs",
+      "full-review.md.hbs",
+      "quick-review.md.hbs",
+      "fix-issues.md.hbs",
+    ];
 
-    for (const stepType of stepTypes) {
-      test(`loads ${stepType} template`, async () => {
-        const template = await loader.load(stepType);
+    for (const filename of templateFiles) {
+      test(`loads ${filename} template`, async () => {
+        const template = await loader.load(filename);
 
         expect(template).toContain("{{worktree.path}}");
         expect(template).toContain("{{worktree.branch}}");
@@ -24,25 +32,23 @@ describe("TemplateLoader", () => {
     }
 
     test("caches loaded templates", async () => {
-      const template1 = await loader.load("implement");
-      const template2 = await loader.load("implement");
+      const template1 = await loader.load("implement.md.hbs");
+      const template2 = await loader.load("implement.md.hbs");
 
       expect(template1).toBe(template2);
     });
 
-    test("throws for unknown step type", async () => {
-      await expect(loader.load("unknown" as StepType)).rejects.toThrow(
-        "Unknown step type: unknown",
-      );
+    test("throws for unknown template file", async () => {
+      await expect(loader.load("unknown.md.hbs")).rejects.toThrow("Template not found");
     });
   });
 
   describe("clearCache", () => {
     test("clears the template cache", async () => {
-      await loader.load("implement");
+      await loader.load("implement.md.hbs");
       loader.clearCache();
 
-      const template = await loader.load("implement");
+      const template = await loader.load("implement.md.hbs");
 
       expect(template).toContain("{{worktree.path}}");
     });
