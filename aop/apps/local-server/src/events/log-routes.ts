@@ -67,6 +67,7 @@ export const createLogStreamHandler = (ctx: LocalServerContext) => {
 
     return streamSSE(c, async (stream) => {
       let eventId = 0;
+      let completionHandled = false;
 
       const sendEvent = async (data: SSEEventData) => {
         await stream.writeSSE({
@@ -76,20 +77,29 @@ export const createLogStreamHandler = (ctx: LocalServerContext) => {
         });
       };
 
-      const existingLines = ctx.logBuffer.getLines(executionId);
-      if (existingLines.length > 0) {
-        await sendEvent({ type: "replay", lines: existingLines });
-      }
+      let unsubscribeLog: (() => void) | null = null;
+      let unsubscribeComplete: (() => void) | null = null;
 
-      if (ctx.logBuffer.isComplete(executionId)) {
-        const status = ctx.logBuffer.getStatus(executionId);
-        if (status) {
-          await sendEvent({ type: "complete", status });
-        }
-        return;
-      }
+      const cleanup = () => {
+        unsubscribeLog?.();
+        unsubscribeComplete?.();
+        unsubscribeLog = null;
+        unsubscribeComplete = null;
+      };
 
-      const unsubscribeLog = ctx.logBuffer.subscribe(async (event: LogEvent) => {
+      const handleCompletion = (status: "completed" | "failed" | "cancelled") => {
+        if (completionHandled) return;
+        completionHandled = true;
+        cleanup();
+        sendEvent({ type: "complete", status }).finally(() => {
+          stream.close();
+        });
+      };
+
+      // Subscribe BEFORE checking isComplete to avoid race condition:
+      // If we check first and completion happens between check and subscribe,
+      // we miss the event and listeners leak forever.
+      unsubscribeLog = ctx.logBuffer.subscribe(async (event: LogEvent) => {
         if (event.executionId !== executionId) return;
         await sendEvent({
           type: "log",
@@ -99,18 +109,30 @@ export const createLogStreamHandler = (ctx: LocalServerContext) => {
         });
       });
 
-      const unsubscribeComplete = ctx.logBuffer.subscribeComplete(
-        async (event: ExecutionCompleteEvent) => {
-          if (event.executionId !== executionId) return;
-          await sendEvent({ type: "complete", status: event.status });
-          stream.close();
-        },
-      );
-
-      stream.onAbort(() => {
-        unsubscribeLog();
-        unsubscribeComplete();
+      unsubscribeComplete = ctx.logBuffer.subscribeComplete((event: ExecutionCompleteEvent) => {
+        if (event.executionId !== executionId) return;
+        handleCompletion(event.status);
       });
+
+      stream.onAbort(cleanup);
+
+      // Send replay of existing lines AFTER subscribing, so we don't miss
+      // any events that arrive between getLines and subscribe
+      const existingLines = ctx.logBuffer.getLines(executionId);
+      if (existingLines.length > 0) {
+        await sendEvent({ type: "replay", lines: existingLines });
+      }
+
+      // Check if completion happened before or during subscription setup.
+      // getStatus returns null if not complete, so we use it directly.
+      const existingStatus = ctx.logBuffer.getStatus(executionId);
+      if (existingStatus && !completionHandled) {
+        completionHandled = true;
+        cleanup();
+        await sendEvent({ type: "complete", status: existingStatus });
+        stream.close();
+        return;
+      }
 
       await new Promise(() => {});
     });

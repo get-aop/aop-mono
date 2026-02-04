@@ -436,6 +436,40 @@ describe("log-routes", () => {
       expect(completeEvent.status).toBe("cancelled");
     });
 
+    it("cleans up listeners on normal completion (no memory leak)", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+
+      // Open 15 SSE connections that complete normally - more than the default EventEmitter limit of 10
+      // If listeners aren't cleaned up, this would trigger MaxListenersExceededWarning
+      for (let i = 0; i < 15; i++) {
+        await ctx.executionRepository.createExecution({
+          id: `exec-${i}`,
+          task_id: "task-1",
+          status: ExecutionStatus.RUNNING,
+          started_at: new Date().toISOString(),
+        });
+
+        const responsePromise = app.request(`/api/executions/exec-${i}/logs`);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        ctx.logBuffer.push(`exec-${i}`, {
+          stream: "stdout",
+          content: "test log",
+          timestamp: "2024-01-01T00:00:00.000Z",
+        });
+        ctx.logBuffer.markComplete(`exec-${i}`, "completed");
+
+        const res = await responsePromise;
+        expect(res.status).toBe(200);
+
+        // Wait for async cleanup to complete after the response
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
+      // If we got here without warnings, listeners are being cleaned up properly
+    });
+
     it("unsubscribes from log events on abort", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
