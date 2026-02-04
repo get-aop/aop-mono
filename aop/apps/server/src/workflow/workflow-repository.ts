@@ -5,6 +5,7 @@ export interface WorkflowRepository {
   findById: (id: string) => Promise<Workflow | null>;
   findByName: (name: string) => Promise<Workflow | null>;
   create: (workflow: NewWorkflow) => Promise<Workflow>;
+  upsert: (workflow: NewWorkflow) => Promise<Workflow>;
 }
 
 export const createWorkflowRepository = (db: Kysely<Database>): WorkflowRepository => ({
@@ -27,6 +28,28 @@ export const createWorkflowRepository = (db: Kysely<Database>): WorkflowReposito
   },
 
   create: async (workflow: NewWorkflow): Promise<Workflow> => {
+    return db.insertInto("workflows").values(workflow).returningAll().executeTakeFirstOrThrow();
+  },
+
+  upsert: async (workflow: NewWorkflow): Promise<Workflow> => {
+    const existing = await db
+      .selectFrom("workflows")
+      .selectAll()
+      .where("name", "=", workflow.name)
+      .executeTakeFirst();
+
+    if (existing) {
+      return db
+        .updateTable("workflows")
+        .set({
+          definition: workflow.definition,
+          version: existing.version + 1,
+        })
+        .where("id", "=", existing.id)
+        .returningAll()
+        .executeTakeFirstOrThrow();
+    }
+
     return db.insertInto("workflows").values(workflow).returningAll().executeTakeFirstOrThrow();
   },
 });

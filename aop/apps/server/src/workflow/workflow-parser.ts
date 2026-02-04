@@ -9,6 +9,10 @@ export class WorkflowParseError extends Error {
 
 export const parseWorkflow = (json: string): WorkflowDefinition => {
   const data = JSON.parse(json);
+  return validateAndParseWorkflow(data);
+};
+
+export const validateAndParseWorkflow = (data: unknown): WorkflowDefinition => {
   const result = WorkflowDefinitionSchema.safeParse(data);
 
   if (!result.success) {
@@ -16,11 +20,11 @@ export const parseWorkflow = (json: string): WorkflowDefinition => {
   }
 
   const definition = result.data;
-  validateWorkflow(definition);
+  validateWorkflowStructure(definition);
   return definition;
 };
 
-const validateWorkflow = (definition: WorkflowDefinition): void => {
+const validateWorkflowStructure = (definition: WorkflowDefinition): void => {
   if (!definition.steps[definition.initialStep]) {
     throw new WorkflowParseError(`Initial step "${definition.initialStep}" not found in steps`);
   }

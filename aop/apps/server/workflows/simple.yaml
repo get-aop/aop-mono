@@ -1,0 +1,17 @@
+version: 1
+name: simple
+initialStep: implement
+steps:
+  implement:
+    id: implement
+    type: implement
+    promptTemplate: implement.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: __done__
+      - condition: failure
+        target: __blocked__
+terminalStates:
+  - __done__
+  - __blocked__

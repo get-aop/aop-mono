@@ -1,6 +1,12 @@
+import { join } from "node:path";
 import { configureLogging, getLogger } from "@aop/infra";
 import { createServer } from "./api/server.ts";
 import { createDatabase, runMigrations } from "./db/connection.ts";
+import {
+  createWorkflowRepository,
+  loadWorkflowsFromDirectory,
+  syncWorkflows,
+} from "./workflow/index.ts";
 
 const logger = getLogger("aop-server", "main");
 
@@ -21,6 +27,12 @@ const main = async () => {
 
   logger.info("Running database migrations");
   await runMigrations(db);
+
+  logger.info("Syncing workflows from YAML files");
+  const workflowsDir = join(import.meta.dirname, "..", "workflows");
+  const workflows = await loadWorkflowsFromDirectory(workflowsDir);
+  const workflowRepo = createWorkflowRepository(db);
+  await syncWorkflows(workflowRepo, workflows);
 
   const server = createServer({ db, port });
 

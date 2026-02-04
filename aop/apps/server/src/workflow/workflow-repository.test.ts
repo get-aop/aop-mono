@@ -78,4 +78,60 @@ describe("WorkflowRepository", () => {
       expect(workflow).toBeNull();
     });
   });
+
+  describe("upsert", () => {
+    test("inserts new workflow when name does not exist", async () => {
+      const workflow = await repository.upsert({
+        id: "workflow-1",
+        name: "new-workflow",
+        definition: JSON.stringify({ steps: [] }),
+      });
+
+      expect(workflow.id).toBe("workflow-1");
+      expect(workflow.name).toBe("new-workflow");
+      expect(workflow.version).toBe(1);
+    });
+
+    test("updates existing workflow and increments version", async () => {
+      await repository.create({
+        id: "workflow-1",
+        name: "existing-workflow",
+        definition: JSON.stringify({ steps: [] }),
+      });
+
+      const updated = await repository.upsert({
+        id: "workflow-2",
+        name: "existing-workflow",
+        definition: JSON.stringify({ steps: [{ type: "implement" }] }),
+      });
+
+      expect(updated.id).toBe("workflow-1");
+      expect(updated.name).toBe("existing-workflow");
+      expect(updated.definition).toBe(JSON.stringify({ steps: [{ type: "implement" }] }));
+      expect(updated.version).toBe(2);
+    });
+
+    test("increments version on each update", async () => {
+      await repository.create({
+        id: "workflow-1",
+        name: "versioned-workflow",
+        definition: "{}",
+      });
+
+      await repository.upsert({
+        id: "any",
+        name: "versioned-workflow",
+        definition: JSON.stringify({ v: 2 }),
+      });
+
+      const third = await repository.upsert({
+        id: "any",
+        name: "versioned-workflow",
+        definition: JSON.stringify({ v: 3 }),
+      });
+
+      expect(third.version).toBe(3);
+      expect(third.definition).toBe(JSON.stringify({ v: 3 }));
+    });
+  });
 });
