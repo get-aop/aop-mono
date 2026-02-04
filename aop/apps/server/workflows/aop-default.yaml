@@ -1,10 +1,10 @@
 version: 1
 name: aop-default
-initialStep: implement
+initialStep: iterate
 steps:
-  implement:
-    id: implement
-    type: implement
+  iterate:
+    id: iterate
+    type: iterate
     promptTemplate: implement.md.hbs
     maxAttempts: 1
     signals:
@@ -12,7 +12,9 @@ steps:
       - ALL_TASKS_DONE
     transitions:
       - condition: CHUNK_DONE
-        target: implement
+        target: iterate
+      - condition: __none__
+        target: iterate
       - condition: ALL_TASKS_DONE
         target: full-review
       - condition: failure

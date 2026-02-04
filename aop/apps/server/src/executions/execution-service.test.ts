@@ -95,7 +95,7 @@ describe("ExecutionService", () => {
       expect(result.execution).toBeDefined();
       expect(result.execution?.workflowId).toBe("workflow_aop_default");
       expect(result.step).toBeDefined();
-      expect(result.step?.type).toBe("implement");
+      expect(result.step?.type).toBe("iterate");
       expect(result.step?.attempt).toBe(1);
     });
 

@@ -60,11 +60,11 @@ describe("workflow startup sync integration", () => {
     if (!aopDefault) throw new Error("Expected aop-default workflow to exist");
     const aopDefinition = JSON.parse(aopDefault.definition);
     expect(aopDefinition.version).toBe(1);
-    expect(aopDefinition.initialStep).toBe("implement");
+    expect(aopDefinition.initialStep).toBe("iterate");
     expect(Object.keys(aopDefinition.steps).sort()).toEqual([
       "fix-issues",
       "full-review",
-      "implement",
+      "iterate",
       "quick-review",
     ]);
   });
@@ -103,7 +103,7 @@ describe("workflow startup sync integration", () => {
 
     const aopDefault = workflows.find((w) => w.name === "aop-default");
     expect(aopDefault).toBeDefined();
-    expect(aopDefault?.steps.implement?.signals).toContain("CHUNK_DONE");
-    expect(aopDefault?.steps.implement?.signals).toContain("ALL_TASKS_DONE");
+    expect(aopDefault?.steps.iterate?.signals).toContain("CHUNK_DONE");
+    expect(aopDefault?.steps.iterate?.signals).toContain("ALL_TASKS_DONE");
   });
 });

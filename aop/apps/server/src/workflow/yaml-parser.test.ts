@@ -327,22 +327,22 @@ describe("aop-default workflow integration", () => {
     const workflow = await loadAopDefaultWorkflow();
 
     expect(workflow.name).toBe("aop-default");
-    expect(workflow.initialStep).toBe("implement");
+    expect(workflow.initialStep).toBe("iterate");
     expect(Object.keys(workflow.steps).sort()).toEqual([
       "fix-issues",
       "full-review",
-      "implement",
+      "iterate",
       "quick-review",
     ]);
     expect(workflow.terminalStates).toEqual(["__done__", "__blocked__"]);
   });
 
-  test("implement step has correct signals and transitions", async () => {
+  test("iterate step has correct signals and transitions", async () => {
     const workflow = await loadAopDefaultWorkflow();
-    const step = workflow.steps.implement;
+    const step = workflow.steps.iterate;
 
     expect(step?.signals).toEqual(["CHUNK_DONE", "ALL_TASKS_DONE"]);
-    expect(step?.transitions).toContainEqual({ condition: "CHUNK_DONE", target: "implement" });
+    expect(step?.transitions).toContainEqual({ condition: "CHUNK_DONE", target: "iterate" });
     expect(step?.transitions).toContainEqual({
       condition: "ALL_TASKS_DONE",
       target: "full-review",
@@ -373,15 +373,15 @@ describe("aop-default workflow integration", () => {
     const sm = createWorkflowStateMachine(workflow);
 
     const initial = sm.getInitialStep();
-    expect(initial.id).toBe("implement");
+    expect(initial.id).toBe("iterate");
 
-    const afterChunk = sm.evaluateTransition("implement", {
+    const afterChunk = sm.evaluateTransition("iterate", {
       status: "success",
       signal: "CHUNK_DONE",
     });
-    expect(afterChunk.stepId).toBe("implement");
+    expect(afterChunk.stepId).toBe("iterate");
 
-    const afterAllTasks = sm.evaluateTransition("implement", {
+    const afterAllTasks = sm.evaluateTransition("iterate", {
       status: "success",
       signal: "ALL_TASKS_DONE",
     });
@@ -397,7 +397,7 @@ describe("aop-default workflow integration", () => {
   test("workflow flow: review fails then fix then quick-review passes", async () => {
     const workflow = await loadAopDefaultWorkflow();
     const sm = createWorkflowStateMachine(workflow);
-    const ctx = { iteration: 0, visitedSteps: ["implement", "full-review"] };
+    const ctx = { iteration: 0, visitedSteps: ["iterate", "full-review"] };
 
     const afterReviewFail = sm.evaluateTransition(
       "full-review",
@@ -428,7 +428,7 @@ describe("aop-default workflow integration", () => {
     const sm = createWorkflowStateMachine(workflow);
     const ctx = {
       iteration: 1,
-      visitedSteps: ["implement", "full-review", "fix-issues", "quick-review"],
+      visitedSteps: ["iterate", "full-review", "fix-issues", "quick-review"],
     };
 
     const afterFix = sm.evaluateTransition(
@@ -445,7 +445,7 @@ describe("aop-default workflow integration", () => {
     const sm = createWorkflowStateMachine(workflow);
     const ctx = {
       iteration: 2,
-      visitedSteps: ["implement", "full-review", "fix-issues", "quick-review"],
+      visitedSteps: ["iterate", "full-review", "fix-issues", "quick-review"],
     };
 
     const result = sm.evaluateTransition(
