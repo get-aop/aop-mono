@@ -42,18 +42,21 @@ html {
   font-family: var(--font-body);
 }
 
-/* Shimmer animation for working status */
-.shimmer {
+/* Shimmer text animation for working status */
+.shimmer-text {
   background: linear-gradient(
     90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.2) 50%,
-    transparent 100%
+    var(--color-aop-amber) 0%,
+    var(--color-aop-amber-light) 25%,
+    var(--color-aop-cream) 50%,
+    var(--color-aop-amber-light) 75%,
+    var(--color-aop-amber) 100%
   );
   background-size: 200% 100%;
   animation: shimmer 2s ease-in-out infinite;
   -webkit-background-clip: text;
   background-clip: text;
+  color: transparent;
 }
 
 @keyframes shimmer {
@@ -62,6 +65,44 @@ html {
   }
   100% {
     background-position: -200% 0;
+  }
+}
+
+/* Marquee highlight effect */
+.marquee-highlight {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(217, 119, 6, 0.15) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: marquee 3s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes marquee {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Spin animation for cog icon */
+.animate-spin-slow {
+  animation: spin 6s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 

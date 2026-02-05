@@ -6,12 +6,14 @@ interface ConnectionStatusProps {
   state: ConnectionState;
 }
 
+const STATUS_UPDATE_INTERVAL = 25000;
+
 const CogIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 20 20"
     fill="currentColor"
-    className="h-4 w-4 animate-spin-slow"
+    className="h-4 w-4 shrink-0 animate-spin-slow text-aop-amber"
     aria-hidden="true"
   >
     <path
@@ -32,7 +34,7 @@ export const ConnectionStatus = ({ state }: ConnectionStatusProps) => {
 
     const interval = setInterval(() => {
       setStatusIndex(Math.floor(Math.random() * workingStatuses.length));
-    }, 3000);
+    }, STATUS_UPDATE_INTERVAL);
 
     return () => clearInterval(interval);
   }, [state]);
@@ -54,9 +56,12 @@ export const ConnectionStatus = ({ state }: ConnectionStatusProps) => {
   }
 
   return (
-    <div className="flex items-center gap-2 text-aop-amber">
+    <div className="relative flex items-center gap-2 overflow-hidden rounded-full bg-aop-charcoal/50 px-3 py-1">
+      <div className="marquee-highlight" />
+      <span className="shimmer-text font-mono text-xs text-aop-amber">
+        {workingStatuses[statusIndex]}
+      </span>
       <CogIcon />
-      <span className="shimmer font-mono text-xs">{workingStatuses[statusIndex]}</span>
     </div>
   );
 };

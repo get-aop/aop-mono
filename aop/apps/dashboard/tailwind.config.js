@@ -59,6 +59,10 @@ export default {
         "spin-slow": "spin 3s linear infinite",
       },
       keyframes: {
+        spin: {
+          from: { transform: "rotate(0deg)" },
+          to: { transform: "rotate(360deg)" },
+        },
         pulse: {
           "0%, 100%": { opacity: "0.4" },
           "50%": { opacity: "1" },
