@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { markReady, removeTask } from "../api/client";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { type LogLine, LogViewer } from "../components/LogViewer";
@@ -6,7 +6,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { StepList } from "../components/StepList";
 import { useSSE } from "../hooks/useSSE";
 import { useTaskEvents } from "../hooks/useTaskEvents";
-import type { Execution, Task } from "../types";
+import type { Execution, Step, Task } from "../types";
 
 interface TaskDetailProps {
   taskId: string;
@@ -122,7 +122,7 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
 
   if (!task) {
     return (
-      <div className="flex min-h-screen flex-col bg-aop-black">
+      <div className="flex h-screen flex-col bg-aop-black">
         <Header onClose={onClose} onNavigate={onNavigate} />
         <div className="flex flex-1 items-center justify-center">
           <span className="font-mono text-sm text-aop-slate-dark">Task not found</span>
@@ -134,11 +134,11 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
   const changeName = task.changePath.split("/").pop() ?? task.changePath;
 
   return (
-    <div className="flex min-h-screen flex-col bg-aop-black" data-testid="task-detail">
+    <div className="flex h-screen flex-col bg-aop-black" data-testid="task-detail">
       <Header onClose={onClose} onNavigate={onNavigate} />
 
-      <main className="flex flex-1 flex-col p-6">
-        <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6">
+      <main className="flex flex-1 flex-col overflow-hidden px-6 py-3">
+        <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-3 overflow-hidden">
           <TaskInfoCard
             task={task}
             isMarkingReady={isMarkingReady}
@@ -213,24 +213,22 @@ const TaskInfoCard = ({
   const changeName = task.changePath.split("/").pop() ?? task.changePath;
 
   return (
-    <div className="rounded-aop border border-aop-charcoal bg-aop-darkest p-6">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <h1 className="font-body text-xl text-aop-cream">{changeName}</h1>
-          <div className="mt-2 flex items-center gap-4">
-            <StatusBadge status={task.status} />
-            <span className="font-mono text-xs text-aop-slate-dark">{repoName}</span>
-          </div>
+    <div className="rounded-aop border border-aop-charcoal bg-aop-darkest px-5 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="font-body text-lg text-aop-cream">{changeName}</h1>
+          <StatusBadge status={task.status} />
+          <span className="font-mono text-[10px] text-aop-slate-dark">{repoName}</span>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {task.status === "DRAFT" && (
             <button
               type="button"
               onClick={onMarkReady}
               disabled={isMarkingReady}
               data-testid="mark-ready-button"
-              className="cursor-pointer rounded-aop bg-aop-amber px-4 py-2 font-mono text-xs text-aop-black transition-colors hover:bg-aop-amber/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="cursor-pointer rounded-aop bg-aop-amber px-3 py-1 font-mono text-[10px] text-aop-black transition-colors hover:bg-aop-amber/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isMarkingReady ? "Marking..." : "Mark Ready"}
             </button>
@@ -239,31 +237,30 @@ const TaskInfoCard = ({
             type="button"
             onClick={onShowRemoveDialog}
             data-testid="remove-task-button"
-            className="cursor-pointer rounded-aop border border-aop-charcoal px-4 py-2 font-mono text-xs text-aop-slate-light transition-colors hover:border-aop-slate-dark hover:text-aop-cream"
+            className="cursor-pointer rounded-aop border border-aop-charcoal px-3 py-1 font-mono text-[10px] text-aop-slate-light transition-colors hover:border-aop-slate-dark hover:text-aop-cream"
           >
             Remove
           </button>
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-4 border-t border-aop-charcoal pt-4">
-        <div>
+      <div className="mt-2 flex items-center gap-6 border-t border-aop-charcoal pt-2">
+        <div className="flex items-center gap-1.5">
           <span className="font-mono text-[10px] text-aop-slate-dark">CREATED</span>
-          <div className="mt-1 font-mono text-xs text-aop-slate-light">
+          <span className="font-mono text-[10px] text-aop-slate-light">
             {formatTimestamp(task.createdAt)}
-          </div>
+          </span>
         </div>
-        <div>
+        <div className="flex items-center gap-1.5">
           <span className="font-mono text-[10px] text-aop-slate-dark">UPDATED</span>
-          <div className="mt-1 font-mono text-xs text-aop-slate-light">
+          <span className="font-mono text-[10px] text-aop-slate-light">
             {formatTimestamp(task.updatedAt)}
-          </div>
+          </span>
         </div>
-      </div>
-
-      <div className="mt-4 border-t border-aop-charcoal pt-4">
-        <span className="font-mono text-[10px] text-aop-slate-dark">CHANGE PATH</span>
-        <div className="mt-1 font-mono text-xs text-aop-slate-light">{task.changePath}</div>
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-[10px] text-aop-slate-dark">PATH</span>
+          <span className="font-mono text-[10px] text-aop-slate-light">{task.changePath}</span>
+        </div>
       </div>
 
       {task.status === "BLOCKED" && task.errorMessage && (
@@ -275,6 +272,9 @@ const TaskInfoCard = ({
     </div>
   );
 };
+
+const findRunningStepId = (steps: Step[]): string | null =>
+  steps.find((s) => s.status === "running")?.id ?? null;
 
 interface ExecutionHistoryProps {
   executions: Execution[];
@@ -289,6 +289,31 @@ const ExecutionHistory = ({
   logLines,
   onToggleExecution,
 }: ExecutionHistoryProps) => {
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [prevExpandedId, setPrevExpandedId] = useState<string | null>(null);
+
+  const expandedExecution = useMemo(
+    () => executions.find((e) => e.id === expandedExecutionId),
+    [executions, expandedExecutionId],
+  );
+
+  // Reset step selection when switching executions
+  if (expandedExecutionId !== prevExpandedId) {
+    setPrevExpandedId(expandedExecutionId);
+    const running = expandedExecution ? findRunningStepId(expandedExecution.steps) : null;
+    setSelectedStepId(running);
+  }
+
+  // Auto-follow running step during live executions
+  const runningStepId = expandedExecution ? findRunningStepId(expandedExecution.steps) : null;
+  useEffect(() => {
+    if (runningStepId) setSelectedStepId(runningStepId);
+  }, [runningStepId]);
+
+  const handleStepClick = (stepId: string) => {
+    setSelectedStepId((prev) => (prev === stepId ? null : stepId));
+  };
+
   const getStatusLabel = (status: Execution["status"]) =>
     ({ running: "Running", completed: "Completed", failed: "Failed" })[status];
 
@@ -299,27 +324,31 @@ const ExecutionHistory = ({
 
   return (
     <div
-      className="rounded-aop border border-aop-charcoal bg-aop-darkest p-6"
+      className={`flex flex-col ${expandedExecutionId ? "flex-1 overflow-hidden" : "shrink-0"}`}
       data-testid="execution-history"
     >
-      <h2 className="font-mono text-xs text-aop-slate-dark">EXECUTION HISTORY</h2>
+      <h2 className="shrink-0 font-mono text-[10px] text-aop-slate-dark">EXECUTION HISTORY</h2>
 
       {executions.length === 0 ? (
-        <div className="mt-4 font-mono text-xs text-aop-slate-dark">No executions yet</div>
+        <div className="mt-2 font-mono text-xs text-aop-slate-dark">No executions yet</div>
       ) : (
-        <div className="mt-4 flex flex-col gap-2">
+        <div className="mt-2 flex flex-1 flex-col gap-1.5 overflow-auto">
           {executions.map((execution) => {
             const isExpanded = expandedExecutionId === execution.id;
 
             return (
-              <div key={execution.id} data-testid={`execution-item-${execution.id}`}>
+              <div
+                key={execution.id}
+                data-testid={`execution-item-${execution.id}`}
+                className={`flex flex-col ${isExpanded ? "flex-1 overflow-hidden" : ""}`}
+              >
                 <button
                   type="button"
                   onClick={() => onToggleExecution(execution.id)}
-                  className="flex w-full cursor-pointer items-center justify-between rounded-aop border border-aop-charcoal bg-aop-dark p-3 text-left transition-colors hover:border-aop-slate-dark"
+                  className="flex w-full shrink-0 cursor-pointer items-center justify-between rounded-aop border border-aop-charcoal bg-aop-dark px-3 py-2 text-left transition-colors hover:border-aop-slate-dark"
                 >
                   <div className="flex items-center gap-3">
-                    <span className={`font-mono text-xs ${getStatusColor(execution.status)}`}>
+                    <span className={`font-mono text-[10px] ${getStatusColor(execution.status)}`}>
                       {getStatusLabel(execution.status)}
                     </span>
                     <span className="font-mono text-[10px] text-aop-slate-dark">
@@ -336,16 +365,14 @@ const ExecutionHistory = ({
                   </div>
                 </button>
 
-                {isExpanded && (
-                  <div className="mt-2 flex flex-col gap-2">
-                    {execution.steps.length > 0 && (
-                      <div className="rounded-aop border border-aop-charcoal bg-aop-dark">
-                        <StepList steps={execution.steps} />
-                      </div>
-                    )}
-                    <div className="h-64 rounded-aop border border-aop-charcoal bg-aop-black">
-                      <LogViewer lines={logLines} />
-                    </div>
+                {isExpanded && execution.steps.length > 0 && (
+                  <div className="mt-1 flex flex-1 flex-col overflow-hidden border-l border-aop-charcoal pl-3">
+                    <StepList
+                      steps={execution.steps}
+                      logLines={logLines}
+                      selectedStepId={selectedStepId}
+                      onStepClick={handleStepClick}
+                    />
                   </div>
                 )}
               </div>
@@ -363,16 +390,16 @@ interface LiveLogsProps {
 }
 
 const LiveLogs = ({ logLines, connected }: LiveLogsProps) => (
-  <div className="flex flex-1 flex-col rounded-aop border border-aop-charcoal bg-aop-darkest p-6">
-    <div className="mb-4 flex items-center justify-between">
-      <h2 className="font-mono text-xs text-aop-slate-dark">LIVE LOGS</h2>
+  <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="mb-1 flex shrink-0 items-center justify-between">
+      <h2 className="font-mono text-[10px] text-aop-slate-dark">LIVE LOGS</h2>
       <span
         className={`font-mono text-[10px] ${connected ? "text-aop-success" : "text-aop-slate-dark"}`}
       >
         {connected ? "● Connected" : "○ Connecting..."}
       </span>
     </div>
-    <div className="flex-1 overflow-hidden rounded-aop border border-aop-charcoal">
+    <div className="flex-1 min-h-0 overflow-hidden rounded-aop border border-aop-charcoal">
       <LogViewer lines={logLines} />
     </div>
   </div>
