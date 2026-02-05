@@ -91,12 +91,6 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
     fetch(`/api/repos/${task.repoId}/tasks/${task.id}/ready`, { method: "POST" });
   };
 
-  const handleRemove = (task: Task) => {
-    const force = task.status === "WORKING";
-    const url = `/api/repos/${task.repoId}/tasks/${task.id}${force ? "?force=true" : ""}`;
-    fetch(url, { method: "DELETE" });
-  };
-
   return (
     <div className="flex min-h-screen flex-col bg-aop-black">
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-aop-charcoal bg-aop-dark px-6">
@@ -148,7 +142,7 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
             <BlockedBanner
               tasks={tasksByStatus.BLOCKED}
               onRetry={handleRetry}
-              onRemove={handleRemove}
+              onTaskClick={onTaskClick}
             />
           </>
         )}

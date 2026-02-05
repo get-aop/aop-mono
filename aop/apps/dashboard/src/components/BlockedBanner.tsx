@@ -4,10 +4,10 @@ import { StatusBadge } from "./StatusBadge";
 interface BlockedBannerProps {
   tasks: Task[];
   onRetry?: (task: Task) => void;
-  onRemove?: (task: Task) => void;
+  onTaskClick?: (task: Task) => void;
 }
 
-export const BlockedBanner = ({ tasks, onRetry, onRemove }: BlockedBannerProps) => {
+export const BlockedBanner = ({ tasks, onRetry, onTaskClick }: BlockedBannerProps) => {
   if (tasks.length === 0) return null;
 
   return (
@@ -26,31 +26,26 @@ export const BlockedBanner = ({ tasks, onRetry, onRemove }: BlockedBannerProps) 
             const changeName = task.changePath.split("/").pop() ?? task.changePath;
 
             return (
-              <div
+              <button
+                type="button"
                 key={task.id}
+                onClick={() => onTaskClick?.(task)}
                 data-testid={`blocked-task-${task.id}`}
-                className="flex min-w-[280px] flex-col rounded-aop border border-aop-blocked/50 bg-aop-dark p-4"
+                className="flex min-w-[280px] cursor-pointer flex-col rounded-aop border border-aop-blocked/50 bg-aop-dark p-4 text-left transition-colors hover:border-aop-blocked/80 hover:bg-aop-dark/80"
               >
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-body text-sm text-aop-cream">{changeName}</span>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onRetry?.(task)}
-                      data-testid={`retry-button-${task.id}`}
-                      className="cursor-pointer rounded-aop bg-aop-charcoal px-2 py-1 font-mono text-[10px] text-aop-cream transition-colors hover:bg-aop-slate-dark"
-                    >
-                      Retry
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onRemove?.(task)}
-                      data-testid={`remove-button-${task.id}`}
-                      className="cursor-pointer rounded-aop border border-aop-charcoal px-2 py-1 font-mono text-[10px] text-aop-slate-light transition-colors hover:border-aop-slate-dark hover:text-aop-cream"
-                    >
-                      Remove
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRetry?.(task);
+                    }}
+                    data-testid={`retry-button-${task.id}`}
+                    className="cursor-pointer rounded-aop bg-aop-charcoal px-2 py-1 font-mono text-[10px] text-aop-cream transition-colors hover:bg-aop-slate-dark"
+                  >
+                    Retry
+                  </button>
                 </div>
                 <span className="mt-1 font-mono text-[10px] text-aop-slate-dark">{repoName}</span>
                 {task.errorMessage && (
@@ -58,7 +53,7 @@ export const BlockedBanner = ({ tasks, onRetry, onRemove }: BlockedBannerProps) 
                     {task.errorMessage}
                   </span>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
