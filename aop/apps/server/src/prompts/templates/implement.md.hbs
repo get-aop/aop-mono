@@ -1,5 +1,7 @@
 You are implementing a task in a software project.
 
+You MUST follow ALL the instructions and emit the REQUIRED SIGNALS at the bottom.
+
 ## Worktree Information
 
 - **Path**: {{worktree.path}}
@@ -28,7 +30,84 @@ Work in focused chunks of 3-5 cohesive files at a time.
 2. Identify the next chunk of work (related files/functionality)
 3. Implement the chunk following project conventions
 
-**OpenSpec requirement**: if you have the skill `opsx:apply` available, use it with the change path folder name as argument.
+Implement tasks from an OpenSpec change.
+If a change path or name is provided, use it. Otherwise:
+   - Infer from conversation context if the user mentioned a change
+   - Auto-select if only one active change exists
+   Always announce: "Using change: <name>" and how to override (e.g., `/opsx:apply <other>`).
+
+**Check status to understand the schema**
+   ```bash
+   openspec status --change "<name>" --json
+   ```
+   Parse the JSON to understand:
+   - `schemaName`: The workflow being used (e.g., "spec-driven")
+   - Which artifact contains the tasks (typically "tasks" for spec-driven, check status for others)
+
+**Get apply instructions**
+
+   ```bash
+   openspec instructions apply --change "<name>" --json
+   ```
+
+   This returns:
+   - Context file paths (varies by schema - could be proposal/specs/design/tasks or spec/tests/implementation/docs)
+   - Progress (total, complete, remaining)
+   - Task list with status
+   - Dynamic instruction based on current state
+
+**Read context files**
+   Read the files listed in `contextFiles` from the apply instructions output.
+   The files depend on the schema being used:
+   - **spec-driven**: proposal, specs, design, tasks
+   - Other schemas: follow the contextFiles from CLI output
+
+**Show current progress**
+
+   Display:
+   - Schema being used
+   - Progress: "N/M tasks complete"
+   - Remaining tasks overview
+   - Dynamic instruction from CLI
+
+**On completion or pause, show status**
+
+   Display:
+   - Tasks completed this session
+   - Overall progress: "N/M tasks complete"
+
+**Output During Implementation**
+
+```
+## Implementing: <change-name> (schema: <schema-name>)
+
+Working on task 3/7: <task description>
+[...implementation happening...]
+✓ Task complete
+
+Working on task 4/7: <task description>
+[...implementation happening...]
+✓ Task complete
+```
+
+**Output On Completion**
+
+```
+## Implementation Complete
+
+**Change:** <change-name>
+**Schema:** <schema-name>
+**Progress:** 7/7 tasks complete ✓
+
+### Completed This Session
+- [x] Task 1
+- [x] Task 2
+...
+
+All tasks complete! Ready to archive this change.
+```
+
+### Development Process
 
 **TDD requirement**: If the task introduces new code (functions, classes, modules), use the skill `test-driven-development`.
 
@@ -56,14 +135,18 @@ Before signaling completion of a chunk, verify:
 - [ ] Tests pass for the changed code
 - [ ] Code follows project style guidelines
 
-- [ ] Run `/remove-ai-slop` to clean up:
-    - Unnecessary comments
-    - Over-defensive code
-    - Type casts to `any`
-    - Style inconsistencies
-    - Remove dead code introduced and review code that should be wired and it's not
+- [ ] Remove AI code slop
+Check the current changes (staged, unstaged, or commit diffs, prompt the user if unclear), and remove all AI generated slop introduced in this branch.
 
-### Signals
+This includes:
+
+- Extra comments that a human wouldn't add or is inconsistent with the rest of the file
+- Extra defensive checks or try/catch blocks that are abnormal for that area of the codebase (especially if called by trusted / validated codepaths)
+- Casts to any to get around type issues
+- Any other style that is inconsistent with the file
+- also be mindful about deadcode, redeclared functions, DRY, YAGNI, and also for reinventing the wheel (recreating functionalities that already exist in the codebase, skipping existing utilities/packages patterns like not using the infra logger and using console.log)
+
+### Signals (REQUIRED)
 
 When you complete a cohesive chunk but more work remains:
 ```
@@ -75,4 +158,6 @@ When all implementation tasks are complete:
 <aop>ALL_TASKS_DONE</aop>
 ```
 
-Do not signal until the self-check passes. If blocked, describe the issue clearly.
+**Important**: Do not signal until the self-check passes. If blocked, describe the issue clearly. 
+
+DO NOT FINISH THE SESSION WITHOUT SIGNALING.
