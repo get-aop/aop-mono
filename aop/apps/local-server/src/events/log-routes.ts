@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { LocalServerContext } from "../context.ts";
 import type { ExecutionCompleteEvent, LogEvent, LogLine } from "./log-buffer.ts";
+import { createSSEStreamHelper, type SSEStreamHelper } from "./sse-stream.ts";
 
 interface LogSSEEvent {
   type: "log";
@@ -28,6 +29,18 @@ const mapExecutionStatus = (status: string): "completed" | "failed" | "cancelled
   return "failed";
 };
 
+const sendReplayIfExists = async (sse: SSEStreamHelper, lines: LogLine[]): Promise<boolean> => {
+  if (lines.length === 0) return true;
+  return sse.sendEvent<SSEEventData>("message", { type: "replay", lines });
+};
+
+const sendComplete = async (
+  sse: SSEStreamHelper,
+  status: "completed" | "failed" | "cancelled",
+): Promise<boolean> => {
+  return sse.sendEvent<SSEEventData>("message", { type: "complete", status });
+};
+
 export const createLogStreamHandler = (ctx: LocalServerContext) => {
   return async (c: Context) => {
     const executionId = c.req.param("executionId");
@@ -37,99 +50,62 @@ export const createLogStreamHandler = (ctx: LocalServerContext) => {
       return c.json({ error: "Execution not found" }, 404);
     }
 
-    const isCompleted = execution.status !== "running";
-
-    if (isCompleted) {
+    if (execution.status !== "running") {
       return streamSSE(c, async (stream) => {
-        let eventId = 0;
-
-        const sendEvent = async (data: SSEEventData) => {
-          await stream.writeSSE({
-            data: JSON.stringify(data),
-            event: "message",
-            id: String(eventId++),
-          });
-        };
-
+        const sse = createSSEStreamHelper(stream);
         const persistedLogs = await ctx.executionRepository.getExecutionLogs(executionId);
-        if (persistedLogs.length > 0) {
-          const lines: LogLine[] = persistedLogs.map((log) => ({
-            stream: log.stream,
-            content: log.content,
-            timestamp: log.timestamp,
-          }));
-          await sendEvent({ type: "replay", lines });
-        }
-
-        await sendEvent({ type: "complete", status: mapExecutionStatus(execution.status) });
+        const lines: LogLine[] = persistedLogs.map((log) => ({
+          stream: log.stream,
+          content: log.content,
+          timestamp: log.timestamp,
+        }));
+        await sendReplayIfExists(sse, lines);
+        await sendComplete(sse, mapExecutionStatus(execution.status));
       });
     }
 
     return streamSSE(c, async (stream) => {
-      let eventId = 0;
+      const sse = createSSEStreamHelper(stream);
       let completionHandled = false;
 
-      const sendEvent = async (data: SSEEventData) => {
-        await stream.writeSSE({
-          data: JSON.stringify(data),
-          event: "message",
-          id: String(eventId++),
-        });
-      };
-
-      let unsubscribeLog: (() => void) | null = null;
-      let unsubscribeComplete: (() => void) | null = null;
-
-      const cleanup = () => {
-        unsubscribeLog?.();
-        unsubscribeComplete?.();
-        unsubscribeLog = null;
-        unsubscribeComplete = null;
-      };
-
       const handleCompletion = (status: "completed" | "failed" | "cancelled") => {
-        if (completionHandled) return;
+        if (completionHandled || sse.isCleanedUp()) return;
         completionHandled = true;
-        cleanup();
-        sendEvent({ type: "complete", status }).finally(() => {
+        // Send complete BEFORE cleanup so the message gets through
+        sendComplete(sse, status).finally(() => {
+          sse.runCleanup();
           stream.close();
         });
       };
 
-      // Subscribe BEFORE checking isComplete to avoid race condition:
-      // If we check first and completion happens between check and subscribe,
-      // we miss the event and listeners leak forever.
-      unsubscribeLog = ctx.logBuffer.subscribe(async (event: LogEvent) => {
+      const unsubscribeLog = ctx.logBuffer.subscribe(async (event: LogEvent) => {
         if (event.executionId !== executionId) return;
-        await sendEvent({
+        await sse.sendEvent<SSEEventData>("message", {
           type: "log",
           stream: event.line.stream,
           content: event.line.content,
           timestamp: event.line.timestamp,
         });
       });
+      sse.registerCleanup(unsubscribeLog);
 
-      unsubscribeComplete = ctx.logBuffer.subscribeComplete((event: ExecutionCompleteEvent) => {
-        if (event.executionId !== executionId) return;
-        handleCompletion(event.status);
-      });
+      const unsubscribeComplete = ctx.logBuffer.subscribeComplete(
+        (event: ExecutionCompleteEvent) => {
+          if (event.executionId !== executionId) return;
+          handleCompletion(event.status);
+        },
+      );
+      sse.registerCleanup(unsubscribeComplete);
 
-      stream.onAbort(cleanup);
-
-      // Send replay of existing lines AFTER subscribing, so we don't miss
-      // any events that arrive between getLines and subscribe
       const existingLines = ctx.logBuffer.getLines(executionId);
-      if (existingLines.length > 0) {
-        await sendEvent({ type: "replay", lines: existingLines });
-      }
+      const sent = await sendReplayIfExists(sse, existingLines);
+      if (!sent) return;
 
-      // Check if completion happened before or during subscription setup.
-      // getStatus returns null if not complete, so we use it directly.
       const existingStatus = ctx.logBuffer.getStatus(executionId);
       if (existingStatus && !completionHandled) {
         completionHandled = true;
-        cleanup();
-        await sendEvent({ type: "complete", status: existingStatus });
+        await sendComplete(sse, existingStatus);
+        sse.runCleanup();
         stream.close();
         return;
       }

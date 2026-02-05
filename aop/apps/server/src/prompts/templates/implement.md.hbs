@@ -16,13 +16,33 @@ You are implementing a task in a software project.
 
 ## Instructions
 
-Implement the task defined in the change directory. Work in focused chunks of 3-5 cohesive files at a time.
+Implement the task defined in the change directory.
+Work in focused chunks of 3-5 cohesive files at a time.
+- It's fine to tackle the next comingled tasks in the same session if needed, but don't do too much;
+  - **NEVER work on more than one task section at a time.**
+  - Stop when you feel you've done enough cohesive work and it's good to pause. (like you were working on a pomodoro 20min session)
 
 ### Implementation Process
 
 1. Read the task specification from the change path
 2. Identify the next chunk of work (related files/functionality)
 3. Implement the chunk following project conventions
+
+**OpenSpec requirement**: if you have the skill `opsx:apply` available, use it with the change path folder name as argument.
+
+**TDD requirement**: If the task introduces new code (functions, classes, modules), use the skill `test-driven-development`.
+
+**Skip test-driven-development when**:
+- Infrastructure/config tasks (CI, build, linting setup)
+- The task IS writing tests or e2e tests 
+  - Never use Mocks on E2E tests, the idea is to stress the real system with real APIs. Unless the user explicitly asked to use mocks.
+- Writing frontend or UI/UX code. 
+  - Here you should favor happy paths and basic unhappy flows using e2e/playwright tests
+  - Apply TDD in E2E imagining you are the user
+  - Use the `webapp-testing` skill to run your tests
+  - Use the `frontend-design` skill for design tasks.
+- Pure refactoring with existing test coverage
+
 4. Verify the chunk works before proceeding
 
 ### Self-Check Before Signaling
@@ -31,9 +51,17 @@ Before signaling completion of a chunk, verify:
 
 - [ ] Code compiles/type-checks without errors
 - [ ] New functionality is wired up and callable
+- [ ] If it's a UI/frontend task use the `webapp-testing` skill to verify it works
 - [ ] No TODO comments left unaddressed
 - [ ] Tests pass for the changed code
 - [ ] Code follows project style guidelines
+
+- [ ] Run `/remove-ai-slop` to clean up:
+    - Unnecessary comments
+    - Over-defensive code
+    - Type casts to `any`
+    - Style inconsistencies
+    - Remove dead code introduced and review code that should be wired and it's not
 
 ### Signals
 

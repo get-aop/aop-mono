@@ -24,6 +24,9 @@ export interface TaskEventEmitter {
 
 export const createTaskEventEmitter = (): TaskEventEmitter => {
   const emitter = new EventEmitter();
+  // Allow up to 50 concurrent SSE connections (dashboard tabs, API clients)
+  // before warning. Each connection adds one listener.
+  emitter.setMaxListeners(50);
   const EVENT_NAME = "task";
 
   return {

@@ -114,6 +114,7 @@ describe("events/routes", () => {
       const decoder = new TextDecoder();
       let text = "";
 
+      // Read init + immediate heartbeat
       const { value: initValue } = await reader.read();
       text += decoder.decode(initValue);
 
@@ -129,8 +130,11 @@ describe("events/routes", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      const { value: eventValue } = await reader.read();
-      text += decoder.decode(eventValue);
+      // Read until we get the task-created event
+      for (let i = 0; i < 3; i++) {
+        const { value } = await reader.read();
+        if (value) text += decoder.decode(value);
+      }
       controller.abort();
 
       const events = parseSSEEvents(text);
@@ -157,6 +161,7 @@ describe("events/routes", () => {
       const decoder = new TextDecoder();
       let text = "";
 
+      // Read init + immediate heartbeat
       const { value: initValue } = await reader.read();
       text += decoder.decode(initValue);
 
@@ -164,8 +169,11 @@ describe("events/routes", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      const { value: eventValue } = await reader.read();
-      text += decoder.decode(eventValue);
+      // Read until we get the status-changed event
+      for (let i = 0; i < 3; i++) {
+        const { value } = await reader.read();
+        if (value) text += decoder.decode(value);
+      }
       controller.abort();
 
       const events = parseSSEEvents(text);
@@ -194,6 +202,7 @@ describe("events/routes", () => {
       const decoder = new TextDecoder();
       let text = "";
 
+      // Read init + immediate heartbeat
       const { value: initValue } = await reader.read();
       text += decoder.decode(initValue);
 
@@ -201,11 +210,11 @@ describe("events/routes", () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       // markRemoved emits both task-status-changed and task-removed events
-      const { value: eventValue } = await reader.read();
-      text += decoder.decode(eventValue);
-
-      const { value: eventValue2 } = await reader.read();
-      if (eventValue2) text += decoder.decode(eventValue2);
+      // Read multiple chunks to ensure we get all events
+      for (let i = 0; i < 4; i++) {
+        const { value } = await reader.read();
+        if (value) text += decoder.decode(value);
+      }
       controller.abort();
 
       const events = parseSSEEvents(text);
@@ -296,6 +305,32 @@ describe("events/routes", () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(emitter.listenerCount()).toBe(initialListenerCount);
     });
+
+    test("cleans up listeners on abort (no memory leak)", async () => {
+      const initialListenerCount = emitter.listenerCount();
+
+      // Open 15 SSE connections that are aborted - more than the default EventEmitter limit of 10
+      // If listeners aren't cleaned up, this would trigger MaxListenersExceededWarning
+      for (let i = 0; i < 15; i++) {
+        const controller = new AbortController();
+        const res = await app.request("/api/events", {
+          signal: controller.signal,
+        });
+
+        // biome-ignore lint/style/noNonNullAssertion: test code, body always exists
+        const reader = res.body!.getReader();
+        await reader.read();
+
+        controller.abort();
+        await reader.cancel();
+
+        // Wait for cleanup to complete
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
+      // If we got here without warnings, listeners are being cleaned up properly
+      expect(emitter.listenerCount()).toBe(initialListenerCount);
+    });
   });
 
   describe("heartbeat", () => {
@@ -350,11 +385,11 @@ describe("events/routes", () => {
       const decoder = new TextDecoder();
       let text = "";
 
-      // Read init event (id: 0)
+      // Read init event (id: 0) and immediate heartbeat (id: 1)
       const { value: initValue } = await reader.read();
       text += decoder.decode(initValue);
 
-      // Wait for heartbeat
+      // Wait for interval heartbeat (id: 2)
       await new Promise((resolve) => setTimeout(resolve, 80));
 
       const { value: heartbeatValue } = await reader.read();
@@ -363,10 +398,13 @@ describe("events/routes", () => {
 
       const events = parseSSEEvents(text);
       const initEvent = events.find((e) => e.event === "init");
-      const heartbeatEvent = events.find((e) => e.event === "heartbeat");
+      // Find heartbeats - there should be at least 2 (immediate + interval)
+      const heartbeatEvents = events.filter((e) => e.event === "heartbeat");
 
       expect(initEvent?.id).toBe("0");
-      expect(heartbeatEvent?.id).toBe("1");
+      expect(heartbeatEvents.length).toBeGreaterThanOrEqual(1);
+      // First heartbeat is immediate (id: 1), subsequent are from interval
+      expect(heartbeatEvents[0]?.id).toBe("1");
     });
   });
 });

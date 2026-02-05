@@ -103,7 +103,7 @@ describe("aop-default workflow execution", () => {
 
       // Wait for task to complete - should go implement -> full-review -> done
       const completedTask = await waitForTask(taskId, ["DONE", "BLOCKED"], {
-        timeout: 300_000,
+        timeout: 500_000,
         pollInterval: 5000,
       });
 

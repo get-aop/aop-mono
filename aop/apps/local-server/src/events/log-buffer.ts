@@ -33,6 +33,8 @@ export const createLogBuffer = (): LogBuffer => {
   const buffers = new Map<string, LogLine[]>();
   const completionStatus = new Map<string, ExecutionCompleteEvent["status"]>();
   const emitter = new EventEmitter();
+  // Allow concurrent log streaming connections without warnings
+  emitter.setMaxListeners(50);
 
   const LOG_EVENT = "log";
   const COMPLETE_EVENT = "complete";
