@@ -309,6 +309,107 @@ describe("dashboard E2E tests", () => {
     );
   });
 
+  describe("repo registration", () => {
+    let regRepo: TempRepoResult;
+
+    beforeAll(async () => {
+      regRepo = await createTempRepo("dashboard-register-e2e");
+    });
+
+    afterAll(async () => {
+      if (regRepo) await regRepo.cleanup();
+    });
+
+    test(
+      "Register repository via dashboard dialog",
+      async () => {
+        await page.goto(DASHBOARD_URL);
+        await page.waitForTimeout(1000);
+
+        // Click the Register Repo button
+        const registerButton = page.locator('button:has-text("+ Register Repo")');
+        await registerButton.waitFor({ state: "visible", timeout: 10_000 });
+        await registerButton.click();
+
+        // Verify dialog opens
+        const dialog = page.locator("dialog");
+        await dialog.waitFor({ state: "visible", timeout: 5_000 });
+
+        await page.screenshot({
+          path: join(SCREENSHOT_DIR, "register-01-dialog-open.png"),
+          fullPage: true,
+        });
+
+        // Enter the test repo path in the path input
+        const pathInput = page.locator('input[placeholder="Enter path..."]');
+        await pathInput.fill(regRepo.path);
+        await page.locator('button:has-text("Go")').click();
+        await page.waitForTimeout(1000);
+
+        await page.screenshot({
+          path: join(SCREENSHOT_DIR, "register-02-navigated.png"),
+          fullPage: true,
+        });
+
+        // Click Select to register the repo
+        const selectButton = page.locator('button:has-text("Select")');
+        await selectButton.click();
+        await page.waitForTimeout(2000);
+
+        await page.screenshot({
+          path: join(SCREENSHOT_DIR, "register-03-registered.png"),
+          fullPage: true,
+        });
+
+        // Verify success message appears
+        const successMessage = page.locator("text=Repository registered successfully");
+        const messageVisible = await successMessage.isVisible().catch(() => false);
+
+        // Also check for "already registered" message in case repo was already registered
+        if (!messageVisible) {
+          const alreadyRegisteredMessage = page.locator("text=Repository already registered");
+          const alreadyVisible = await alreadyRegisteredMessage.isVisible().catch(() => false);
+          expect(alreadyVisible || messageVisible).toBe(true);
+        }
+      },
+      E2E_TIMEOUT,
+    );
+
+    test(
+      "Register non-git directory shows error",
+      async () => {
+        await page.goto(DASHBOARD_URL);
+        await page.waitForTimeout(1000);
+
+        const registerButton = page.locator('button:has-text("+ Register Repo")');
+        await registerButton.click();
+
+        const dialog = page.locator("dialog");
+        await dialog.waitFor({ state: "visible", timeout: 5_000 });
+
+        // Enter a non-git path (using /tmp which is not a git repo)
+        const pathInput = page.locator('input[placeholder="Enter path..."]');
+        await pathInput.fill("/tmp");
+        await page.locator('button:has-text("Go")').click();
+        await page.waitForTimeout(500);
+
+        await page.locator('button:has-text("Select")').click();
+        await page.waitForTimeout(2000);
+
+        await page.screenshot({
+          path: join(SCREENSHOT_DIR, "register-04-not-git-repo.png"),
+          fullPage: true,
+        });
+
+        // Verify error message appears
+        const errorMessage = page.locator("text=Not a git repository");
+        const errorVisible = await errorMessage.isVisible().catch(() => false);
+        expect(errorVisible).toBe(true);
+      },
+      E2E_TIMEOUT,
+    );
+  });
+
   describe("unhappy path", () => {
     let blockedRepo: TempRepoResult;
     let blockedTaskId: string;

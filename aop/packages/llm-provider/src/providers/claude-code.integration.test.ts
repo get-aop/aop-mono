@@ -21,7 +21,9 @@ describe.skipIf(isCI)("ClaudeCodeProvider integration", () => {
 
     const assistantMessages = outputs.filter((o) => o.type === "assistant");
     for (const msg of assistantMessages.slice(-5)) {
-      const message = msg.message as { content?: Array<{ type: string; text?: string }> };
+      const message = msg.message as {
+        content?: Array<{ type: string; text?: string }>;
+      };
       const text = message.content
         ?.filter((c) => c.type === "text" && c.text)
         .map((c) => c.text)
@@ -38,7 +40,9 @@ describe.skipIf(isCI)("ClaudeCodeProvider integration", () => {
 
     const allText = assistantMessages
       .map((msg) => {
-        const message = msg.message as { content?: Array<{ type: string; text?: string }> };
+        const message = msg.message as {
+          content?: Array<{ type: string; text?: string }>;
+        };
         return message.content
           ?.filter((c) => c.type === "text" && c.text)
           .map((c) => c.text)

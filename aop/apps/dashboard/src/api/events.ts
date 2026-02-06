@@ -73,6 +73,10 @@ export const createTaskEventsConnection = (options: TaskEventsOptions) => {
         }
         case "task-created": {
           const backendEvent = parsed as SSETaskCreatedEvent;
+          // Defensive: If task or required fields are missing, skip the event
+          if (!backendEvent.task?.changePath) {
+            return null;
+          }
           const repoPath = repoPathMap.get(backendEvent.task.repoId) ?? "";
           return {
             type: "task-created",

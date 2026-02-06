@@ -50,6 +50,14 @@ export const createWatcherManager = (
 
     const changesPath = join(repoPath, CHANGES_DIR);
 
+    if (!existsSync(changesPath)) {
+      logger.warn("Skipping watch - no openspec/changes directory: {repoPath}", {
+        repoId,
+        repoPath,
+      });
+      return;
+    }
+
     try {
       const watcher = watch(changesPath, { recursive: true }, (_eventType, filename) => {
         if (!filename) return;

@@ -4,10 +4,11 @@ import { StatusBadge } from "./StatusBadge";
 interface BlockedBannerProps {
   tasks: Task[];
   onRetry?: (task: Task) => void;
+  onRemove?: (task: Task) => void;
   onTaskClick?: (task: Task) => void;
 }
 
-export const BlockedBanner = ({ tasks, onRetry, onTaskClick }: BlockedBannerProps) => {
+export const BlockedBanner = ({ tasks, onRetry, onRemove, onTaskClick }: BlockedBannerProps) => {
   if (tasks.length === 0) return null;
 
   return (
@@ -22,8 +23,8 @@ export const BlockedBanner = ({ tasks, onRetry, onTaskClick }: BlockedBannerProp
         </div>
         <div className="flex gap-4 overflow-x-auto pb-2">
           {tasks.map((task) => {
-            const repoName = task.repoPath.split("/").pop() ?? task.repoPath;
-            const changeName = task.changePath.split("/").pop() ?? task.changePath;
+            const repoName = task.repoPath?.split("/").pop() ?? task.repoPath ?? "";
+            const changeName = task.changePath?.split("/").pop() ?? task.changePath ?? "";
 
             return (
               <button
@@ -35,17 +36,30 @@ export const BlockedBanner = ({ tasks, onRetry, onTaskClick }: BlockedBannerProp
               >
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-body text-sm text-aop-cream">{changeName}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRetry?.(task);
-                    }}
-                    data-testid={`retry-button-${task.id}`}
-                    className="cursor-pointer rounded-aop bg-aop-charcoal px-2 py-1 font-mono text-[10px] text-aop-cream transition-colors hover:bg-aop-slate-dark"
-                  >
-                    Retry
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemove?.(task);
+                      }}
+                      data-testid={`remove-button-${task.id}`}
+                      className="cursor-pointer rounded-aop bg-aop-charcoal px-2 py-1 font-mono text-[10px] text-aop-cream transition-colors hover:bg-aop-slate-dark"
+                    >
+                      Remove
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRetry?.(task);
+                      }}
+                      data-testid={`retry-button-${task.id}`}
+                      className="cursor-pointer rounded-aop bg-aop-charcoal px-2 py-1 font-mono text-[10px] text-aop-cream transition-colors hover:bg-aop-slate-dark"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 </div>
                 <span className="mt-1 font-mono text-[10px] text-aop-slate-dark">{repoName}</span>
                 {task.errorMessage && (

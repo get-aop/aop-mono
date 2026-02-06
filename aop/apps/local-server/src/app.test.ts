@@ -354,3 +354,58 @@ describe("app - static file serving", () => {
     await db.destroy();
   });
 });
+
+describe("app - filesystem routes", () => {
+  let db: Kysely<Database>;
+  let ctx: LocalServerContext;
+  let app: ReturnType<typeof createApp>;
+  let testDir: string;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    ctx = createCommandContext(db);
+    app = createApp({ ctx, startTimeMs: Date.now() });
+
+    const { mkdirSync } = await import("node:fs");
+    testDir = `/tmp/aop-app-fs-test-${Date.now()}`;
+    mkdirSync(testDir, { recursive: true });
+    mkdirSync(`${testDir}/projects`);
+    mkdirSync(`${testDir}/.hidden`);
+  });
+
+  afterEach(async () => {
+    const { rmSync, existsSync } = await import("node:fs");
+    if (existsSync(testDir)) {
+      rmSync(testDir, { recursive: true });
+    }
+    await db.destroy();
+  });
+
+  test("GET /api/fs/directories lists directories", async () => {
+    const res = await app.request(`/api/fs/directories?path=${encodeURIComponent(testDir)}`);
+    const body: AnyJson = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.path).toBe(testDir);
+    expect(body.directories).toContain("projects");
+    expect(body.directories).not.toContain(".hidden");
+  });
+
+  test("GET /api/fs/directories includes hidden when hidden=true", async () => {
+    const res = await app.request(
+      `/api/fs/directories?path=${encodeURIComponent(testDir)}&hidden=true`,
+    );
+    const body: AnyJson = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.directories).toContain(".hidden");
+  });
+
+  test("GET /api/fs/directories returns 404 for non-existent path", async () => {
+    const res = await app.request("/api/fs/directories?path=/non/existent/path");
+    const body: AnyJson = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body.error).toBe("Path not found");
+  });
+});

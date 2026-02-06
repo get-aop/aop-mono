@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import type { LocalServerContext } from "./context.ts";
 import { createEventsSSEHandler } from "./events/index.ts";
 import { createLogStreamHandler } from "./events/log-routes.ts";
+import { createFsRoutes } from "./fs/routes.ts";
 import { createRepoRoutes } from "./repo/routes";
 import { checkDbConnection } from "./settings/handlers.ts";
 import { createSettingsRoutes } from "./settings/routes";
@@ -105,6 +106,7 @@ export const createApp = (deps: AppDependencies) => {
 
   app.route("/api/repos", createRepoRoutes(ctx));
   app.route("/api/settings", createSettingsRoutes(ctx));
+  app.route("/api/fs", createFsRoutes());
 
   // Test-only endpoint to directly set task status (for E2E testing)
   if (process.env.AOP_TEST_MODE === "true") {

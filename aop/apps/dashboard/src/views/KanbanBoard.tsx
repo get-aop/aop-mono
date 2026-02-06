@@ -1,7 +1,9 @@
 import type { TaskStatus } from "@aop/common";
 import { useMemo, useState } from "react";
+import { ApiError, registerRepo, removeTask } from "../api/client";
 import { BlockedBanner } from "../components/BlockedBanner";
 import { ConnectionStatus } from "../components/ConnectionStatus";
+import { DirectoryBrowserDialog } from "../components/DirectoryBrowserDialog";
 import { KanbanColumn } from "../components/KanbanColumn";
 import { Logo } from "../components/Logo";
 import { RepoFilter } from "../components/RepoFilter";
@@ -61,9 +63,14 @@ interface KanbanBoardProps {
 }
 
 export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
-  const { tasks, capacity, repos, connected, initialized } = useTaskEvents();
+  const { tasks, capacity, repos, connected, initialized, refresh } = useTaskEvents();
   const connectionState = useConnectionStatus({ connected, tasks });
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
+  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
+  const [registerMessage, setRegisterMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   const filteredTasks = useMemo(() => {
     if (!selectedRepoId) return tasks;
@@ -91,6 +98,31 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
     fetch(`/api/repos/${task.repoId}/tasks/${task.id}/ready`, { method: "POST" });
   };
 
+  const handleRemove = (task: Task) => {
+    removeTask(task.repoId, task.id);
+  };
+
+  const handleRegisterSelect = async (path: string) => {
+    setRegisterDialogOpen(false);
+    setRegisterMessage(null);
+    try {
+      const result = await registerRepo(path);
+      if (result.alreadyExists) {
+        setRegisterMessage({ type: "success", text: "Repository already registered" });
+      } else {
+        setRegisterMessage({ type: "success", text: "Repository registered successfully" });
+      }
+      await refresh();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setRegisterMessage({ type: "error", text: err.message });
+      } else {
+        setRegisterMessage({ type: "error", text: "Failed to register repository" });
+      }
+    }
+    setTimeout(() => setRegisterMessage(null), 4000);
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-aop-black">
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-aop-charcoal bg-aop-dark px-6">
@@ -103,6 +135,13 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
             <Logo />
           </button>
           <RepoFilter repos={repos} selectedRepoId={selectedRepoId} onChange={setSelectedRepoId} />
+          <button
+            type="button"
+            onClick={() => setRegisterDialogOpen(true)}
+            className="cursor-pointer rounded-aop border border-aop-charcoal px-3 py-1.5 font-mono text-xs text-aop-slate-light transition-colors hover:border-aop-slate-dark hover:text-aop-cream"
+          >
+            + Register Repo
+          </button>
         </div>
 
         <div className="flex items-center gap-6">
@@ -142,11 +181,30 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
             <BlockedBanner
               tasks={tasksByStatus.BLOCKED}
               onRetry={handleRetry}
+              onRemove={handleRemove}
               onTaskClick={onTaskClick}
             />
           </>
         )}
       </main>
+
+      <DirectoryBrowserDialog
+        open={registerDialogOpen}
+        onSelect={handleRegisterSelect}
+        onCancel={() => setRegisterDialogOpen(false)}
+      />
+
+      {registerMessage && (
+        <div
+          className={`fixed bottom-4 right-4 rounded-aop-lg px-4 py-3 font-mono text-xs ${
+            registerMessage.type === "success"
+              ? "bg-aop-ready/20 text-aop-ready"
+              : "bg-aop-blocked/20 text-aop-blocked"
+          }`}
+        >
+          {registerMessage.text}
+        </div>
+      )}
     </div>
   );
 };

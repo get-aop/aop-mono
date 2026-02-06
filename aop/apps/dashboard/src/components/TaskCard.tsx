@@ -25,8 +25,8 @@ const getStatusDotColor = (status: Task["status"]) => {
 };
 
 export const TaskCard = ({ task, onClick }: TaskCardProps) => {
-  const repoName = task.repoPath.split("/").pop() ?? task.repoPath;
-  const changeName = task.changePath.split("/").pop() ?? task.changePath;
+  const repoName = task.repoPath?.split("/").pop() ?? task.repoPath ?? "";
+  const changeName = task.changePath?.split("/").pop() ?? task.changePath ?? "";
 
   return (
     <button

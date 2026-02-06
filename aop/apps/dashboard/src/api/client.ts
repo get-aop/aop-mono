@@ -1,3 +1,4 @@
+import type { SSEServerStatus, SSETask } from "@aop/common";
 import type { Metrics, Task } from "../types";
 
 const API_BASE = "/api";
@@ -31,48 +32,13 @@ const request = async <T>(path: string, options: RequestInit = {}): Promise<T> =
   return data as T;
 };
 
-export interface StatusResponse {
+interface StatusResponse extends SSEServerStatus {
   ready: boolean;
-  globalCapacity: {
-    working: number;
-    max: number;
-  };
-  repos: RepoStatus[];
 }
 
-export interface RepoStatus {
-  id: string;
-  name: string | null;
-  path: string;
-  working: number;
-  max: number;
-  tasks: ServerTask[];
-}
-
-interface ServerTask {
-  id: string;
-  repo_id: string;
-  change_path: string;
-  worktree_path: string | null;
-  status: Task["status"];
-  ready_at: string | null;
-  remote_id: string | null;
-  synced_at: string | null;
-  preferred_workflow: string | null;
-  created_at: string;
-  updated_at: string;
-  error_message?: string | null;
-}
-
-const toTask = (serverTask: ServerTask, repoPath: string): Task => ({
-  id: serverTask.id,
-  repoId: serverTask.repo_id,
+const toTask = (sseTask: SSETask, repoPath: string): Task => ({
+  ...sseTask,
   repoPath,
-  changePath: serverTask.change_path,
-  status: serverTask.status,
-  createdAt: serverTask.created_at,
-  updatedAt: serverTask.updated_at,
-  errorMessage: serverTask.error_message ?? undefined,
 });
 
 export const getStatus = async (): Promise<{
@@ -128,4 +94,35 @@ export const removeTask = async (
 export const getMetrics = async (repoId?: string): Promise<Metrics> => {
   const query = repoId ? `?repoId=${repoId}` : "";
   return request<Metrics>(`/metrics${query}`);
+};
+
+export interface DirectoryListingResponse {
+  path: string;
+  directories: string[];
+  parent: string | null;
+  isGitRepo: boolean;
+}
+
+export const listDirectories = async (
+  path?: string,
+  hidden = false,
+): Promise<DirectoryListingResponse> => {
+  const params = new URLSearchParams();
+  if (path) params.set("path", path);
+  if (hidden) params.set("hidden", "true");
+  const query = params.toString();
+  return request<DirectoryListingResponse>(`/fs/directories${query ? `?${query}` : ""}`);
+};
+
+export interface RegisterRepoResponse {
+  ok: boolean;
+  repoId: string;
+  alreadyExists: boolean;
+}
+
+export const registerRepo = async (path: string): Promise<RegisterRepoResponse> => {
+  return request<RegisterRepoResponse>("/repos", {
+    method: "POST",
+    body: JSON.stringify({ path }),
+  });
 };

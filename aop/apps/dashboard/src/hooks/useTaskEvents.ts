@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getStatus } from "../api/client";
 import { createTaskEventsConnection, type TaskEvent } from "../api/events";
 import type { Task } from "../types";
 
@@ -99,5 +100,15 @@ export const useTaskEvents = () => {
     };
   }, [handleEvent, handleConnect, handleDisconnect]);
 
-  return state;
+  const refresh = useCallback(async () => {
+    const status = await getStatus();
+    setState((prev) => ({
+      ...prev,
+      tasks: status.tasks,
+      capacity: status.capacity,
+      repos: status.repos,
+    }));
+  }, []);
+
+  return { ...state, refresh };
 };

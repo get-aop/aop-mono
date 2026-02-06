@@ -131,7 +131,7 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
     );
   }
 
-  const changeName = task.changePath.split("/").pop() ?? task.changePath;
+  const changeName = task.changePath?.split("/").pop() ?? task.changePath ?? "";
 
   return (
     <div className="flex h-screen flex-col bg-aop-black" data-testid="task-detail">
@@ -209,8 +209,8 @@ const TaskInfoCard = ({
   onMarkReady,
   onShowRemoveDialog,
 }: TaskInfoCardProps) => {
-  const repoName = task.repoPath.split("/").pop() ?? task.repoPath;
-  const changeName = task.changePath.split("/").pop() ?? task.changePath;
+  const repoName = task.repoPath?.split("/").pop() ?? task.repoPath ?? "";
+  const changeName = task.changePath?.split("/").pop() ?? task.changePath ?? "";
 
   return (
     <div className="rounded-aop border border-aop-charcoal bg-aop-darkest px-5 py-3">
