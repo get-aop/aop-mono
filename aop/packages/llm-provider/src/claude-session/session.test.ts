@@ -442,6 +442,10 @@ describe("ClaudeCodeSession", () => {
         "stream-json",
         "--print",
         "--verbose",
+        "--setting-sources",
+        "user,project",
+        "--disallowed-tools",
+        "AskUserQuestion",
         "test prompt",
       ]);
     });
@@ -459,6 +463,10 @@ describe("ClaudeCodeSession", () => {
         "stream-json",
         "--print",
         "--verbose",
+        "--setting-sources",
+        "user,project",
+        "--disallowed-tools",
+        "AskUserQuestion",
         "--dangerously-skip-permissions",
         "test prompt",
       ]);
@@ -476,6 +484,10 @@ describe("ClaudeCodeSession", () => {
         "stream-json",
         "--print",
         "--verbose",
+        "--setting-sources",
+        "user,project",
+        "--disallowed-tools",
+        "AskUserQuestion",
         "--resume",
         "session-id-123",
         "my answer",
@@ -494,11 +506,23 @@ describe("ClaudeCodeSession", () => {
         "stream-json",
         "--print",
         "--verbose",
+        "--setting-sources",
+        "user,project",
+        "--disallowed-tools",
+        "AskUserQuestion",
         "--resume",
         "session-id-123",
         "--dangerously-skip-permissions",
         "my answer",
       ]);
+    });
+
+    test("buildCommand supports overriding setting sources", () => {
+      const session = new ClaudeCodeSession({ settingSources: "user" });
+      // @ts-expect-error accessing private method
+      const cmd = session.buildCommand("test prompt");
+      expect(cmd).toContain("--setting-sources");
+      expect(cmd).toContain("user");
     });
   });
 

@@ -32,12 +32,16 @@ Start by understanding the current project context, then ask questions one at a 
 - Cover: architecture, components, data flow, error handling, testing
 - Be ready to go back and clarify if something doesn't make sense
 
-## After the Design
+## [BRAINSTORM_COMPLETE]
 
-**Documentation:**
-- Write the validated design to `.leo/brainstorm/YYYY-MM-DD-<topic>-design.md`
-- Use elements-of-style:writing-clearly-and-concisely skill if available
-- Commit the design document to git
+When brainstorming is complete, output all final design content in a single JSON text field:
+
+[BRAINSTORM_COMPLETE]
+{
+  "design": "Write the validated design here"
+}
+
+CRITICAL: Output ONLY the marker and raw JSON and STOP.
 
 ## Key Principles
 
@@ -47,3 +51,5 @@ Start by understanding the current project context, then ask questions one at a 
 - **Explore alternatives** - Always propose 2-3 approaches before settling
 - **Incremental validation** - Present design in sections, validate each
 - **Be flexible** - Go back and clarify when something doesn't make sense
+- **Do NOT skip the completion marker** - it's required for CLI integration
+- **STOP after [BRAINSTORM_COMPLETE]** - Output the marker with JSON and STOP

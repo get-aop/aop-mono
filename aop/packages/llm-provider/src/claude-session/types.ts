@@ -3,6 +3,8 @@ export interface SessionOptions {
   cwd?: string;
   /** Skip permission prompts (dangerous - use for automated testing) */
   dangerouslySkipPermissions?: boolean;
+  /** Claude setting sources (defaults to user,project to avoid local .claude shadowing) */
+  settingSources?: string;
   /** Timeout in ms for inactivity. Process killed if no output for this duration. */
   inactivityTimeoutMs?: number;
 }

@@ -17,6 +17,7 @@ import type {
 } from "./types";
 
 const logger = getLogger("claude-session");
+const DEFAULT_SETTING_SOURCES = "user,project";
 
 export class ClaudeCodeSession {
   private emitter = new EventEmitter();
@@ -98,7 +99,18 @@ export class ClaudeCodeSession {
   }
 
   private buildCommand(prompt: string): string[] {
-    const cmd = ["claude", "--output-format", "stream-json", "--print", "--verbose"];
+    const settingSources = this.options.settingSources ?? DEFAULT_SETTING_SOURCES;
+    const cmd = [
+      "claude",
+      "--output-format",
+      "stream-json",
+      "--print",
+      "--verbose",
+      "--setting-sources",
+      settingSources,
+      "--disallowed-tools",
+      "AskUserQuestion",
+    ];
     if (this.options.dangerouslySkipPermissions) {
       cmd.push("--dangerously-skip-permissions");
     }
@@ -107,12 +119,17 @@ export class ClaudeCodeSession {
   }
 
   private buildResumeCommand(sessionId: string, answer: string): string[] {
+    const settingSources = this.options.settingSources ?? DEFAULT_SETTING_SOURCES;
     const cmd = [
       "claude",
       "--output-format",
       "stream-json",
       "--print",
       "--verbose",
+      "--setting-sources",
+      settingSources,
+      "--disallowed-tools",
+      "AskUserQuestion",
       "--resume",
       sessionId,
     ];

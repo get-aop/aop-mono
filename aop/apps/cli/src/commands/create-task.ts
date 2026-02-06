@@ -8,8 +8,26 @@ const logger = getLogger("aop", "cli", "create-task");
 export interface CreateTaskCommandOptions {
   debug?: boolean;
   raw?: boolean;
-  maxQuestions?: number | string;
 }
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+const createSpinner = (label: string): { stop: () => void } => {
+  const start = Date.now();
+  let frame = 0;
+  const interval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    const icon = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
+    process.stdout.write(`\r${icon} ${label} (${elapsed}s)`);
+    frame++;
+  }, 120);
+  return {
+    stop: () => {
+      clearInterval(interval);
+      process.stdout.write("\r\x1b[K");
+    },
+  };
+};
 
 interface CreateTaskQuestionResponse {
   status: "question";
@@ -17,11 +35,13 @@ interface CreateTaskQuestionResponse {
   question: Question;
   questionCount: number;
   maxQuestions: number;
+  assistantOutput?: string;
 }
 
 interface CreateTaskCompletedResponse {
   status: "completed";
   sessionId: string;
+  assistantOutput?: string;
   requirements: {
     title: string;
     description: string;
@@ -78,23 +98,44 @@ const parseAnswer = (answer: string, question: Question): string => {
   return translateNumberToLabel(trimmed, options);
 };
 
-const displayQuestion = (question: Question, count: number, max: number): void => {
+const printAssistantOutput = (assistantOutput?: string): boolean => {
+  if (!assistantOutput) return false;
+  const trimmed = assistantOutput.trim();
+  if (!trimmed) return false;
+  process.stdout.write(`\n${trimmed}\n\n`);
+  return true;
+};
+
+const printQuestionPrompt = (question: Question, count: number, max: number): void => {
   const header = question.header ? ` [${question.header}]` : "";
   const suffix = max > 0 ? `/${max}` : "";
   process.stdout.write(`\n\nQuestion ${count}${suffix}${header}: ${question.question}\n`);
+};
 
-  if (question.options && question.options.length > 0) {
-    process.stdout.write("\n");
-    for (const [index, option] of question.options.entries()) {
-      process.stdout.write(`${formatOptionLine(option, index)}\n`);
-    }
-    process.stdout.write("\n");
-    if (question.multiSelect) {
-      process.stdout.write("(Enter comma-separated numbers, or type a custom response)\n\n");
-    } else {
-      process.stdout.write("(Enter a number, or type a custom response)\n\n");
-    }
+const printQuestionOptions = (question: Question): void => {
+  if (!question.options || question.options.length === 0) return;
+
+  process.stdout.write("\n");
+  for (const [index, option] of question.options.entries()) {
+    process.stdout.write(`${formatOptionLine(option, index)}\n`);
   }
+  process.stdout.write("\n");
+  if (question.multiSelect) {
+    process.stdout.write("(Enter comma-separated numbers, or type a custom response)\n\n");
+    return;
+  }
+  process.stdout.write("(Enter a number, or type a custom response)\n\n");
+};
+
+const displayQuestion = (
+  question: Question,
+  count: number,
+  max: number,
+  assistantOutput?: string,
+): void => {
+  if (printAssistantOutput(assistantOutput)) return;
+  printQuestionPrompt(question, count, max);
+  printQuestionOptions(question);
 };
 
 const ask = (rl: readline.Interface, prompt: string): Promise<string> => {
@@ -117,28 +158,22 @@ const askConfirmation = async (rl: readline.Interface, prompt: string): Promise<
   return answer === "y" || answer === "yes";
 };
 
-const resolveMaxQuestions = (value: unknown): number | undefined => {
-  const resolved = normalizeMaxQuestions(value);
-  if (resolved !== undefined) return resolved;
-
-  const envValue = process.env.AOP_CREATE_TASK_MAX_QUESTIONS;
-  return normalizeMaxQuestions(envValue);
-};
-
-const normalizeMaxQuestions = (value: unknown): number | undefined => {
-  if (value === undefined || value === null || value === "") return undefined;
-  const num = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(num) || num < 0) return undefined;
-  return Math.floor(num);
-};
-
 const exitWithError = (message: string, error: string): never => {
   logger.error(message, { error });
   process.exit(1);
 };
 
-const unwrapOrExit = <T>(result: FetchResult<T>, message: string): T => {
+const unwrapOrExit = <T>(result: FetchResult<T>, message: string, debug?: boolean): T => {
   if (!result.ok) {
+    if (debug) {
+      logger.debug("Server error response: {response}", {
+        response: JSON.stringify(result.error, null, 2),
+      });
+    }
+    const assistantOutput = result.error.assistantOutput;
+    if (typeof assistantOutput === "string" && assistantOutput.trim().length > 0) {
+      printAssistantOutput(assistantOutput);
+    }
     return exitWithError(message, result.error.error);
   }
   return result.data;
@@ -147,55 +182,97 @@ const unwrapOrExit = <T>(result: FetchResult<T>, message: string): T => {
 const startCreateTask = async (
   description: string,
   cwd: string,
-  maxQuestions: number | undefined,
+  debug?: boolean,
 ): Promise<CreateTaskStepResponse> => {
-  const result = await fetchServer<CreateTaskStepResponse>("/api/create-task/start", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ description, cwd, maxQuestions }),
-  });
-  return unwrapOrExit(result, "Failed to start create-task: {error}");
+  const spinner = createSpinner("Brainstorming");
+  try {
+    const result = await fetchServer<CreateTaskStepResponse>("/api/create-task/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description, cwd }),
+    });
+    spinner.stop();
+    if (debug) {
+      logger.debug("Start response: {response}", {
+        response: JSON.stringify(result, null, 2),
+      });
+    }
+    return unwrapOrExit(result, "Failed to start create-task: {error}", debug);
+  } catch (err) {
+    spinner.stop();
+    throw err;
+  }
 };
 
 const answerQuestion = async (
   sessionId: string,
   answer: string,
+  debug?: boolean,
 ): Promise<CreateTaskStepResponse> => {
-  const result = await fetchServer<CreateTaskStepResponse>(`/api/create-task/${sessionId}/answer`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ answer }),
-  });
-  return unwrapOrExit(result, "Failed to continue create-task: {error}");
+  const spinner = createSpinner("Processing answer");
+  try {
+    const result = await fetchServer<CreateTaskStepResponse>(
+      `/api/create-task/${sessionId}/answer`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer }),
+      },
+    );
+    spinner.stop();
+    if (debug) {
+      logger.debug("Answer response: {response}", {
+        response: JSON.stringify(result, null, 2),
+      });
+    }
+    return unwrapOrExit(result, "Failed to continue create-task: {error}", debug);
+  } catch (err) {
+    spinner.stop();
+    throw err;
+  }
 };
 
 const finalizeCreateTask = async (
   sessionId: string,
   createChange: boolean,
+  debug?: boolean,
 ): Promise<CreateTaskFinalizeResponse> => {
-  const result = await fetchServer<CreateTaskFinalizeResponse>(
-    `/api/create-task/${sessionId}/finalize`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ createChange }),
-    },
-  );
-  return unwrapOrExit(result, "Failed to finalize create-task: {error}");
+  const spinner = createSpinner("Finalizing");
+  try {
+    const result = await fetchServer<CreateTaskFinalizeResponse>(
+      `/api/create-task/${sessionId}/finalize`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ createChange }),
+      },
+    );
+    spinner.stop();
+    if (debug) {
+      logger.debug("Finalize response: {response}", {
+        response: JSON.stringify(result, null, 2),
+      });
+    }
+    return unwrapOrExit(result, "Failed to finalize create-task: {error}", debug);
+  } catch (err) {
+    spinner.stop();
+    throw err;
+  }
 };
 
 const runQuestionLoop = async (
   rl: readline.Interface,
   initialStep: CreateTaskStepResponse,
   setSessionId: (sessionId: string) => void,
+  debug?: boolean,
 ): Promise<CreateTaskCompletedResponse> => {
   let step = initialStep;
   setSessionId(step.sessionId);
 
   while (step.status === "question") {
-    displayQuestion(step.question, step.questionCount, step.maxQuestions);
+    displayQuestion(step.question, step.questionCount, step.maxQuestions, step.assistantOutput);
     const answer = await askQuestionAnswer(rl, step.question);
-    step = await answerQuestion(step.sessionId, answer);
+    step = await answerQuestion(step.sessionId, answer, debug);
     setSessionId(step.sessionId);
   }
 
@@ -221,9 +298,8 @@ export const createTaskCommand = async (
   options: CreateTaskCommandOptions = {},
 ): Promise<void> => {
   await requireServer();
-
-  const maxQuestions = resolveMaxQuestions(options.maxQuestions);
   const cwd = process.cwd();
+  const debug = options.debug;
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
   let sessionId = "";
@@ -249,18 +325,21 @@ export const createTaskCommand = async (
       process.exit(1);
     }
 
-    logger.info("Starting create-task brainstorming...");
-    process.stdout.write("Thinking....\n");
-    const startStep = await startCreateTask(taskDescription, cwd, maxQuestions);
-    const completedStep = await runQuestionLoop(rl, startStep, (id) => {
-      sessionId = id;
-    });
+    const startStep = await startCreateTask(taskDescription, cwd, debug);
+    const completedStep = await runQuestionLoop(
+      rl,
+      startStep,
+      (id) => {
+        sessionId = id;
+      },
+      debug,
+    );
+    printAssistantOutput(completedStep.assistantOutput);
     const shouldCreateChange = await askConfirmation(
       rl,
       "Create OpenSpec change from these requirements?",
     );
-    process.stdout.write("Thinking....\n");
-    const finalized = await finalizeCreateTask(completedStep.sessionId, shouldCreateChange);
+    const finalized = await finalizeCreateTask(completedStep.sessionId, shouldCreateChange, debug);
     logFinalizeResult(finalized);
   } finally {
     rl.close();

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AskUserQuestionInput } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type {
   InteractiveSession,
@@ -207,10 +206,23 @@ const createMockContext = (sessionRepository: SessionRepository): LocalServerCon
 
 const completeOutput = (title = "Dashboard"): string => `[BRAINSTORM_COMPLETE]
 {"title":"${title}","description":"Build dashboard","requirements":["R1"],"acceptanceCriteria":["A1"]}`;
+const BRAINSTORM_COMPLETE_MARKER = "[BRAINSTORM_COMPLETE]";
 
-const singleQuestion = (question: string): AskUserQuestionInput => ({
-  questions: [{ question }],
-});
+const plainTextQuestionOutput = (
+  question = "What's the main motivation for moving worktrees to ~/.aop?",
+): string => `Question 1 [Motivation]: ${question}
+
+1. Clean repo directory - avoid .worktrees in repo
+2. Centralized management - use ~/.aop as single home
+
+(Enter a number, or type a custom response)`;
+
+const naturalQuestionPrefixOutput = (): string => `Now I have enough context.
+
+My first question: choose the directory layout for worktrees
+
+1. ~/.aop/worktrees/<repoId>/<taskId> - grouped by repository
+2. ~/.aop/worktrees/<taskId> - flat by task id`;
 
 describe("create-task/service", () => {
   let sessionRepository: SessionRepository;
@@ -235,7 +247,9 @@ describe("create-task/service", () => {
     mockClaude.queueSteps({
       method: "run",
       sessionId: "claude-session-1",
-      events: [{ event: "question", args: [singleQuestion("Which stack?")] }],
+      events: [
+        { event: "completed", args: [plainTextQuestionOutput("Which stack should we use?")] },
+      ],
     });
 
     const service = createCreateTaskService(ctx, {
@@ -251,12 +265,59 @@ describe("create-task/service", () => {
     expect(result.status).toBe("question");
     if (result.status !== "question") return;
 
-    expect(result.question.question).toBe("Which stack?");
+    expect(result.question.question).toContain("Which stack");
     expect(result.questionCount).toBe(1);
+    expect(result.assistantOutput).toContain("Question 1 [Motivation]");
 
     const stored = await sessionRepository.get(result.sessionId);
     expect(stored?.status).toBe("brainstorming");
     expect(stored?.question_count).toBe(1);
+  });
+
+  test("treats plain assistant text as question", async () => {
+    mockClaude.queueSteps({
+      method: "run",
+      sessionId: "claude-session-plain-question",
+      events: [{ event: "completed", args: [plainTextQuestionOutput()] }],
+    });
+
+    const service = createCreateTaskService(ctx, {
+      createClaudeSession: () => mockClaude.session as never,
+    });
+
+    const result = await service.start({
+      description: "Move worktrees to ~/.aop",
+      cwd: process.cwd(),
+    });
+
+    expect(result.status).toBe("question");
+    if (result.status !== "question") return;
+    expect(result.question.question).toContain("main motivation");
+    expect(result.question.options?.[0]?.label).toContain("Clean repo directory");
+    expect(result.assistantOutput).toContain("Question 1 [Motivation]");
+  });
+
+  test("parses natural 'first question' prefix without question mark", async () => {
+    mockClaude.queueSteps({
+      method: "run",
+      sessionId: "claude-session-natural-question",
+      events: [{ event: "completed", args: [naturalQuestionPrefixOutput()] }],
+    });
+
+    const service = createCreateTaskService(ctx, {
+      createClaudeSession: () => mockClaude.session as never,
+    });
+
+    const result = await service.start({
+      description: "Move worktrees to ~/.aop",
+      cwd: process.cwd(),
+    });
+
+    expect(result.status).toBe("question");
+    if (result.status !== "question") return;
+    expect(result.question.question).toContain("choose the directory layout");
+    expect(result.question.options?.[0]?.label).toContain("~/.aop/worktrees/<repoId>/<taskId>");
+    expect(result.assistantOutput).toContain("My first question");
   });
 
   test("returns error when Claude session ID is missing", async () => {
@@ -277,25 +338,19 @@ describe("create-task/service", () => {
     expect(result.status).toBe("error");
     if (result.status !== "error") return;
     expect(result.error).toBe("Failed to get Claude session ID");
+    expect(result.assistantOutput).toContain(BRAINSTORM_COMPLETE_MARKER);
   });
 
-  test("retries after invalid multi-question response", async () => {
-    mockClaude.queueSteps(
-      {
-        method: "run",
-        sessionId: "claude-session-1",
-        events: [
-          {
-            event: "question",
-            args: [{ questions: [{ question: "Q1?" }, { question: "Q2?" }] }],
-          },
-        ],
-      },
-      {
-        method: "resume",
-        events: [{ event: "question", args: [singleQuestion("Single question?")] }],
-      },
-    );
+  test("continues when output is not a question or completion", async () => {
+    mockClaude.queueSteps({
+      method: "run",
+      sessionId: "claude-session-1",
+      events: [{ event: "message", args: ["partial output"] }],
+    });
+    mockClaude.queueSteps({
+      method: "resume",
+      events: [{ event: "completed", args: [plainTextQuestionOutput("Q1?")] }],
+    });
 
     const service = createCreateTaskService(ctx, {
       createClaudeSession: () => mockClaude.session as never,
@@ -309,9 +364,9 @@ describe("create-task/service", () => {
     expect(result.status).toBe("question");
     if (result.status !== "question") return;
 
-    expect(result.question.question).toBe("Single question?");
+    expect(result.question.question).toContain("Q1?");
     const retryCall = mockClaude.calls.find((call) => call.method === "resume");
-    expect(retryCall?.input).toContain("Please ask only one question at a time");
+    expect(retryCall).toBeDefined();
   });
 
   test("marks session as error when Claude emits process error", async () => {
@@ -389,6 +444,7 @@ describe("create-task/service", () => {
     if (result.status !== "error") return;
 
     expect(result.error).toContain("without completion after 3 attempts");
+    expect(result.assistantOutput).toBe("partial output");
     const stored = result.sessionId ? await sessionRepository.get(result.sessionId) : null;
     expect(stored?.status).toBe("error");
   });
@@ -424,6 +480,7 @@ describe("create-task/service", () => {
     });
     expect(started.status).toBe("completed");
     if (started.status !== "completed") return;
+    expect(started.assistantOutput).toContain(BRAINSTORM_COMPLETE_MARKER);
 
     const result = await service.answer({ sessionId: started.sessionId, answer: "React" });
 
@@ -435,12 +492,12 @@ describe("create-task/service", () => {
     });
   });
 
-  test("appends max-question note before final answer", async () => {
+  test("forwards answer without max-question note", async () => {
     mockClaude.queueSteps(
       {
         method: "run",
         sessionId: "claude-session-1",
-        events: [{ event: "question", args: [singleQuestion("Which stack?")] }],
+        events: [{ event: "completed", args: [plainTextQuestionOutput("Which stack?")] }],
       },
       { method: "resume", events: [{ event: "completed", args: [completeOutput()] }] },
     );
@@ -465,7 +522,7 @@ describe("create-task/service", () => {
 
     expect(second.status).toBe("completed");
     const answerCall = mockClaude.calls.at(-1);
-    expect(answerCall?.input).toContain("Maximum question limit reached");
+    expect(answerCall?.input).toBe("React");
   });
 
   test("finalize returns not_found for unknown session", async () => {
@@ -490,7 +547,7 @@ describe("create-task/service", () => {
     mockClaude.queueSteps({
       method: "run",
       sessionId: "claude-session-1",
-      events: [{ event: "question", args: [singleQuestion("Which stack?")] }],
+      events: [{ event: "completed", args: [plainTextQuestionOutput("Which stack?")] }],
     });
 
     const service = createCreateTaskService(ctx, {
@@ -536,6 +593,7 @@ describe("create-task/service", () => {
 
     expect(started.status).toBe("completed");
     if (started.status !== "completed") return;
+    expect(started.assistantOutput).toContain(BRAINSTORM_COMPLETE_MARKER);
 
     const finalized = await service.finalize({
       sessionId: started.sessionId,
@@ -589,6 +647,7 @@ describe("create-task/service", () => {
 
     expect(started.status).toBe("completed");
     if (started.status !== "completed") return;
+    expect(started.assistantOutput).toContain(BRAINSTORM_COMPLETE_MARKER);
 
     const finalized = await service.finalize({
       sessionId: started.sessionId,
@@ -615,7 +674,7 @@ describe("create-task/service", () => {
       },
       {
         method: "resume",
-        events: [{ event: "question", args: [singleQuestion("Confirm name?")] }],
+        events: [{ event: "completed", args: [plainTextQuestionOutput("Confirm name?")] }],
       },
       {
         method: "resume",
@@ -639,6 +698,7 @@ describe("create-task/service", () => {
 
     expect(started.status).toBe("completed");
     if (started.status !== "completed") return;
+    expect(started.assistantOutput).toContain(BRAINSTORM_COMPLETE_MARKER);
 
     const finalized = await service.finalize({
       sessionId: started.sessionId,
@@ -677,6 +737,7 @@ describe("create-task/service", () => {
     const started = await service.start({ description: "Build a dashboard", cwd: testDir });
     expect(started.status).toBe("completed");
     if (started.status !== "completed") return;
+    expect(started.assistantOutput).toContain(BRAINSTORM_COMPLETE_MARKER);
 
     const finalized = await service.finalize({
       sessionId: started.sessionId,
@@ -732,7 +793,7 @@ describe("create-task/service", () => {
     mockClaude.queueSteps({
       method: "run",
       sessionId: "claude-session-1",
-      events: [{ event: "question", args: [singleQuestion("Which stack?")] }],
+      events: [{ event: "completed", args: [plainTextQuestionOutput("Which stack?")] }],
     });
 
     const service = createCreateTaskService(ctx, {

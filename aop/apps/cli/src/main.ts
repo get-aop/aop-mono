@@ -85,12 +85,10 @@ export const registerCommands = (cli: CAC): void => {
     .command("create-task [description]", "Create a new task interactively")
     .option("--debug", "Enable debug mode")
     .option("--raw", "Show raw output")
-    .option("--max-questions <count>", "Maximum questions to ask (0 = unlimited)")
     .action(async (description, options) => {
       await createTaskCommand(description, {
         debug: options.debug,
         raw: options.raw,
-        maxQuestions: options.maxQuestions,
       });
     });
 

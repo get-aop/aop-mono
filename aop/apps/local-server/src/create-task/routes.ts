@@ -41,7 +41,14 @@ export const createCreateTaskRoutes = (
 
     if (result.status === "error") {
       const statusCode = result.code === "not_found" ? 404 : 400;
-      return c.json({ error: result.error, sessionId: result.sessionId }, statusCode);
+      return c.json(
+        {
+          error: result.error,
+          sessionId: result.sessionId,
+          assistantOutput: result.assistantOutput,
+        },
+        statusCode,
+      );
     }
 
     return c.json(result);
@@ -57,7 +64,14 @@ export const createCreateTaskRoutes = (
     const result = await service.answer({ sessionId, answer: body.answer });
     if (result.status === "error") {
       const statusCode = result.code === "not_found" ? 404 : 400;
-      return c.json({ error: result.error, sessionId: result.sessionId }, statusCode);
+      return c.json(
+        {
+          error: result.error,
+          sessionId: result.sessionId,
+          assistantOutput: result.assistantOutput,
+        },
+        statusCode,
+      );
     }
 
     return c.json(result);
@@ -73,7 +87,14 @@ export const createCreateTaskRoutes = (
     const result = await service.finalize({ sessionId, createChange: body.createChange });
     if (result.status === "error") {
       const statusCode = result.code === "not_found" ? 404 : 400;
-      return c.json({ error: result.error, sessionId: result.sessionId }, statusCode);
+      return c.json(
+        {
+          error: result.error,
+          sessionId: result.sessionId,
+          assistantOutput: result.assistantOutput,
+        },
+        statusCode,
+      );
     }
 
     return c.json(result);
@@ -84,7 +105,14 @@ export const createCreateTaskRoutes = (
     const result = await service.cancel({ sessionId });
     if (result.status === "error") {
       const statusCode = result.code === "not_found" ? 404 : 400;
-      return c.json({ error: result.error, sessionId: result.sessionId }, statusCode);
+      return c.json(
+        {
+          error: result.error,
+          sessionId: result.sessionId,
+          assistantOutput: result.assistantOutput,
+        },
+        statusCode,
+      );
     }
 
     return c.json(result);
