@@ -222,7 +222,7 @@ export const createStepRecord = async (
 export const createWorktree = async (ctx: ExecutorContext): Promise<WorktreeInfo> => {
   const gitManager = new GitManager({ repoPath: ctx.repoPath });
   await gitManager.init();
-  const baseBranch = await gitManager.getDefaultBranch();
+  const baseBranch = ctx.task.base_branch ?? (await gitManager.getDefaultBranch());
   try {
     const res = await gitManager.createWorktree(ctx.task.id, baseBranch);
     return res;

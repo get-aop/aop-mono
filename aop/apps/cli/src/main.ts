@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// biome-ignore-all lint/suspicious/noConsole: CLI layer requires console output for user feedback
 
 import { mkdir } from "node:fs/promises";
 import { configureLogging, type LoggingOptions, type LogLevel } from "@aop/infra";
@@ -65,7 +66,13 @@ export const registerCommands = (cli: CAC): void => {
   cli
     .command("task:ready <identifier>", "Mark task as READY")
     .option("--workflow <name>", "Workflow name")
-    .action((identifier, options) => taskReadyCommand(identifier, { workflow: options.workflow }));
+    .option("--base-branch <branch>", "Base branch for worktree creation")
+    .action((identifier, options) =>
+      taskReadyCommand(identifier, {
+        workflow: options.workflow,
+        baseBranch: options.baseBranch,
+      }),
+    );
 
   cli
     .command("task:remove <identifier>", "Remove task")
@@ -90,9 +97,32 @@ if (import.meta.main) {
   cli.help();
   cli.version("0.1.0");
 
+  cli.on("command:*", () => {
+    console.error(`Unknown command: ${cli.args.join(" ")}`);
+    console.error(`Run "aop --help" for usage`);
+    process.exit(1);
+  });
+
   const main = async (): Promise<void> => {
     await setupLogging();
-    cli.parse();
+
+    try {
+      const parsed = cli.parse();
+
+      // Show help when run with no arguments
+      if (parsed.args.length === 0 && !parsed.options.help && !parsed.options.version) {
+        cli.outputHelp();
+      }
+    } catch (error) {
+      if (error instanceof Error && error.constructor.name === "CACError") {
+        console.error(`Error: ${error.message}\n`);
+        if (cli.matchedCommand) {
+          cli.matchedCommand.outputHelp();
+        }
+        process.exit(1);
+      }
+      throw error;
+    }
   };
 
   main();

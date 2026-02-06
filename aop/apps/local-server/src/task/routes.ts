@@ -60,9 +60,12 @@ export const createTaskRoutes = (ctx: LocalServerContext) => {
       return c.json({ error: "Task not found" }, 404);
     }
 
-    const body = await c.req.json<{ workflow?: string }>().catch(() => ({ workflow: undefined }));
+    const body = await c.req
+      .json<{ workflow?: string; baseBranch?: string }>()
+      .catch(() => ({ workflow: undefined, baseBranch: undefined }));
     const result = await markTaskReady(ctx, taskId, {
       workflow: body.workflow,
+      baseBranch: body.baseBranch,
     });
 
     if (!result.success) {

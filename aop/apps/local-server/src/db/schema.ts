@@ -25,6 +25,7 @@ export interface TasksTable {
   remote_id: string | null;
   synced_at: string | null;
   preferred_workflow: string | null;
+  base_branch: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }

@@ -153,6 +153,32 @@ describe("task/handlers", () => {
       }
     });
 
+    test("sets base_branch when provided", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+
+      const result = await markTaskReady(ctx, "task-1", {
+        baseBranch: "feature/foo",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.task.base_branch).toBe("feature/foo");
+      }
+    });
+
+    test("sets base_branch to null when not provided", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+
+      const result = await markTaskReady(ctx, "task-1");
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.task.base_branch).toBeNull();
+      }
+    });
+
     test("returns UPDATE_FAILED when repository update fails", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");

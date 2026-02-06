@@ -6,6 +6,7 @@ const logger = getLogger("aop", "cli", "task:ready");
 
 export interface TaskReadyOptions {
   workflow?: string;
+  baseBranch?: string;
 }
 
 type Task = SSETask;
@@ -42,7 +43,9 @@ const findTask = async (identifier: string): Promise<Task> => {
 };
 
 const markTaskReady = async (task: Task, options?: TaskReadyOptions): Promise<void> => {
-  const body = options?.workflow ? { workflow: options.workflow } : {};
+  const body: Record<string, string> = {};
+  if (options?.workflow) body.workflow = options.workflow;
+  if (options?.baseBranch) body.baseBranch = options.baseBranch;
   const result = await fetchServer<TaskReadyResponse>(
     `/api/repos/${task.repoId}/tasks/${task.id}/ready`,
     {

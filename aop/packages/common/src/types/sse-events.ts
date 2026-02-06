@@ -9,6 +9,7 @@ export interface SSETask {
   repoId: string;
   changePath: string;
   status: TaskStatus;
+  baseBranch: string | null;
   createdAt: string;
   updatedAt: string;
   errorMessage?: string;

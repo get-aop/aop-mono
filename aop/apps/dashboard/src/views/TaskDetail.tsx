@@ -263,6 +263,13 @@ const TaskInfoCard = ({
         </div>
       </div>
 
+      {task.baseBranch && (
+        <div className="mt-4 border-t border-aop-charcoal pt-4">
+          <span className="font-mono text-[10px] text-aop-slate-dark">BASE BRANCH</span>
+          <div className="mt-1 font-mono text-xs text-aop-slate-light">{task.baseBranch}</div>
+        </div>
+      )}
+
       {task.status === "BLOCKED" && task.errorMessage && (
         <div className="mt-4 rounded-aop border border-aop-blocked/50 bg-aop-blocked/[0.08] p-4">
           <span className="font-mono text-[10px] text-aop-blocked">ERROR</span>

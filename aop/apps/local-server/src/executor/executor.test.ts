@@ -30,6 +30,7 @@ const createMockTask = (overrides: Partial<Task> = {}): Task => ({
   remote_id: null,
   synced_at: null,
   preferred_workflow: null,
+  base_branch: null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
   ...overrides,
@@ -234,6 +235,31 @@ describe("executor", () => {
 
       expect(result.path).toBe(join(testRepoPath, ".worktrees", "task-wt-1"));
       expect(result.branch).toBe("task-wt-1");
+      expect(existsSync(result.path)).toBe(true);
+    });
+
+    test("uses task base_branch when set", async () => {
+      const branchName = `feature-branch-${Date.now()}`;
+      const createBranch = Bun.spawn(["git", "branch", branchName], {
+        cwd: testRepoPath,
+      });
+      await createBranch.exited;
+
+      const task = createMockTask({ id: "task-wt-base", base_branch: branchName });
+
+      const executorCtx: ExecutorContext = {
+        task,
+        repoPath: testRepoPath,
+        changePath: join(testRepoPath, "changes/feat-1"),
+        worktreePath: join(testRepoPath, ".worktrees", "task-wt-base"),
+        logsDir: tmpdir(),
+        timeoutSecs: 300,
+      };
+
+      const result = await createWorktree(executorCtx);
+
+      expect(result.baseBranch).toBe(branchName);
+      expect(result.path).toBe(join(testRepoPath, ".worktrees", "task-wt-base"));
       expect(existsSync(result.path)).toBe(true);
     });
 

@@ -369,6 +369,22 @@ describe("task/routes", () => {
       const task = await ctx.taskRepository.get("task-1");
       expect(task?.preferred_workflow).toBe("custom-workflow");
     });
+
+    test("accepts baseBranch parameter", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/ready", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baseBranch: "release/v2" }),
+      });
+
+      expect(res.status).toBe(200);
+
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.base_branch).toBe("release/v2");
+    });
   });
 
   describe("DELETE /api/repos/:repoId/tasks/:taskId", () => {

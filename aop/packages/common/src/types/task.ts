@@ -15,6 +15,7 @@ export interface Task {
   changePath: string;
   worktreePath: string | null;
   status: TaskStatus;
+  baseBranch: string | null;
   readyAt: Date | null;
   remoteId: string | null;
   syncedAt: Date | null;

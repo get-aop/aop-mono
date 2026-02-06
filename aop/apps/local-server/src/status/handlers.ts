@@ -13,6 +13,7 @@ export const toSSETask = (
   repoId: task.repo_id,
   changePath: task.change_path,
   status: task.status,
+  baseBranch: task.base_branch ?? null,
   createdAt: task.created_at,
   updatedAt: task.updated_at,
   errorMessage: undefined,
