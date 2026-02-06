@@ -4,20 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/main.ts",
-    "./commands": "./src/main.ts",
-    "./daemon": "./src/daemon/index.ts",
-    "./context": "./src/context.ts",
-    "./db": "./src/db/connection.ts",
-    "./db/migrations": "./src/db/migrations.ts",
-    "./repos/handlers": "./src/repos/handlers.ts",
-    "./settings/handlers": "./src/settings/handlers.ts",
-    "./tasks": "./src/tasks/index.ts",
-    "./watcher": "./src/watcher/index.ts",
-    "./queue": "./src/queue/index.ts",
-    "./sync": "./src/sync/server-sync.ts",
-    "./executor": "./src/executor/executor.ts",
-    "./settings/types": "./src/settings/types.ts",
-    "./db/schema": "./src/db/schema.ts"
+    "./commands": "./src/main.ts"
   },
   "bin": {
     "aop": "./src/main.ts"
@@ -33,9 +20,7 @@
     "@aop/git-manager": "workspace:*",
     "@aop/infra": "workspace:*",
     "@aop/llm-provider": "workspace:*",
-    "handlebars": "^4.7.8",
-    "kysely": "^0.28.2",
-    "kysely-bun-sqlite": "^0.3.2"
+    "handlebars": "^4.7.8"
   },
   "devDependencies": {
     "@types/bun": "^1.3.8",

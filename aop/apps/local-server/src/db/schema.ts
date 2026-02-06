@@ -60,6 +60,36 @@ export interface ExecutionLogsTable {
   timestamp: string;
 }
 
+export type InteractiveSessionStatus =
+  | "active"
+  | "brainstorming"
+  | "completed"
+  | "cancelled"
+  | "error";
+
+export interface InteractiveSessionsTable {
+  id: string;
+  repo_id: string | null;
+  change_path: string | null;
+  claude_session_id: string;
+  status: InteractiveSessionStatus;
+  question_count: Generated<number>;
+  continuation_count: Generated<number>;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export type SessionMessageRole = "user" | "assistant";
+
+export interface SessionMessagesTable {
+  id: string;
+  session_id: string;
+  role: SessionMessageRole;
+  content: string;
+  tool_use_id: string | null;
+  created_at: Generated<string>;
+}
+
 export interface Database {
   settings: SettingsTable;
   repos: ReposTable;
@@ -67,6 +97,8 @@ export interface Database {
   executions: ExecutionsTable;
   step_executions: StepExecutionsTable;
   execution_logs: ExecutionLogsTable;
+  interactive_sessions: InteractiveSessionsTable;
+  session_messages: SessionMessagesTable;
 }
 
 export type Setting = Selectable<SettingsTable>;
@@ -90,3 +122,10 @@ export type StepExecutionUpdate = Updateable<StepExecutionsTable>;
 
 export type ExecutionLog = Selectable<ExecutionLogsTable>;
 export type NewExecutionLog = Insertable<ExecutionLogsTable>;
+
+export type InteractiveSession = Selectable<InteractiveSessionsTable>;
+export type NewInteractiveSession = Insertable<InteractiveSessionsTable>;
+export type InteractiveSessionUpdate = Updateable<InteractiveSessionsTable>;
+
+export type SessionMessage = Selectable<SessionMessagesTable>;
+export type NewSessionMessage = Insertable<SessionMessagesTable>;

@@ -8,6 +8,7 @@ import {
   applyCommand,
   configGetCommand,
   configSetCommand,
+  createTaskCommand,
   repoInitCommand,
   repoRemoveCommand,
   statusCommand,
@@ -48,13 +49,11 @@ export const setupLogging = async (): Promise<void> => {
 };
 
 export const registerCommands = (cli: CAC): void => {
-  // Status
   cli
     .command("status [taskId]", "Show status")
     .option("--json", "Output as JSON")
     .action((taskId, options) => statusCommand(taskId, { json: options.json }));
 
-  // Repository commands
   cli.command("repo:init [path]", "Register repository").action((path) => repoInitCommand(path));
 
   cli
@@ -62,7 +61,6 @@ export const registerCommands = (cli: CAC): void => {
     .option("--force", "Abort working tasks")
     .action((path, options) => repoRemoveCommand(path, { force: options.force }));
 
-  // Task commands
   cli
     .command("task:ready <identifier>", "Mark task as READY")
     .option("--workflow <name>", "Workflow name")
@@ -83,7 +81,19 @@ export const registerCommands = (cli: CAC): void => {
     .command("apply <taskId>", "Apply worktree changes to main repo")
     .action((taskId) => applyCommand(taskId));
 
-  // Config commands
+  cli
+    .command("create-task [description]", "Create a new task interactively")
+    .option("--debug", "Enable debug mode")
+    .option("--raw", "Show raw output")
+    .option("--max-questions <count>", "Maximum questions to ask (0 = unlimited)")
+    .action(async (description, options) => {
+      await createTaskCommand(description, {
+        debug: options.debug,
+        raw: options.raw,
+        maxQuestions: options.maxQuestions,
+      });
+    });
+
   cli.command("config:get [key]", "Get config value(s)").action((key) => configGetCommand(key));
 
   cli

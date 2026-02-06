@@ -15,6 +15,8 @@ export const runMigrations = async (db: Kysely<Database>): Promise<void> => {
   await createStepExecutionsTable(db);
   await addStepExecutionSignalColumns(db);
   await createExecutionLogsTable(db);
+  await createInteractiveSessionsTable(db);
+  await createSessionMessagesTable(db);
 };
 
 const createSettingsTable = async (db: Kysely<Database>): Promise<void> => {
@@ -191,5 +193,50 @@ const createExecutionLogsTable = async (db: Kysely<Database>): Promise<void> => 
     .ifNotExists()
     .on("execution_logs")
     .column("execution_id")
+    .execute();
+};
+
+const createInteractiveSessionsTable = async (db: Kysely<Database>): Promise<void> => {
+  await db.schema
+    .createTable("interactive_sessions")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("repo_id", "text", (col) => col.references("repos.id"))
+    .addColumn("change_path", "text")
+    .addColumn("claude_session_id", "text", (col) => col.notNull())
+    .addColumn("status", "text", (col) => col.notNull().defaultTo("active"))
+    .addColumn("question_count", "integer", (col) => col.notNull().defaultTo(0))
+    .addColumn("continuation_count", "integer", (col) => col.notNull().defaultTo(0))
+    .addColumn("created_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
+    .addColumn("updated_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
+    .execute();
+
+  await db.schema
+    .createIndex("idx_interactive_sessions_status")
+    .ifNotExists()
+    .on("interactive_sessions")
+    .column("status")
+    .execute();
+};
+
+const createSessionMessagesTable = async (db: Kysely<Database>): Promise<void> => {
+  await db.schema
+    .createTable("session_messages")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("session_id", "text", (col) =>
+      col.notNull().references("interactive_sessions.id").onDelete("cascade"),
+    )
+    .addColumn("role", "text", (col) => col.notNull())
+    .addColumn("content", "text", (col) => col.notNull())
+    .addColumn("tool_use_id", "text")
+    .addColumn("created_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
+    .execute();
+
+  await db.schema
+    .createIndex("idx_session_messages_session_id")
+    .ifNotExists()
+    .on("session_messages")
+    .column("session_id")
     .execute();
 };

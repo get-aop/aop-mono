@@ -1,8 +1,15 @@
 import { parseTypeId, type TypeId, typeidUnboxed } from "typeid-js";
 
-export type TypeIdPrefix = "task" | "exec" | "repo" | "step";
+export type TypeIdPrefix = "task" | "exec" | "repo" | "step" | "isess" | "smsg";
 
-const VALID_PREFIXES: Set<TypeIdPrefix> = new Set(["task", "exec", "repo", "step"]);
+const VALID_PREFIXES: Set<TypeIdPrefix> = new Set([
+  "task",
+  "exec",
+  "repo",
+  "step",
+  "isess",
+  "smsg",
+]);
 
 export const generateTypeId = (prefix: TypeIdPrefix): string => typeidUnboxed(prefix);
 

@@ -11,6 +11,7 @@ import {
   type ExecutionRepository,
 } from "./executor/execution-repository.ts";
 import { createRepoRepository, type RepoRepository } from "./repo/repository.ts";
+import { createSessionRepository, type SessionRepository } from "./session/repository.ts";
 import { createSettingsRepository, type SettingsRepository } from "./settings/repository.ts";
 import { createTaskRepository, type TaskRepository } from "./task/repository.ts";
 
@@ -19,6 +20,7 @@ export interface LocalServerContext {
   repoRepository: RepoRepository;
   settingsRepository: SettingsRepository;
   executionRepository: ExecutionRepository;
+  sessionRepository: SessionRepository;
   taskEventEmitter: TaskEventEmitter;
   logBuffer: LogBuffer;
 }
@@ -42,6 +44,7 @@ export const createCommandContext = (
     repoRepository: createRepoRepository(db),
     settingsRepository: createSettingsRepository(db),
     executionRepository: createExecutionRepository(db),
+    sessionRepository: createSessionRepository(db),
     taskEventEmitter,
     logBuffer,
   };

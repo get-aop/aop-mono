@@ -1,6 +1,7 @@
 export { applyCommand } from "./apply.ts";
 export { configGetCommand } from "./config-get.ts";
 export { configSetCommand } from "./config-set.ts";
+export { createTaskCommand } from "./create-task.ts";
 export { repoInitCommand } from "./repo-init.ts";
 export { repoRemoveCommand } from "./repo-remove.ts";
 export { statusCommand } from "./status.ts";
