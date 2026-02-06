@@ -7,6 +7,7 @@ import { StepList } from "../components/StepList";
 import { useSSE } from "../hooks/useSSE";
 import { useTaskEvents } from "../hooks/useTaskEvents";
 import type { Execution, Step, Task } from "../types";
+import { formatDuration } from "../utils/format";
 
 interface TaskDetailProps {
   taskId: string;
@@ -24,21 +25,6 @@ const formatTimestamp = (timestamp: string): string => {
     second: "2-digit",
     hour12: false,
   });
-};
-
-const formatDuration = (startedAt: string, finishedAt?: string): string => {
-  const start = new Date(startedAt).getTime();
-  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
-  const durationMs = end - start;
-
-  if (durationMs < 1000) return `${durationMs}ms`;
-
-  const seconds = Math.floor(durationMs / 1000);
-  if (seconds < 60) return `${seconds}s`;
-
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}m ${remainingSeconds}s`;
 };
 
 interface LogEvent {

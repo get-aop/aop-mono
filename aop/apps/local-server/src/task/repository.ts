@@ -49,24 +49,37 @@ export const createTaskRepository = (
 ): TaskRepository => {
   const { eventEmitter } = options;
 
+  const getLatestExecution = async (taskId: string) => {
+    const execution = await db
+      .selectFrom("executions")
+      .selectAll()
+      .where("task_id", "=", taskId)
+      .orderBy("started_at", "desc")
+      .limit(1)
+      .executeTakeFirst();
+    return execution ?? null;
+  };
+
   const emitTaskCreated = (task: Task): void => {
     eventEmitter?.emit({ type: "task-created", task: toSSETask(task) });
   };
 
-  const emitStatusChanged = (task: Task, previousStatus: TaskStatus): void => {
+  const emitStatusChanged = async (task: Task, previousStatus: TaskStatus): Promise<void> => {
     if (task.status !== previousStatus) {
+      const execution = await getLatestExecution(task.id);
       eventEmitter?.emit({
         type: "task-status-changed",
         taskId: task.id,
         previousStatus,
         newStatus: task.status as TaskStatus,
-        task: toSSETask(task),
+        task: toSSETask(task, execution),
       });
     }
   };
 
-  const emitTaskRemoved = (task: Task): void => {
-    eventEmitter?.emit({ type: "task-removed", taskId: task.id, task: toSSETask(task) });
+  const emitTaskRemoved = async (task: Task): Promise<void> => {
+    const execution = await getLatestExecution(task.id);
+    eventEmitter?.emit({ type: "task-removed", taskId: task.id, task: toSSETask(task, execution) });
   };
 
   return {
@@ -151,7 +164,7 @@ export const createTaskRepository = (
         .executeTakeFirstOrThrow();
 
       if (updates.status) {
-        emitStatusChanged(updated, previousStatus);
+        await emitStatusChanged(updated, previousStatus);
       }
 
       return updated;
@@ -186,8 +199,8 @@ export const createTaskRepository = (
         .where("id", "=", id)
         .executeTakeFirstOrThrow();
 
-      emitStatusChanged(updated, previousStatus);
-      emitTaskRemoved(updated);
+      await emitStatusChanged(updated, previousStatus);
+      await emitTaskRemoved(updated);
 
       return true;
     },
@@ -289,7 +302,7 @@ export const createTaskRepository = (
           .selectAll()
           .where("id", "=", task.id)
           .executeTakeFirstOrThrow();
-        emitStatusChanged(updated, "WORKING");
+        await emitStatusChanged(updated, "WORKING");
       }
 
       return workingTasks.length;

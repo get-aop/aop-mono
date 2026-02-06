@@ -7,7 +7,7 @@ export type ServerStatus = SSEServerStatus;
 
 export const toSSETask = (
   task: Task,
-  currentExecution?: Pick<Execution, "id"> | null,
+  execution?: Pick<Execution, "id" | "started_at" | "completed_at"> | null,
 ): SSETask => ({
   id: task.id,
   repoId: task.repo_id,
@@ -17,7 +17,9 @@ export const toSSETask = (
   createdAt: task.created_at,
   updatedAt: task.updated_at,
   errorMessage: undefined,
-  currentExecutionId: currentExecution?.id,
+  currentExecutionId: execution?.id,
+  executionStartedAt: execution?.started_at ?? undefined,
+  executionCompletedAt: execution?.completed_at ?? undefined,
 });
 
 export const getServerStatus = async (ctx: LocalServerContext): Promise<ServerStatus> => {
@@ -37,8 +39,8 @@ export const getServerStatus = async (ctx: LocalServerContext): Promise<ServerSt
       const sseTasks = await Promise.all(
         repoTasks.map(async (task) => {
           const executions = await ctx.executionRepository.getExecutionsByTaskId(task.id);
-          const runningExecution = executions.find((e) => e.status === "running");
-          return toSSETask(task, runningExecution);
+          const execution = executions.find((e) => e.status === "running") ?? executions[0];
+          return toSSETask(task, execution);
         }),
       );
 

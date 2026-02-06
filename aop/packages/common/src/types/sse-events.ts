@@ -14,6 +14,8 @@ export interface SSETask {
   updatedAt: string;
   errorMessage?: string;
   currentExecutionId?: string;
+  executionStartedAt?: string;
+  executionCompletedAt?: string;
 }
 
 /**
@@ -115,6 +117,8 @@ export interface DashboardTaskStatusChangedEvent {
     updatedAt: string;
     errorMessage?: string;
     currentExecutionId?: string;
+    executionStartedAt?: string;
+    executionCompletedAt?: string;
   };
 }
 
