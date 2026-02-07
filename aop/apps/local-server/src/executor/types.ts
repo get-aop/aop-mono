@@ -9,6 +9,7 @@ export interface ExecuteResult {
 
 export interface ExecutorContext {
   task: Task;
+  repoId: string;
   repoPath: string;
   changePath: string;
   worktreePath: string;

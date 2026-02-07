@@ -1,6 +1,7 @@
-import { getLogger } from "@aop/infra";
+import { aopPaths, getLogger } from "@aop/infra";
 import { ApplyOps } from "./apply-ops.ts";
 import { BranchOps } from "./branch-ops.ts";
+import { syncEnvFiles } from "./env-sync.ts";
 import { NotAGitRepositoryError } from "./errors.ts";
 import { GitExecutor } from "./git-executor.ts";
 import { MergeOps } from "./merge-ops.ts";
@@ -21,18 +22,12 @@ export class GitManager {
 
   constructor(options: GitManagerOptions) {
     this.repoPath = options.repoPath;
-    const worktreesDir = `${this.repoPath}/.worktrees`;
+    const worktreesDir = aopPaths.worktrees(options.repoId);
 
     this.executor = new GitExecutor(this.repoPath);
     this.branchOps = new BranchOps(this.executor);
     this.metadata = new MetadataStore(worktreesDir);
-    this.worktreeOps = new WorktreeOps(
-      this.repoPath,
-      worktreesDir,
-      this.executor,
-      this.branchOps,
-      this.metadata,
-    );
+    this.worktreeOps = new WorktreeOps(worktreesDir, this.executor, this.branchOps, this.metadata);
     this.mergeOps = new MergeOps(this.executor, this.branchOps, this.metadata, (taskId) =>
       this.worktreeOps.exists(taskId),
     );
@@ -50,7 +45,9 @@ export class GitManager {
   }
 
   async createWorktree(taskId: string, baseBranch: string): Promise<WorktreeInfo> {
-    return this.worktreeOps.create(taskId, baseBranch);
+    const info = await this.worktreeOps.create(taskId, baseBranch);
+    await syncEnvFiles(this.executor, this.repoPath, info.path);
+    return info;
   }
 
   async squashMerge(taskId: string, targetBranch: string, message: string): Promise<SquashResult> {

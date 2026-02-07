@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { ExecutionInfo, StepCommand } from "@aop/common/protocol";
+import type { ExecutionInfo, StepCommand, TaskStatus } from "@aop/common/protocol";
 import { getLogger } from "@aop/infra";
 import type { OrchestratorStatus } from "../app.ts";
 import type { LocalServerContext } from "../context.ts";
@@ -59,6 +59,7 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
 
     serverSync = createServerSync({ serverUrl, apiKey });
     await authenticateAndRetryQueued();
+    await syncActiveTasksToServer();
   };
 
   const authenticateAndRetryQueued = async (): Promise<void> => {
@@ -86,6 +87,19 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
         error: String(err),
       });
     }
+  };
+
+  const syncActiveTasksToServer = async (): Promise<void> => {
+    if (!serverSync || serverSync.isDegraded()) return;
+
+    const tasks = await ctx.taskRepository.list({ excludeRemoved: true });
+    if (tasks.length === 0) return;
+
+    for (const task of tasks) {
+      await serverSync.syncTask(task.id, task.repo_id, task.status as TaskStatus);
+    }
+
+    logger.info("Synced {count} active tasks to server on startup", { count: tasks.length });
   };
 
   const startWatcher = async (): Promise<void> => {

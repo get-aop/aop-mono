@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import type {
   ExecutionInfo,
@@ -8,7 +7,7 @@ import type {
   TaskStatus,
 } from "@aop/common/protocol";
 import { GitManager, WorktreeExistsError, type WorktreeInfo } from "@aop/git-manager";
-import { createFileOutputHandler, generateTypeId, getLogger } from "@aop/infra";
+import { aopPaths, createFileOutputHandler, generateTypeId, getLogger } from "@aop/infra";
 import { ClaudeCodeProvider, extractAssistantText, formatToolInput } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
@@ -47,6 +46,7 @@ export const executeTask = async (
   await markTaskWorking(ctx, task, executorCtx.worktreePath, serverSync);
 
   const worktreeInfo = await createWorktree(executorCtx);
+  setupWorktreeOpenspecSymlink(worktreeInfo.path, executorCtx.repoId);
   log.info("Worktree ready at {path}", { path: worktreeInfo.path });
 
   let currentStep = stepCommand;
@@ -123,7 +123,7 @@ export const executeTask = async (
 export const buildContext = async (
   ctx: LocalServerContext,
   task: Task,
-  logsDir = join(homedir(), ".aop", "logs"),
+  logsDir = aopPaths.logs(),
 ): Promise<ExecutorContext> => {
   const repo = await ctx.repoRepository.getById(task.repo_id);
   if (!repo) {
@@ -137,11 +137,12 @@ export const buildContext = async (
 
   ensureDir(logsDir);
 
-  const changePath = join(repo.path, task.change_path);
-  const worktreePath = join(repo.path, ".worktrees", task.id);
+  const changePath = join(aopPaths.repoDir(repo.id), task.change_path);
+  const worktreePath = aopPaths.worktree(repo.id, task.id);
 
   return {
     task,
+    repoId: repo.id,
     repoPath: repo.path,
     changePath,
     worktreePath,
@@ -220,19 +221,18 @@ export const createStepRecord = async (
 };
 
 export const createWorktree = async (ctx: ExecutorContext): Promise<WorktreeInfo> => {
-  const gitManager = new GitManager({ repoPath: ctx.repoPath });
+  const gitManager = new GitManager({ repoPath: ctx.repoPath, repoId: ctx.repoId });
   await gitManager.init();
   const baseBranch = ctx.task.base_branch ?? (await gitManager.getDefaultBranch());
   try {
-    const res = await gitManager.createWorktree(ctx.task.id, baseBranch);
-    return res;
+    return await gitManager.createWorktree(ctx.task.id, baseBranch);
   } catch (error) {
     if (error instanceof WorktreeExistsError) {
       logger.warn("Worktree already exists, skipping creation", {
         taskId: ctx.task.id,
       });
       return {
-        path: join(ctx.repoPath, ".worktrees", ctx.task.id),
+        path: aopPaths.worktree(ctx.repoId, ctx.task.id),
         branch: ctx.task.id,
         baseBranch,
         baseCommit: "",
@@ -240,6 +240,13 @@ export const createWorktree = async (ctx: ExecutorContext): Promise<WorktreeInfo
     }
     throw error;
   }
+};
+
+export const setupWorktreeOpenspecSymlink = (worktreePath: string, repoId: string): void => {
+  const localOpenspec = join(worktreePath, aopPaths.relativeOpenspec());
+  if (existsSync(localOpenspec)) return;
+  const globalOpenspec = aopPaths.openspec(repoId);
+  symlinkSync(globalOpenspec, localOpenspec);
 };
 
 export interface BuildPromptOptions {

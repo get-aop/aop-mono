@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { markReady, removeTask } from "../api/client";
+import { ApiError, markReady, removeTask } from "../api/client";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { type LogLine, LogViewer } from "../components/LogViewer";
 import { StatusBadge } from "../components/StatusBadge";
@@ -45,6 +45,7 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
   const [isRemoving, setIsRemoving] = useState(false);
   const [isMarkingReady, setIsMarkingReady] = useState(false);
   const [logLines, setLogLines] = useState<LogLine[]>([]);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const activeExecutionId =
     task?.status === "WORKING" ? task.currentExecutionId : expandedExecutionId;
@@ -89,6 +90,10 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
     setIsMarkingReady(true);
     try {
       await markReady(task.repoId, task.id);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Failed to mark task as ready";
+      setToastMessage(message);
+      setTimeout(() => setToastMessage(null), 4000);
     } finally {
       setIsMarkingReady(false);
     }
@@ -154,6 +159,12 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
         onConfirm={handleRemove}
         onCancel={() => setShowRemoveDialog(false)}
       />
+
+      {toastMessage && (
+        <div className="fixed bottom-4 right-4 rounded-aop-lg bg-aop-blocked/20 px-4 py-3 font-mono text-xs text-aop-blocked">
+          {toastMessage}
+        </div>
+      )}
     </div>
   );
 };
@@ -180,6 +191,27 @@ const Header = ({ onClose, onNavigate }: HeaderProps) => (
       ESC
     </button>
   </header>
+);
+
+const BranchIcon = () => (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 16 16"
+    fill="currentColor"
+    className="shrink-0"
+    role="img"
+    aria-label="Branch"
+  >
+    <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
+  </svg>
+);
+
+const BranchBadge = ({ branch }: { branch: string }) => (
+  <div className="flex items-center gap-1 rounded-full border border-aop-charcoal bg-aop-dark px-2 py-0.5 text-aop-slate-light">
+    <BranchIcon />
+    <span className="font-mono text-[10px]">{branch}</span>
+  </div>
 );
 
 interface TaskInfoCardProps {
@@ -243,18 +275,8 @@ const TaskInfoCard = ({
             {formatTimestamp(task.updatedAt)}
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="font-mono text-[10px] text-aop-slate-dark">PATH</span>
-          <span className="font-mono text-[10px] text-aop-slate-light">{task.changePath}</span>
-        </div>
+        {task.baseBranch && <BranchBadge branch={task.baseBranch} />}
       </div>
-
-      {task.baseBranch && (
-        <div className="mt-4 border-t border-aop-charcoal pt-4">
-          <span className="font-mono text-[10px] text-aop-slate-dark">BASE BRANCH</span>
-          <div className="mt-1 font-mono text-xs text-aop-slate-light">{task.baseBranch}</div>
-        </div>
-      )}
 
       {task.status === "BLOCKED" && task.errorMessage && (
         <div className="mt-4 rounded-aop border border-aop-blocked/50 bg-aop-blocked/[0.08] p-4">

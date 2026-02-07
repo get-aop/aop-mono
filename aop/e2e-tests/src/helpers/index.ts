@@ -11,15 +11,14 @@ export {
   WORKTREES_DIR,
 } from "./constants";
 export {
-  type DaemonContext,
-  isDaemonRunning,
+  type E2EServerContext,
+  type E2EServerStartOptions,
+  type E2EServerStartResult,
   requireLocalServer,
   runAopCommand,
-  type StartDaemonOptions,
-  type StartDaemonResult,
-  startDaemon,
-  stopDaemon,
-} from "./daemon";
+  startE2EServer,
+  stopE2EServer,
+} from "./e2e-server";
 export {
   isLocalServerRunning,
   type LocalServerContext,

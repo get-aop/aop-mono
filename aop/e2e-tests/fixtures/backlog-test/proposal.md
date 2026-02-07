@@ -1,6 +1,6 @@
 ## Why
 
-Simple fixture for testing the backlog management daemon flow - automatic task detection, queueing, and execution.
+Simple fixture for testing the backlog management flow - automatic task detection, queueing, and execution.
 
 ## What Changes
 

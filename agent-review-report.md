@@ -1,96 +1,73 @@
-# Review Report: fix-execution-step-grouping
+## Code Review: Global AOP Paths Architecture (Iteration 2)
 
-**Date**: 2026-02-04
-**Branch**: task_01kgkzdfd8exza5kwh9p7jx3yk
-**Change Path**: /home/eng/Workspace/my-agent/aop/openspec/changes/fix-execution-step-grouping
+**Date**: 2026-02-06
+**Branch**: task_01kgrvk95mecz8pard6t1n9k0e
+**Change Path**: /home/eng/Workspace/my-agent/aop/openspec/changes/global-aop-paths
+**Scope**: 34 files (28 modified + 6 new), ~846 lines changed (346 added, 500 removed)
+**Mode**: git diff (unstaged changes vs main)
 
-## Summary of Changes
+### Summary
 
-This change fixes workflow step transitions to reuse existing execution records instead of creating new executions for each step. Previously, each step in a multi-step workflow (e.g., implement → review) created a separate execution record, fragmenting the execution history. Now, a single execution record is created once before the loop, and only step records are created inside the loop.
+This change centralizes AOP-managed directories under `~/.aop/repos/<repoId>/` instead of storing them inside user repositories. Key components:
 
-### Files Modified
+1. **`aopPaths` module** (`@aop/infra`): Single source of truth for all path resolution
+2. **`GitManager` refactor**: Accepts `repoId`, creates worktrees at global paths
+3. **Env file sync**: Discovers and symlinks `.env*` files into worktrees
+4. **Watcher/reconciler**: Watches global paths with repo-local fallback + auto-relocation
+5. **Dead code removal**: `resolveTaskByChangePath` and path-based task resolution removed
+6. **E2E test suite**: New `global-paths.e2e.ts` covering full lifecycle
 
-| File | Changes |
-|------|---------|
-| `executor.ts` | +47/-16 lines - Refactored execution/step record creation |
-| `executor.test.ts` | +34 lines - Updated tests for new function signatures |
-| `execute-task.test.ts` | +92 lines - Added multi-step workflow test |
+### Previous Review Findings (Iteration 1) — Resolution
 
-### Implementation Details
+| # | Finding | Status |
+|---|---------|--------|
+| 1 | Unused `_repoRepository` parameter in `resolve.ts` | **FIXED** — parameter removed, function simplified to 2 params |
+| 2 | 11 new `noNonNullAssertion` lint warnings | **FIXED** — `getRepo` helper with throw guard, no `!` assertions |
+| 3 | `reconcileAllRepos` function untested | **FIXED** — 2 new tests: multi-repo aggregation + empty repos |
 
-1. **Refactored `createExecutionRecords` to `createExecutionRecord`**: Now only creates the execution record, no longer creates the step record.
+### Verification
 
-2. **Extracted `createStepRecord` function**: New function that creates step records independently, taking an `executionId` parameter.
+- **Lint**: `biome check` — 296 files checked, no issues ✅
+- **Type checking**: All 10 packages pass ✅
+- **Build**: All packages build successfully ✅
+- **Tests**: 1011 tests pass, 0 failures, 2273 assertions ✅
+- **Coverage**: 98.87% functions, 98.62% lines — all new files at 100% ✅
 
-3. **Updated `executeTask` flow**:
-   - Moved execution creation before the while loop (line 55)
-   - Inside the loop, only `createStepRecord` is called (line 59)
+### Findings
 
-4. **Updated `finalizeExecutionAndGetNextStep`**:
-   - Renamed `updateLocalExecutionRecords` to `updateStepExecutionRecord`
-   - Extracted `finalizeExecutionRecord` to only update execution status at workflow end
-   - Execution is now only finalized when there's no next step
+No significant issues found (confidence ≥80).
 
-## Issues Found
+### AOP Audit Checklist
 
-### Critical: None
-
-### High Severity: None
-
-### Medium Severity
-
-1. **File Size Exceeds Limit** (executor.ts: 558 lines > 500 limit)
-   - Pre-existing: File was already at 533 lines on main branch
-   - This change adds 25 net lines due to function extraction
-   - **Recommendation**: Consider extracting execution record management to a separate module in a follow-up change (not blocking this fix)
-
-### Low Severity: None
-
-## Test Coverage
-
-- ✅ All 687 tests pass
-- ✅ New test `multi-step workflow creates single execution with multiple steps` verifies the core fix
-- ✅ Existing tests updated to match new function signatures
-- ✅ Coverage remains above threshold (98.36% lines, 98.66% functions)
-
-## Type Checking & Linting
-
-- ✅ All packages pass type checking
-- ✅ All packages build successfully
-- ⚠️ 11 pre-existing lint warnings in `scripts/installer/build.ts` (unrelated to this change)
-
-## AOP Audit Checklist
-
-- [x] **DRY**: No duplicated types or utilities introduced
-- [x] **Dead code**: No unused functions or imports
+- [x] **DRY**: No duplicated types or utilities — `aopPaths` properly centralizes all path logic
+- [x] **Dead code**: No unused functions, imports, or parameters
 - [x] **AI slop**: No unnecessary comments, over-defensive code, or style inconsistencies
-- [x] **Data flow**: Follows thin entrypoints → services → repositories pattern
-- [x] **Function size**: All new functions have low cyclomatic complexity
-- [x] **Tests colocated**: Tests are properly colocated with implementation
-- [ ] **File size**: `executor.ts` exceeds 500 lines (pre-existing, minor increase)
+- [x] **Data flow**: Follows established patterns — thin routes → services → repositories
+- [x] **Function responsibility**: All functions have single responsibility
+- [x] **Naming**: Clear and consistent (`aopPaths`, `syncEnvFiles`, `discoverEnvFiles`, `reconcileRepo`)
+- [x] **Error handling**: Appropriate — symlink errors surface, discovery failures return empty, relocation handles conflicts
+- [x] **Lint compliance**: Zero lint warnings/errors
+- [x] **Tests colocated**: All tests properly colocated next to implementation
+- [x] **Security**: No secrets, proper `validateTaskId` for path traversal protection, no injection vectors
+- [x] **Performance**: Efficient — Set-based lookups in reconciler, parallel git commands in env discovery
 
-## Verification
+### Good Patterns Observed
 
-1. **Correctness**: Implementation matches task requirements from tasks.md:
-   - ✅ Task 1.1: Extracted `createStepRecord` from `createExecutionRecords`
-   - ✅ Task 1.2: Renamed `createExecutionRecords` to `createExecutionRecord`
-   - ✅ Task 1.3: Moved execution creation before the while loop
-   - ✅ Task 1.4: `createStepRecord` called inside the while loop
-   - ✅ Task 2.1: Updated finalization to not close execution until workflow is done
-   - ✅ Task 2.2: Execution status only changes on final step
-   - ✅ Task 3.1: Added test for multi-step workflow
-   - ✅ Task 3.2: Updated existing tests
+- Clean `aopPaths` API with 100% test coverage (8 path resolvers, 8 tests)
+- Proper `cpSync` + `rmSync` for cross-device moves (avoids EXDEV errors)
+- Env file discovery handles tracked + untracked with deduplication via Set
+- Reconciler relocates before scanning — correct ordering prevents missed changes
+- Tests clean up global dirs in `afterEach` — no filesystem leakage
+- E2E test covers full lifecycle: registration → relocation → task creation → worktree → env sync → cleanup verification
+- `reconcileAllRepos` tested with multi-repo aggregation
+- Net reduction of 154 lines — cleaner codebase
+- Removed dead `resolveTaskByChangePath` code path cleanly (no backwards-compatibility hacks)
 
-2. **End-to-End Wiring**: All functions are properly exported and integrated
+### Summary
 
-## Recommendations
-
-1. **Follow-up**: Consider splitting `executor.ts` in a future change to reduce file size below 500 lines. Potential split:
-   - `executor.ts` - Main executeTask orchestration
-   - `execution-records.ts` - Record creation and finalization logic
-
-## Overall Assessment
-
-**PASS**
-
-The implementation correctly fixes the execution step grouping issue. The code quality is high, tests are comprehensive, and all verification checks pass. The minor file size issue is pre-existing and can be addressed in a follow-up change.
+- **Critical**: 0 issues
+- **Quality**: All 3 previous findings resolved
+- **Test coverage**: Excellent — 100% on all new files, comprehensive scenarios including E2E
+- **Security**: No concerns
+- **Performance**: No concerns
+- **Recommendation**: Approve

@@ -5,12 +5,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   copyFixture,
   createTempWorktree,
-  type DaemonContext,
+  type E2EServerContext,
   getStepExecutionsForTask,
   isLocalServerRunning,
   runAopCommand,
-  startDaemon,
-  stopDaemon,
+  startE2EServer,
+  stopE2EServer,
   type TempWorktreeResult,
   triggerServerRefresh,
   waitForTask,
@@ -25,7 +25,7 @@ const E2E_TIMEOUT = 600_000;
 
 describe("aop-default workflow execution", () => {
   let worktree: TempWorktreeResult;
-  let daemonContext: DaemonContext;
+  let serverContext: E2EServerContext;
   let wasAlreadyRunning = false;
 
   beforeAll(async () => {
@@ -47,9 +47,9 @@ describe("aop-default workflow execution", () => {
 
     worktree = await createTempWorktree("aop-default");
 
-    const daemonResult = await startDaemon();
-    daemonContext = daemonResult.context;
-    wasAlreadyRunning = daemonResult.wasAlreadyRunning;
+    const serverResult = await startE2EServer();
+    serverContext = serverResult.context;
+    wasAlreadyRunning = serverResult.wasAlreadyRunning;
 
     const { exitCode: initExit } = await runAopCommand(["repo:init", worktree.path]);
     if (initExit !== 0) {
@@ -60,7 +60,7 @@ describe("aop-default workflow execution", () => {
   });
 
   afterAll(async () => {
-    await stopDaemon(daemonContext, wasAlreadyRunning);
+    await stopE2EServer(serverContext, wasAlreadyRunning);
     // Worktree is intentionally NOT cleaned up for inspection
   });
 
@@ -69,8 +69,12 @@ describe("aop-default workflow execution", () => {
     async () => {
       const changePath = await copyFixture("cli-greeting-command", worktree.path);
 
-      await Bun.$`git add .`.cwd(worktree.path).quiet();
-      await Bun.$`git commit -m "Add cli-greeting-command fixture"`.cwd(worktree.path).quiet();
+      // Fixture may be gitignored by parent repo — commit only if there are staged changes
+      await Bun.$`git add --force openspec/`.cwd(worktree.path).quiet().nothrow();
+      await Bun.$`git commit -m "Add cli-greeting-command fixture" --allow-empty`
+        .cwd(worktree.path)
+        .quiet()
+        .nothrow();
 
       await triggerServerRefresh();
       await Bun.sleep(2000);

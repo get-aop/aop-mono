@@ -101,9 +101,9 @@ STEP = Single Unit of Work
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Why Local Server instead of CLI Daemon:**
+**Why Local Server:**
 - **Process management**: Server runs as a standalone process (systemd, launchd, or terminal), not managed by CLI
-- **Simpler CLI**: CLI becomes stateless HTTP client, no daemon mode or PID management
+- **Simpler CLI**: CLI becomes stateless HTTP client, no background process management
 - **Better testability**: Server can be tested in isolation, CLI integration tests against real server
 - **Standard tooling**: Works with existing process managers (systemd, launchd, Docker)
 
@@ -830,7 +830,7 @@ aop apply <task-id>           # User reviews, then applies
 
 **Status**: Complete
 
-**Architecture Change**: Instead of a CLI daemon, we now have a dedicated Local Server (`apps/local-server`). The CLI is a thin HTTP client.
+**Architecture Change**: A dedicated Local Server (`apps/local-server`) handles all background operations. The CLI is a thin HTTP client.
 
 **What works**:
 ```bash

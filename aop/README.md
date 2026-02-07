@@ -96,20 +96,20 @@ aop config:set <key> <value>
 
 **Start the dev environment:**
 ```bash
-# Start all services (PostgreSQL + Server + CLI daemon)
+# Start all services (PostgreSQL + Server + Local Server)
 bun dev
 
 # Start only the database
 bun dev --db-only
 
-# Start database and server (no CLI)
+# Start database and server (no local server)
 bun dev --no-cli
 ```
 
 This orchestrates:
 1. PostgreSQL via docker-compose
 2. AOP Server with auto-reload (port 3000)
-3. AOP CLI daemon (connected to local server)
+3. AOP Local Server (connected to remote server)
 
 **Other development commands:**
 ```bash

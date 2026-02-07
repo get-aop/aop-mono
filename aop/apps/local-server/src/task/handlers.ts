@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   ApplyConflictError,
   DirtyWorkingDirectoryError,
@@ -5,6 +7,7 @@ import {
   NoChangesError,
   WorktreeNotFoundError,
 } from "@aop/git-manager";
+import { aopPaths } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { abortTask } from "../executor/index.ts";
@@ -21,7 +24,7 @@ export const resolveTaskByIdentifier = async (
   ctx: LocalServerContext,
   identifier: string,
 ): Promise<Task | null> => {
-  return resolveTask(ctx.taskRepository, ctx.repoRepository, identifier);
+  return resolveTask(ctx.taskRepository, identifier);
 };
 
 export type MarkTaskReadyResult =
@@ -32,6 +35,7 @@ export type MarkTaskReadyError =
   | { code: "NOT_FOUND"; identifier: string }
   | { code: "ALREADY_READY"; taskId: string }
   | { code: "INVALID_STATUS"; status: string }
+  | { code: "MISSING_TASKS_FILE"; changePath: string }
   | { code: "UPDATE_FAILED" };
 
 export interface MarkTaskReadyOptions {
@@ -44,7 +48,7 @@ export const markTaskReady = async (
   identifier: string,
   options?: MarkTaskReadyOptions,
 ): Promise<MarkTaskReadyResult> => {
-  const task = await resolveTask(ctx.taskRepository, ctx.repoRepository, identifier);
+  const task = await resolveTask(ctx.taskRepository, identifier);
   if (!task) {
     return { success: false, error: { code: "NOT_FOUND", identifier } };
   }
@@ -60,6 +64,14 @@ export const markTaskReady = async (
     return {
       success: false,
       error: { code: "INVALID_STATUS", status: task.status },
+    };
+  }
+
+  const changePath = join(aopPaths.repoDir(task.repo_id), task.change_path);
+  if (!hasTasksFile(changePath)) {
+    return {
+      success: false,
+      error: { code: "MISSING_TASKS_FILE", changePath: task.change_path },
     };
   }
 
@@ -96,7 +108,7 @@ export const removeTask = async (
   identifier: string,
   options: RemoveTaskOptions = {},
 ): Promise<RemoveTaskResult> => {
-  const task = await resolveTask(ctx.taskRepository, ctx.repoRepository, identifier);
+  const task = await resolveTask(ctx.taskRepository, identifier);
   if (!task) {
     return { success: false, error: { code: "NOT_FOUND", identifier } };
   }
@@ -145,7 +157,7 @@ export const applyTask = async (
   ctx: LocalServerContext,
   identifier: string,
 ): Promise<ApplyTaskResult> => {
-  const task = await resolveTask(ctx.taskRepository, ctx.repoRepository, identifier);
+  const task = await resolveTask(ctx.taskRepository, identifier);
   if (!task) {
     return { success: false, error: { code: "NOT_FOUND", identifier } };
   }
@@ -165,7 +177,7 @@ export const applyTask = async (
     };
   }
 
-  const gitManager = new GitManager({ repoPath: repo.path });
+  const gitManager = new GitManager({ repoPath: repo.path, repoId: repo.id });
   await gitManager.init();
 
   try {
@@ -174,6 +186,12 @@ export const applyTask = async (
   } catch (err) {
     return { success: false, error: classifyApplyError(err, task.id) };
   }
+};
+
+const TASKS_FILE = "tasks.md";
+
+const hasTasksFile = (changePath: string): boolean => {
+  return existsSync(join(changePath, TASKS_FILE));
 };
 
 const classifyApplyError = (err: unknown, taskId: string): ApplyTaskError => {

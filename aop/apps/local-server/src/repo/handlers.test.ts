@@ -1,12 +1,27 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
-import { getRepoById, getRepoTasks, initRepo, removeRepo } from "./handlers.ts";
+import {
+  getRepoById,
+  getRepoTasks,
+  initRepo,
+  removeRepo,
+  setupOpenspecSymlink,
+} from "./handlers.ts";
 
 describe("repo/handlers", () => {
   let db: Kysely<Database>;
@@ -93,6 +108,58 @@ describe("repo/handlers", () => {
         recursive: true,
         force: true,
       });
+    });
+
+    test("creates global directory structure after registration", async () => {
+      const proc = Bun.spawn(["git", "init"], { cwd: testRepoPath });
+      await proc.exited;
+
+      const result = await initRepo(ctx, testRepoPath);
+      expect(result.success).toBe(true);
+
+      if (result.success) {
+        const repoId = result.repoId;
+        expect(existsSync(aopPaths.openspecChanges(repoId))).toBe(true);
+        expect(existsSync(aopPaths.worktrees(repoId))).toBe(true);
+        expect(existsSync(aopPaths.worktreeMetadata(repoId))).toBe(true);
+
+        rmSync(aopPaths.repoDir(repoId), { recursive: true, force: true });
+      }
+    });
+
+    test("creates openspec symlink pointing to global path", async () => {
+      const proc = Bun.spawn(["git", "init"], { cwd: testRepoPath });
+      await proc.exited;
+
+      const result = await initRepo(ctx, testRepoPath);
+      expect(result.success).toBe(true);
+
+      if (result.success) {
+        const repoId = result.repoId;
+        const symlinkPath = join(testRepoPath, "openspec");
+
+        expect(existsSync(symlinkPath)).toBe(true);
+        expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(symlinkPath)).toBe(aopPaths.openspec(repoId));
+
+        rmSync(aopPaths.repoDir(repoId), { recursive: true, force: true });
+      }
+    });
+
+    test("adds openspec to .git/info/exclude", async () => {
+      const proc = Bun.spawn(["git", "init"], { cwd: testRepoPath });
+      await proc.exited;
+
+      const result = await initRepo(ctx, testRepoPath);
+      expect(result.success).toBe(true);
+
+      if (result.success) {
+        const excludePath = join(testRepoPath, ".git", "info", "exclude");
+        const content = readFileSync(excludePath, "utf-8");
+        expect(content).toContain("openspec");
+
+        rmSync(aopPaths.repoDir(result.repoId), { recursive: true, force: true });
+      }
     });
 
     test("handles non-existent path", async () => {
@@ -216,6 +283,192 @@ describe("repo/handlers", () => {
       const tasks = await getRepoTasks(ctx, "repo-1");
 
       expect(tasks).toEqual([]);
+    });
+  });
+
+  describe("setupOpenspecSymlink", () => {
+    const repoId = "repo-symlink-test";
+    let repoPath: string;
+
+    afterEach(() => {
+      rmSync(repoPath, { recursive: true, force: true });
+      rmSync(aopPaths.repoDir(repoId), { recursive: true, force: true });
+    });
+
+    describe("standard mode (no tracked openspec files)", () => {
+      beforeEach(() => {
+        repoPath = join(tmpdir(), `aop-test-symlink-${Date.now()}`);
+        mkdirSync(repoPath, { recursive: true });
+        mkdirSync(join(repoPath, ".git", "info"), { recursive: true });
+      });
+
+      test("creates symlink from openspec to global path", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const symlinkPath = join(repoPath, "openspec");
+        expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(symlinkPath)).toBe(aopPaths.openspec(repoId));
+      });
+
+      test("creates changes directory at global path", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        expect(existsSync(aopPaths.openspecChanges(repoId))).toBe(true);
+      });
+
+      test("is idempotent when symlink already exists", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const symlinkPath = join(repoPath, "openspec");
+        expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
+      });
+
+      test("relocates existing local openspec before creating symlink", async () => {
+        const localChanges = join(repoPath, "openspec", "changes", "feat-existing");
+        mkdirSync(localChanges, { recursive: true });
+        writeFileSync(join(localChanges, "proposal.md"), "# Existing");
+
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const symlinkPath = join(repoPath, "openspec");
+        expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
+
+        const globalFile = join(aopPaths.openspecChanges(repoId), "feat-existing", "proposal.md");
+        expect(existsSync(globalFile)).toBe(true);
+        expect(readFileSync(globalFile, "utf-8")).toBe("# Existing");
+      });
+
+      test("does not overwrite existing global entries during relocation", async () => {
+        const localChanges = join(repoPath, "openspec", "changes", "feat-dup");
+        mkdirSync(localChanges, { recursive: true });
+        writeFileSync(join(localChanges, "proposal.md"), "LOCAL VERSION");
+
+        mkdirSync(aopPaths.openspec(repoId), { recursive: true });
+        const globalChanges = join(aopPaths.openspec(repoId), "changes");
+        mkdirSync(join(globalChanges, "feat-dup"), { recursive: true });
+        writeFileSync(join(globalChanges, "feat-dup", "proposal.md"), "GLOBAL VERSION");
+
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const content = readFileSync(join(globalChanges, "feat-dup", "proposal.md"), "utf-8");
+        expect(content).toBe("GLOBAL VERSION");
+      });
+
+      test("writes through symlink land in global path", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const localPath = join(repoPath, "openspec", "changes", "new-change");
+        mkdirSync(localPath, { recursive: true });
+        writeFileSync(join(localPath, "proposal.md"), "# New");
+
+        const globalFile = join(aopPaths.openspecChanges(repoId), "new-change", "proposal.md");
+        expect(existsSync(globalFile)).toBe(true);
+        expect(readFileSync(globalFile, "utf-8")).toBe("# New");
+      });
+
+      test("adds openspec to .git/info/exclude", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const excludePath = join(repoPath, ".git", "info", "exclude");
+        const content = readFileSync(excludePath, "utf-8");
+        expect(content).toContain("openspec");
+      });
+
+      test("does not duplicate entry in .git/info/exclude", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        rmSync(join(repoPath, "openspec"));
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const excludePath = join(repoPath, ".git", "info", "exclude");
+        const content = readFileSync(excludePath, "utf-8");
+        const matches = content.match(/openspec\n/g);
+        expect(matches?.length).toBe(1);
+      });
+    });
+
+    describe("native mode (repo has tracked openspec files)", () => {
+      beforeEach(async () => {
+        repoPath = join(tmpdir(), `aop-test-symlink-native-${Date.now()}`);
+        mkdirSync(repoPath, { recursive: true });
+
+        // Create a git repo with committed openspec files
+        const init = Bun.spawn(["git", "init"], { cwd: repoPath });
+        await init.exited;
+        const configEmail = Bun.spawn(["git", "config", "user.email", "test@test.com"], {
+          cwd: repoPath,
+        });
+        await configEmail.exited;
+        const configName = Bun.spawn(["git", "config", "user.name", "Test"], { cwd: repoPath });
+        await configName.exited;
+
+        mkdirSync(join(repoPath, "openspec", "specs"), { recursive: true });
+        writeFileSync(join(repoPath, "openspec", "config.yaml"), "version: 1");
+        const add = Bun.spawn(["git", "add", "openspec/"], { cwd: repoPath });
+        await add.exited;
+        const commit = Bun.spawn(["git", "commit", "-m", "add openspec"], { cwd: repoPath });
+        await commit.exited;
+      });
+
+      test("creates reverse symlink from global to local", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const globalPath = aopPaths.openspec(repoId);
+        expect(lstatSync(globalPath).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(globalPath)).toBe(join(repoPath, "openspec"));
+      });
+
+      test("local openspec remains a real directory", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const localPath = join(repoPath, "openspec");
+        expect(lstatSync(localPath).isSymbolicLink()).toBe(false);
+        expect(lstatSync(localPath).isDirectory()).toBe(true);
+      });
+
+      test("creates local changes directory", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        expect(existsSync(join(repoPath, "openspec", "changes"))).toBe(true);
+      });
+
+      test("does not add anything to .git/info/exclude", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const excludePath = join(repoPath, ".git", "info", "exclude");
+        const content = existsSync(excludePath) ? readFileSync(excludePath, "utf-8") : "";
+        expect(content).not.toContain("openspec");
+      });
+
+      test("preserves committed openspec files", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        expect(readFileSync(join(repoPath, "openspec", "config.yaml"), "utf-8")).toBe("version: 1");
+        expect(existsSync(join(repoPath, "openspec", "specs"))).toBe(true);
+      });
+
+      test("watcher global path resolves to local changes", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        // Write a change in the local changes dir
+        const changePath = join(repoPath, "openspec", "changes", "feat-native");
+        mkdirSync(changePath, { recursive: true });
+        writeFileSync(join(changePath, "proposal.md"), "# Native");
+
+        // Should be visible through the global path (via reverse symlink)
+        const globalFile = join(aopPaths.openspecChanges(repoId), "feat-native", "proposal.md");
+        expect(existsSync(globalFile)).toBe(true);
+        expect(readFileSync(globalFile, "utf-8")).toBe("# Native");
+      });
+
+      test("is idempotent when reverse symlink already exists", async () => {
+        await setupOpenspecSymlink(repoPath, repoId);
+        await setupOpenspecSymlink(repoPath, repoId);
+
+        const globalPath = aopPaths.openspec(repoId);
+        expect(lstatSync(globalPath).isSymbolicLink()).toBe(true);
+      });
     });
   });
 });

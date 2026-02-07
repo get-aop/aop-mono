@@ -1,7 +1,7 @@
 import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { E2E_TEST_BASE_DIR, FIXTURES_DIR, TEST_REPO_PREFIX, WORKTREES_DIR } from "./constants";
-import { runAopCommand } from "./daemon";
+import { runAopCommand } from "./e2e-server";
 
 export interface TempRepoResult {
   path: string;

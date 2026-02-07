@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { configureLogging } from "@aop/infra";
+import { rm } from "node:fs/promises";
+import { aopPaths, configureLogging } from "@aop/infra";
 import {
   ApplyConflictError,
   DirtyWorkingDirectoryError,
@@ -9,12 +10,15 @@ import {
 import { GitManager } from "./git-manager.ts";
 import { cleanupTestRepos, commitPendingChanges, createTestRepo } from "./test-utils.ts";
 
+const TEST_REPO_ID = "repo_applytest";
+
 beforeAll(async () => {
   await configureLogging({ level: "fatal" });
 });
 
 afterAll(async () => {
   await cleanupTestRepos();
+  await rm(aopPaths.repoDir(TEST_REPO_ID), { recursive: true, force: true });
 });
 
 describe("applyWorktree", () => {
@@ -23,18 +27,17 @@ describe("applyWorktree", () => {
 
   beforeEach(async () => {
     repoPath = await createTestRepo();
-    manager = new GitManager({ repoPath });
+    manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });
     await manager.init();
   });
 
   test("applies worktree changes to main repo", async () => {
-    await manager.createWorktree("feat-test", "main");
+    const worktree = await manager.createWorktree("feat-test", "main");
     await commitPendingChanges(repoPath);
-    const worktreePath = `${repoPath}/.worktrees/feat-test`;
 
-    await Bun.$`echo "new content" > test.txt`.cwd(worktreePath).quiet();
-    await Bun.$`git add test.txt`.cwd(worktreePath).quiet();
-    await Bun.$`git commit -m "Add test file"`.cwd(worktreePath).quiet();
+    await Bun.$`echo "new content" > test.txt`.cwd(worktree.path).quiet();
+    await Bun.$`git add test.txt`.cwd(worktree.path).quiet();
+    await Bun.$`git commit -m "Add test file"`.cwd(worktree.path).quiet();
 
     const result = await manager.applyWorktree("feat-test");
 
@@ -48,12 +51,11 @@ describe("applyWorktree", () => {
   });
 
   test("throws DirtyWorkingDirectoryError when main has uncommitted changes", async () => {
-    await manager.createWorktree("feat-dirty", "main");
-    const worktreePath = `${repoPath}/.worktrees/feat-dirty`;
+    const worktree = await manager.createWorktree("feat-dirty", "main");
 
-    await Bun.$`echo "worktree change" > worktree.txt`.cwd(worktreePath).quiet();
-    await Bun.$`git add worktree.txt`.cwd(worktreePath).quiet();
-    await Bun.$`git commit -m "Add file"`.cwd(worktreePath).quiet();
+    await Bun.$`echo "worktree change" > worktree.txt`.cwd(worktree.path).quiet();
+    await Bun.$`git add worktree.txt`.cwd(worktree.path).quiet();
+    await Bun.$`git commit -m "Add file"`.cwd(worktree.path).quiet();
 
     await Bun.$`echo "dirty" > dirty.txt`.cwd(repoPath).quiet();
 
@@ -68,13 +70,12 @@ describe("applyWorktree", () => {
   });
 
   test("throws ApplyConflictError when changes conflict", async () => {
-    await manager.createWorktree("feat-conflict", "main");
+    const worktree = await manager.createWorktree("feat-conflict", "main");
     await commitPendingChanges(repoPath);
-    const worktreePath = `${repoPath}/.worktrees/feat-conflict`;
 
-    await Bun.$`echo "worktree version" > conflict.txt`.cwd(worktreePath).quiet();
-    await Bun.$`git add conflict.txt`.cwd(worktreePath).quiet();
-    await Bun.$`git commit -m "Add conflict file"`.cwd(worktreePath).quiet();
+    await Bun.$`echo "worktree version" > conflict.txt`.cwd(worktree.path).quiet();
+    await Bun.$`git add conflict.txt`.cwd(worktree.path).quiet();
+    await Bun.$`git commit -m "Add conflict file"`.cwd(worktree.path).quiet();
 
     await Bun.$`echo "main version" > conflict.txt`.cwd(repoPath).quiet();
     await Bun.$`git add conflict.txt`.cwd(repoPath).quiet();
@@ -84,17 +85,16 @@ describe("applyWorktree", () => {
   });
 
   test("does not remove worktree after apply", async () => {
-    await manager.createWorktree("feat-persist", "main");
+    const worktree = await manager.createWorktree("feat-persist", "main");
     await commitPendingChanges(repoPath);
-    const worktreePath = `${repoPath}/.worktrees/feat-persist`;
 
-    await Bun.$`echo "content" > persist.txt`.cwd(worktreePath).quiet();
-    await Bun.$`git add persist.txt`.cwd(worktreePath).quiet();
-    await Bun.$`git commit -m "Add file"`.cwd(worktreePath).quiet();
+    await Bun.$`echo "content" > persist.txt`.cwd(worktree.path).quiet();
+    await Bun.$`git add persist.txt`.cwd(worktree.path).quiet();
+    await Bun.$`git commit -m "Add file"`.cwd(worktree.path).quiet();
 
     await manager.applyWorktree("feat-persist");
 
-    const exists = await Bun.$`test -d ${worktreePath}`.quiet().nothrow();
+    const exists = await Bun.$`test -d ${worktree.path}`.quiet().nothrow();
     expect(exists.exitCode).toBe(0);
   });
 });

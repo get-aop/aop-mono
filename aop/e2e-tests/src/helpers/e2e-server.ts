@@ -7,14 +7,14 @@ import {
   stopLocalServer,
 } from "./local-server";
 
-export interface DaemonContext {
+export interface E2EServerContext {
   localServer: LocalServerContext | null;
   env: NodeJS.ProcessEnv;
 }
 
-export interface StartDaemonResult {
+export interface E2EServerStartResult {
   success: boolean;
-  context: DaemonContext;
+  context: E2EServerContext;
   wasAlreadyRunning: boolean;
 }
 
@@ -37,12 +37,14 @@ export const runAopCommand = async (
   return { exitCode, stdout, stderr };
 };
 
-export interface StartDaemonOptions {
+export interface E2EServerStartOptions {
   configureServer?: boolean;
   dbPath?: string;
 }
 
-export const startDaemon = async (options: StartDaemonOptions = {}): Promise<StartDaemonResult> => {
+export const startE2EServer = async (
+  options: E2EServerStartOptions = {},
+): Promise<E2EServerStartResult> => {
   const { configureServer = true } = options;
   const env = getAopEnv();
 
@@ -72,8 +74,8 @@ export const startDaemon = async (options: StartDaemonOptions = {}): Promise<Sta
   };
 };
 
-export const stopDaemon = async (
-  context: DaemonContext,
+export const stopE2EServer = async (
+  context: E2EServerContext,
   wasAlreadyRunning: boolean,
 ): Promise<boolean> => {
   if (wasAlreadyRunning || !context.localServer) {
@@ -82,10 +84,6 @@ export const stopDaemon = async (
 
   await stopLocalServer(context.localServer);
   return true;
-};
-
-export const isDaemonRunning = async (_context?: DaemonContext): Promise<boolean> => {
-  return isLocalServerRunning();
 };
 
 export { requireLocalServer };

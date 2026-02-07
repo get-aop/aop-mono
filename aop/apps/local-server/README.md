@@ -16,7 +16,7 @@ The server listens on `http://127.0.0.1:3847` by default.
 
 ## Architecture
 
-The local server replaces the old CLI daemon with a Hono HTTP server. All background work (watching, processing, executing) runs in the same process.
+The local server is a Hono HTTP server. All background work (watching, processing, executing) runs in the same process.
 
 ```
 ┌────────────────────────────────────────────────────────────┐

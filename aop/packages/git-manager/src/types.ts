@@ -1,5 +1,6 @@
 export interface GitManagerOptions {
   repoPath: string;
+  repoId: string;
 }
 
 export interface WorktreeInfo {

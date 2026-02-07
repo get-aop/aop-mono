@@ -6,12 +6,12 @@ import {
   cleanupTestRepos,
   copyFixture,
   createTempRepo,
-  type DaemonContext,
+  type E2EServerContext,
   isLocalServerRunning,
   runAopCommand,
   setupE2ETestDir,
-  startDaemon,
-  stopDaemon,
+  startE2EServer,
+  stopE2EServer,
   type TempRepoResult,
   triggerServerRefresh,
   waitForTask,
@@ -27,7 +27,7 @@ const E2E_TIMEOUT = 600_000;
 
 describe("server workflow execution", () => {
   let repo: TempRepoResult;
-  let context: DaemonContext;
+  let context: E2EServerContext;
   let wasAlreadyRunning = false;
 
   beforeAll(async () => {
@@ -54,7 +54,7 @@ describe("server workflow execution", () => {
 
   afterAll(async () => {
     if (context) {
-      await stopDaemon(context, wasAlreadyRunning);
+      await stopE2EServer(context, wasAlreadyRunning);
     }
     await repo.cleanup();
     await cleanupTestRepos();
@@ -68,9 +68,9 @@ describe("server workflow execution", () => {
       await Bun.$`git add .`.cwd(repo.path).quiet();
       await Bun.$`git commit -m "Add fixture"`.cwd(repo.path).quiet();
 
-      const daemonResult = await startDaemon();
-      context = daemonResult.context;
-      wasAlreadyRunning = daemonResult.wasAlreadyRunning;
+      const serverResult = await startE2EServer();
+      context = serverResult.context;
+      wasAlreadyRunning = serverResult.wasAlreadyRunning;
 
       const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
       expect(initExit).toBe(0);
@@ -129,7 +129,10 @@ describe("server workflow execution", () => {
       const serverTaskFinal = await getServerTaskStatus(taskId);
       expect(serverTaskFinal?.status).toBe("DONE");
 
-      const helloFile = join(repo.path, ".worktrees", taskId, "hello.txt");
+      const worktreePath = completedTask?.worktree_path;
+      expect(worktreePath).not.toBeNull();
+      if (!worktreePath) throw new Error("worktree_path is null");
+      const helloFile = join(worktreePath, "hello.txt");
       const helloExists = await Bun.file(helloFile).exists();
       expect(helloExists).toBe(true);
     },

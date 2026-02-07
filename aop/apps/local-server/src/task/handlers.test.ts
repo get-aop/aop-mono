@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitManager } from "@aop/git-manager";
+import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
@@ -14,6 +15,8 @@ import {
   removeTask,
   resolveTaskByIdentifier,
 } from "./handlers.ts";
+
+const TEST_REPO_ID = "repo-1";
 
 describe("task/handlers", () => {
   let db: Kysely<Database>;
@@ -65,6 +68,18 @@ describe("task/handlers", () => {
   });
 
   describe("markTaskReady", () => {
+    const changePath = "changes/feat";
+    const tasksFilePath = join(aopPaths.repoDir(TEST_REPO_ID), changePath, "tasks.md");
+
+    const createTasksFile = () => {
+      mkdirSync(join(aopPaths.repoDir(TEST_REPO_ID), changePath), { recursive: true });
+      writeFileSync(tasksFilePath, "# Tasks\n- [ ] Task 1");
+    };
+
+    afterEach(() => {
+      rmSync(aopPaths.repoDir(TEST_REPO_ID), { recursive: true, force: true });
+    });
+
     test("returns NOT_FOUND when task does not exist", async () => {
       const result = await markTaskReady(ctx, "non-existent");
 
@@ -75,9 +90,23 @@ describe("task/handlers", () => {
       }
     });
 
+    test("returns MISSING_TASKS_FILE when tasks.md does not exist", async () => {
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
+
+      const result = await markTaskReady(ctx, "task-1");
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("MISSING_TASKS_FILE");
+        expect((result.error as { changePath: string }).changePath).toBe(changePath);
+      }
+    });
+
     test("marks DRAFT task as ready", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
+      createTasksFile();
 
       const result = await markTaskReady(ctx, "task-1");
 
@@ -89,8 +118,9 @@ describe("task/handlers", () => {
     });
 
     test("marks BLOCKED task as ready", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "BLOCKED");
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "BLOCKED");
+      createTasksFile();
 
       const result = await markTaskReady(ctx, "task-1");
 
@@ -101,8 +131,8 @@ describe("task/handlers", () => {
     });
 
     test("returns ALREADY_READY when task is already ready", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "READY");
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "READY");
 
       const result = await markTaskReady(ctx, "task-1");
 
@@ -114,8 +144,8 @@ describe("task/handlers", () => {
     });
 
     test("returns INVALID_STATUS for WORKING task", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "WORKING");
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "WORKING");
 
       const result = await markTaskReady(ctx, "task-1");
 
@@ -127,8 +157,8 @@ describe("task/handlers", () => {
     });
 
     test("returns INVALID_STATUS for DONE task", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DONE");
 
       const result = await markTaskReady(ctx, "task-1");
 
@@ -140,8 +170,9 @@ describe("task/handlers", () => {
     });
 
     test("sets preferred_workflow when provided", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
+      createTasksFile();
 
       const result = await markTaskReady(ctx, "task-1", {
         workflow: "custom-flow",
@@ -154,8 +185,9 @@ describe("task/handlers", () => {
     });
 
     test("sets base_branch when provided", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
+      createTasksFile();
 
       const result = await markTaskReady(ctx, "task-1", {
         baseBranch: "feature/foo",
@@ -168,8 +200,9 @@ describe("task/handlers", () => {
     });
 
     test("sets base_branch to null when not provided", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
+      createTasksFile();
 
       const result = await markTaskReady(ctx, "task-1");
 
@@ -180,8 +213,9 @@ describe("task/handlers", () => {
     });
 
     test("returns UPDATE_FAILED when repository update fails", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
+      createTasksFile();
 
       const originalUpdate = ctx.taskRepository.update;
       ctx.taskRepository.update = mock(() => Promise.resolve(null));
@@ -323,6 +357,7 @@ describe("task/handlers", () => {
       if (existsSync(testRepoPath)) {
         rmSync(testRepoPath, { recursive: true });
       }
+      rmSync(aopPaths.repoDir(TEST_REPO_ID), { recursive: true, force: true });
     });
 
     test("returns NOT_FOUND when task does not exist", async () => {
@@ -405,19 +440,9 @@ describe("task/handlers", () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
 
-      const gitManager = new GitManager({ repoPath: testRepoPath });
+      const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
       await gitManager.init();
       await gitManager.createWorktree("task-1", "main");
-
-      // Commit the .gitignore changes created by worktree setup
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
-        cwd: testRepoPath,
-      });
-      await addIgnore.exited;
-      const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
-        cwd: testRepoPath,
-      });
-      await commitIgnore.exited;
 
       const result = await applyTask(ctx, "task-1");
 
@@ -431,19 +456,9 @@ describe("task/handlers", () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
 
-      const gitManager = new GitManager({ repoPath: testRepoPath });
+      const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
       await gitManager.init();
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
-
-      // Commit the .gitignore changes created by worktree setup
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
-        cwd: testRepoPath,
-      });
-      await addIgnore.exited;
-      const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
-        cwd: testRepoPath,
-      });
-      await commitIgnore.exited;
 
       writeFileSync(join(worktreeInfo.path, "new-file.txt"), "New content");
 
@@ -469,19 +484,9 @@ describe("task/handlers", () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "BLOCKED");
 
-      const gitManager = new GitManager({ repoPath: testRepoPath });
+      const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
       await gitManager.init();
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
-
-      // Commit the .gitignore changes created by worktree setup
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
-        cwd: testRepoPath,
-      });
-      await addIgnore.exited;
-      const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
-        cwd: testRepoPath,
-      });
-      await commitIgnore.exited;
 
       writeFileSync(join(worktreeInfo.path, "blocked-file.txt"), "Blocked content");
 
@@ -507,19 +512,9 @@ describe("task/handlers", () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
 
-      const gitManager = new GitManager({ repoPath: testRepoPath });
+      const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
       await gitManager.init();
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
-
-      // Commit the .gitignore changes created by worktree setup
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
-        cwd: testRepoPath,
-      });
-      await addIgnore.exited;
-      const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
-        cwd: testRepoPath,
-      });
-      await commitIgnore.exited;
 
       writeFileSync(join(worktreeInfo.path, "new-file.txt"), "New content");
 
@@ -547,19 +542,9 @@ describe("task/handlers", () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
 
-      const gitManager = new GitManager({ repoPath: testRepoPath });
+      const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
       await gitManager.init();
       const worktreeInfo = await gitManager.createWorktree("task-1", "main");
-
-      // Commit the .gitignore changes in main before creating worktree changes
-      const addIgnore = Bun.spawn(["git", "add", ".gitignore"], {
-        cwd: testRepoPath,
-      });
-      await addIgnore.exited;
-      const commitIgnore = Bun.spawn(["git", "commit", "-m", "Add gitignore"], {
-        cwd: testRepoPath,
-      });
-      await commitIgnore.exited;
 
       writeFileSync(join(worktreeInfo.path, "README.md"), "# Modified in worktree");
 

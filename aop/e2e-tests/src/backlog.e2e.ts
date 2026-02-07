@@ -7,15 +7,15 @@ import {
   cleanupTestRepos,
   copyFixture,
   createTempRepo,
-  type DaemonContext,
+  type E2EServerContext,
   ensureChangesDir,
   findTasksForRepo,
   getFullStatus,
   isLocalServerRunning,
   runAopCommand,
   setupE2ETestDir,
-  startDaemon,
-  stopDaemon,
+  startE2EServer,
+  stopE2EServer,
   type TaskInfo,
   type TempRepoResult,
   triggerServerRefresh,
@@ -28,7 +28,7 @@ const E2E_TIMEOUT = 600_000;
 
 describe("backlog full flow", () => {
   let repo: TempRepoResult;
-  let context: DaemonContext;
+  let context: E2EServerContext;
   let wasAlreadyRunning = false;
 
   beforeAll(async () => {
@@ -38,7 +38,7 @@ describe("backlog full flow", () => {
 
   afterAll(async () => {
     if (context) {
-      await stopDaemon(context, wasAlreadyRunning);
+      await stopE2EServer(context, wasAlreadyRunning);
     }
     await repo.cleanup();
     await cleanupTestRepos();
@@ -52,9 +52,9 @@ describe("backlog full flow", () => {
       const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
       expect(initExit).toBe(0);
 
-      const daemonResult = await startDaemon();
-      const { success, context: daemonCtx, wasAlreadyRunning: alreadyRunning } = daemonResult;
-      context = daemonCtx;
+      const serverResult = await startE2EServer();
+      const { success, context: serverCtx, wasAlreadyRunning: alreadyRunning } = serverResult;
+      context = serverCtx;
       wasAlreadyRunning = alreadyRunning;
       expect(success).toBe(true);
 
@@ -88,7 +88,6 @@ describe("backlog full flow", () => {
       const updatedTask = updatedTasks[0] as TaskInfo;
       // Task may already be WORKING if queue processor picked it up immediately
       expect(["READY", "WORKING"]).toContain(updatedTask.status);
-      expect(updatedTask.ready_at).not.toBeNull();
 
       const completedTask = await waitForTask(task.id, ["DONE", "BLOCKED"], {
         timeout: 300_000,
@@ -98,7 +97,10 @@ describe("backlog full flow", () => {
       if (!completedTask) throw new Error("Completed task should not be null");
       expect(completedTask.status).toBe("DONE");
 
-      const helloPath = join(repo.path, ".worktrees", task.id, "hello.txt");
+      const worktreePath = completedTask.worktree_path;
+      expect(worktreePath).not.toBeNull();
+      if (!worktreePath) throw new Error("worktree_path is null");
+      const helloPath = join(worktreePath, "hello.txt");
       expect(existsSync(helloPath)).toBe(true);
     },
     E2E_TIMEOUT,

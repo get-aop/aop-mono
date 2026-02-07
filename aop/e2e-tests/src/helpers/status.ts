@@ -1,6 +1,6 @@
 import type { TaskStatus } from "@aop/common";
 import { DEFAULT_LOCAL_SERVER_URL } from "./constants";
-import { runAopCommand } from "./daemon";
+import { runAopCommand } from "./e2e-server";
 
 export interface TaskInfo {
   id: string;
@@ -68,13 +68,40 @@ export const waitForTask = async (
   return null;
 };
 
+interface SSETaskRaw {
+  id: string;
+  repoId: string;
+  changePath: string;
+  status: TaskStatus;
+  worktreePath?: string | null;
+  readyAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const normalizeTask = (raw: SSETaskRaw): TaskInfo => ({
+  id: raw.id,
+  status: raw.status,
+  repo_id: raw.repoId,
+  change_path: raw.changePath,
+  worktree_path: raw.worktreePath ?? null,
+  ready_at: raw.readyAt ?? null,
+  created_at: raw.createdAt,
+  updated_at: raw.updatedAt,
+});
+
 export const getFullStatus = async (): Promise<StatusOutput | null> => {
   const { exitCode, stdout } = await runAopCommand(["status", "--json"]);
   if (exitCode !== 0) {
     return null;
   }
   try {
-    return JSON.parse(stdout) as StatusOutput;
+    const raw = JSON.parse(stdout);
+    // Normalize SSE camelCase tasks to snake_case TaskInfo
+    for (const repo of raw.repos) {
+      repo.tasks = repo.tasks.map(normalizeTask);
+    }
+    return raw as StatusOutput;
   } catch {
     return null;
   }

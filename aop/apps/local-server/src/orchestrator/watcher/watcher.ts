@@ -1,17 +1,16 @@
 import { existsSync, type FSWatcher, watch } from "node:fs";
 import { join } from "node:path";
-import { getLogger } from "@aop/infra";
+import { aopPaths, getLogger } from "@aop/infra";
 import type { WatcherConfig, WatcherEvent } from "./types.ts";
 
 const logger = getLogger("aop", "watcher");
 
 const DEFAULT_DEBOUNCE_MS = 500;
-const CHANGES_DIR = "openspec/changes";
 
 export interface RepoWatcher {
   repoId: string;
   repoPath: string;
-  watcher: FSWatcher;
+  watchers: FSWatcher[];
 }
 
 export interface WatcherManager {
@@ -43,30 +42,21 @@ export const createWatcherManager = (
     debounceTimers.set(key, timer);
   };
 
-  const addRepo = (repoId: string, repoPath: string) => {
-    if (watchers.has(repoId)) {
-      return;
-    }
-
-    const changesPath = join(repoPath, CHANGES_DIR);
-
-    if (!existsSync(changesPath)) {
-      logger.warn("Skipping watch - no openspec/changes directory: {repoPath}", {
-        repoId,
-        repoPath,
-      });
-      return;
-    }
+  const watchDir = (
+    dir: string,
+    repoId: string,
+    repoPath: string,
+    changesPath: string,
+  ): FSWatcher | null => {
+    if (!existsSync(dir)) return null;
 
     try {
-      const watcher = watch(changesPath, { recursive: true }, (_eventType, filename) => {
+      return watch(dir, { recursive: true }, (_eventType, filename) => {
         if (!filename) return;
-
         const changeName = extractChangeName(filename);
         if (!changeName) return;
 
         const type = determineEventType(join(changesPath, changeName));
-
         emitDebounced({
           type,
           repoId,
@@ -75,31 +65,45 @@ export const createWatcherManager = (
           changePath: join(changesPath, changeName),
         });
       });
-
-      watchers.set(repoId, { repoId, repoPath, watcher });
-      logger.info("Started watching repo: {repoPath}", { repoId, repoPath });
     } catch (err) {
-      logger.error("Failed to watch repo: {error}", { repoId, repoPath, error: String(err) });
+      logger.error("Failed to watch directory {dir}: {error}", { dir, repoId, error: String(err) });
+      return null;
     }
   };
 
-  const removeRepo = (repoId: string) => {
-    const watcher = watchers.get(repoId);
-    if (!watcher) return;
+  const addRepo = (repoId: string, repoPath: string) => {
+    if (watchers.has(repoId)) return;
 
-    watcher.watcher.close();
+    const globalChangesPath = aopPaths.openspecChanges(repoId);
+    const globalWatcher = watchDir(globalChangesPath, repoId, repoPath, globalChangesPath);
+
+    if (!globalWatcher) {
+      logger.warn("Global openspec/changes directory not found for repo {repoId}", {
+        repoId,
+        repoPath,
+      });
+      return;
+    }
+
+    watchers.set(repoId, { repoId, repoPath, watchers: [globalWatcher] });
+    logger.info("Started watching repo: {repoPath}", { repoId, repoPath });
+  };
+
+  const removeRepo = (repoId: string) => {
+    const entry = watchers.get(repoId);
+    if (!entry) return;
+
+    for (const w of entry.watchers) w.close();
     watchers.delete(repoId);
     logger.info("Stopped watching repo: {repoId}", { repoId });
   };
 
   const stop = () => {
-    for (const timer of debounceTimers.values()) {
-      clearTimeout(timer);
-    }
+    for (const timer of debounceTimers.values()) clearTimeout(timer);
     debounceTimers.clear();
 
-    for (const { watcher, repoId } of watchers.values()) {
-      watcher.close();
+    for (const { watchers: ws, repoId } of watchers.values()) {
+      for (const w of ws) w.close();
       logger.debug("Closed watcher for repo: {repoId}", { repoId });
     }
     watchers.clear();

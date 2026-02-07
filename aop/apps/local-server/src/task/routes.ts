@@ -80,6 +80,11 @@ export const createTaskRoutes = (ctx: LocalServerContext) => {
           });
         case "INVALID_STATUS":
           return c.json({ error: "Invalid task status", status: result.error.status }, 409);
+        case "MISSING_TASKS_FILE":
+          return c.json(
+            { error: "Change is missing tasks.md file", changePath: result.error.changePath },
+            422,
+          );
         case "UPDATE_FAILED":
           return c.json({ error: "Failed to update task" }, 500);
       }

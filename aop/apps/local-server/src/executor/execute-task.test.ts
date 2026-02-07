@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
@@ -105,7 +106,7 @@ describe("executeTask", () => {
 
     const updatedTask = await ctx.taskRepository.get("task-exec-1");
     expect(updatedTask?.status).toBe("DONE");
-    expect(updatedTask?.worktree_path).toBe(join(testRepoPath, ".worktrees", "task-exec-1"));
+    expect(updatedTask?.worktree_path).toBe(aopPaths.worktree("repo-1", "task-exec-1"));
 
     // Verify execution records were created
     const executions = await db

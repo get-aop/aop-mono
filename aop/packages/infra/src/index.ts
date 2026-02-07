@@ -1,3 +1,5 @@
+export { aopPaths } from "./aop-paths.ts";
+
 export {
   createFileOutputHandler,
   type FileOutputHandlerOptions,

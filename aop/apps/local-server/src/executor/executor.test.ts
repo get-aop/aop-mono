@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database, Task } from "../db/schema.ts";
@@ -17,6 +18,7 @@ import {
   finalizeExecutionAndGetNextStep,
   markTaskWorking,
   runAgentWithTimeout,
+  setupWorktreeOpenspecSymlink,
 } from "./executor.ts";
 import type { ExecutorContext } from "./types.ts";
 
@@ -61,8 +63,8 @@ describe("executor", () => {
 
       expect(result.task.id).toBe("task-1");
       expect(result.repoPath).toBe("/test/repo");
-      expect(result.changePath).toBe("/test/repo/changes/feat-1");
-      expect(result.worktreePath).toBe("/test/repo/.worktrees/task-1");
+      expect(result.changePath).toBe(join(aopPaths.repoDir("repo-1"), "changes/feat-1"));
+      expect(result.worktreePath).toBe(aopPaths.worktree("repo-1", "task-1"));
       expect(result.logsDir).toBe(testLogsDir);
       expect(result.timeoutSecs).toBe(1800);
 
@@ -224,16 +226,17 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: testRepoPath,
         changePath: join(testRepoPath, "changes/feat-1"),
-        worktreePath: join(testRepoPath, ".worktrees", "task-wt-1"),
+        worktreePath: aopPaths.worktree("repo-1", "task-wt-1"),
         logsDir: tmpdir(),
         timeoutSecs: 300,
       };
 
       const result = await createWorktree(executorCtx);
 
-      expect(result.path).toBe(join(testRepoPath, ".worktrees", "task-wt-1"));
+      expect(result.path).toBe(aopPaths.worktree("repo-1", "task-wt-1"));
       expect(result.branch).toBe("task-wt-1");
       expect(existsSync(result.path)).toBe(true);
     });
@@ -249,9 +252,10 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: testRepoPath,
         changePath: join(testRepoPath, "changes/feat-1"),
-        worktreePath: join(testRepoPath, ".worktrees", "task-wt-base"),
+        worktreePath: aopPaths.worktree("repo-1", "task-wt-base"),
         logsDir: tmpdir(),
         timeoutSecs: 300,
       };
@@ -259,7 +263,7 @@ describe("executor", () => {
       const result = await createWorktree(executorCtx);
 
       expect(result.baseBranch).toBe(branchName);
-      expect(result.path).toBe(join(testRepoPath, ".worktrees", "task-wt-base"));
+      expect(result.path).toBe(aopPaths.worktree("repo-1", "task-wt-base"));
       expect(existsSync(result.path)).toBe(true);
     });
 
@@ -268,9 +272,10 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: testRepoPath,
         changePath: join(testRepoPath, "changes/feat-1"),
-        worktreePath: join(testRepoPath, ".worktrees", "task-wt-2"),
+        worktreePath: aopPaths.worktree("repo-1", "task-wt-2"),
         logsDir: tmpdir(),
         timeoutSecs: 300,
       };
@@ -279,8 +284,64 @@ describe("executor", () => {
 
       const result = await createWorktree(executorCtx);
 
-      expect(result.path).toBe(join(testRepoPath, ".worktrees", "task-wt-2"));
+      expect(result.path).toBe(aopPaths.worktree("repo-1", "task-wt-2"));
       expect(result.branch).toBe("task-wt-2");
+    });
+  });
+
+  describe("setupWorktreeOpenspecSymlink", () => {
+    let worktreePath: string;
+    let globalOpenspecPath: string;
+    const repoId = "repo-symlink-test";
+
+    beforeEach(() => {
+      worktreePath = join(tmpdir(), `aop-test-wt-${Date.now()}`);
+      globalOpenspecPath = aopPaths.openspec(repoId);
+      mkdirSync(worktreePath, { recursive: true });
+      mkdirSync(globalOpenspecPath, { recursive: true });
+    });
+
+    afterEach(() => {
+      if (existsSync(worktreePath)) rmSync(worktreePath, { recursive: true });
+      if (existsSync(globalOpenspecPath)) rmSync(globalOpenspecPath, { recursive: true });
+    });
+
+    test("creates symlink from worktree/openspec to global openspec", () => {
+      setupWorktreeOpenspecSymlink(worktreePath, repoId);
+
+      const symlinkPath = join(worktreePath, "openspec");
+      expect(existsSync(symlinkPath)).toBe(true);
+      expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(symlinkPath)).toBe(globalOpenspecPath);
+    });
+
+    test("skips if openspec already exists in worktree", () => {
+      const localOpenspec = join(worktreePath, "openspec");
+      mkdirSync(localOpenspec);
+
+      setupWorktreeOpenspecSymlink(worktreePath, repoId);
+
+      expect(lstatSync(localOpenspec).isSymbolicLink()).toBe(false);
+      expect(lstatSync(localOpenspec).isDirectory()).toBe(true);
+    });
+
+    test("skips if openspec symlink already exists in worktree", () => {
+      const localOpenspec = join(worktreePath, "openspec");
+      symlinkSync(globalOpenspecPath, localOpenspec);
+
+      setupWorktreeOpenspecSymlink(worktreePath, repoId);
+
+      expect(lstatSync(localOpenspec).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(localOpenspec)).toBe(globalOpenspecPath);
+    });
+
+    test("is idempotent when called multiple times", () => {
+      setupWorktreeOpenspecSymlink(worktreePath, repoId);
+      setupWorktreeOpenspecSymlink(worktreePath, repoId);
+
+      const symlinkPath = join(worktreePath, "openspec");
+      expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(symlinkPath)).toBe(globalOpenspecPath);
     });
   });
 
@@ -290,6 +351,7 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: "/test/repo",
         changePath: "/test/repo/changes/feat-1",
         worktreePath: "/test/worktree",
@@ -324,6 +386,7 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: "/test/repo",
         changePath: "/test/repo/changes/feat-1",
         worktreePath: "/test/worktree",
@@ -357,6 +420,7 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: "/test/repo",
         changePath: "/test/repo/changes/feat-1",
         worktreePath: "/test/worktree",
@@ -411,6 +475,7 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: "/test/repo",
         changePath: "/test/repo/changes/feat-1",
         worktreePath: tmpdir(),
@@ -471,6 +536,7 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: "/test/repo",
         changePath: "/test/repo/changes/feat-1",
         worktreePath: tmpdir(),
@@ -526,6 +592,7 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: "/test/repo",
         changePath: "/test/repo/changes/feat-1",
         worktreePath: tmpdir(),
@@ -578,6 +645,7 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: "/test/repo",
         changePath: "/test/repo/changes/feat-1",
         worktreePath: tmpdir(),
@@ -646,6 +714,7 @@ describe("executor", () => {
 
       const executorCtx: ExecutorContext = {
         task,
+        repoId: "repo-1",
         repoPath: "/test/repo",
         changePath: "/test/repo/changes/feat-1",
         worktreePath: tmpdir(),

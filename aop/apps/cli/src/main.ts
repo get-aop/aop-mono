@@ -117,8 +117,13 @@ if (import.meta.main) {
     try {
       const parsed = cli.parse();
 
-      // Show help when run with no arguments
-      if (parsed.args.length === 0 && !parsed.options.help && !parsed.options.version) {
+      // Show help when run with no arguments and no command was matched
+      if (
+        !cli.matchedCommand &&
+        parsed.args.length === 0 &&
+        !parsed.options.help &&
+        !parsed.options.version
+      ) {
         cli.outputHelp();
       }
     } catch (error) {

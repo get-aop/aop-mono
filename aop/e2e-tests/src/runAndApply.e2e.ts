@@ -42,9 +42,9 @@ describe("aop task workflow and apply", () => {
       const repo = await createTempRepo("run-apply");
       const changePath = await copyFixture("backlog-test", repo.path);
 
-      // Commit the fixture so main repo is clean
-      await Bun.$`git add .`.cwd(repo.path).quiet();
-      await Bun.$`git commit -m "Add fixture"`.cwd(repo.path).quiet();
+      // Don't commit the fixture — the reconciler will relocate it to the global path.
+      // Committing creates conflicts because the reconciler deletes repo-local files,
+      // and the agent modifies them in the worktree, making the diff unapplicable.
 
       try {
         const env = getAopEnv();
@@ -53,10 +53,10 @@ describe("aop task workflow and apply", () => {
         const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
         expect(initExit).toBe(0);
 
-        // Trigger refresh to ensure watcher picks up the new repo
+        // Trigger refresh to ensure watcher picks up the new repo and relocates fixture
         await triggerServerRefresh();
 
-        // Wait for task to be detected
+        // Wait for task to be detected (reconciler relocates + creates task)
         await Bun.sleep(3000);
 
         // Get task info
@@ -83,17 +83,18 @@ describe("aop task workflow and apply", () => {
         expect(completedTask?.status).toBe("DONE");
 
         // Verify the file was created in worktree
-        const helloInWorktree = join(repo.path, ".worktrees", taskId, "hello.txt");
+        const worktreePath = completedTask?.worktree_path;
+        expect(worktreePath).not.toBeNull();
+        if (!worktreePath) throw new Error("worktree_path is null");
+        const helloInWorktree = join(worktreePath, "hello.txt");
         expect(existsSync(helloInWorktree)).toBe(true);
 
-        // Commit any AOP state changes before apply
-        await Bun.$`git add -A`.cwd(repo.path).quiet();
-        await Bun.$`git commit -m "Add aop state" --allow-empty`.cwd(repo.path).quiet().nothrow();
+        // With global paths, AOP state lives outside the repo — working dir should be clean
 
-        // Step 4: Apply changes from worktree to main repo
+        // Step 4: Apply changes from worktree to main repo (use taskId, not changePath)
         const bunPath = process.execPath;
         const applyProc = Bun.spawn({
-          cmd: [bunPath, AOP_BIN, "apply", changePath],
+          cmd: [bunPath, AOP_BIN, "apply", taskId],
           stdout: "inherit",
           stderr: "inherit",
           stdin: "inherit",
@@ -115,7 +116,7 @@ describe("aop task workflow and apply", () => {
 
         // Verify task status is still DONE after apply
         const { exitCode: statusAfterExit, stdout: statusAfterStdout } = await runAopCommand(
-          ["status", changePath, "--json"],
+          ["status", taskId, "--json"],
           repo.path,
         );
         expect(statusAfterExit).toBe(0);

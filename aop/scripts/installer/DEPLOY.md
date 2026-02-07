@@ -156,7 +156,7 @@ bun run build:release -- --target linux-x64
 ./dist/release/aop-linux-x64 run
 
 # Start server (background)
-./dist/release/aop-linux-x64 run --daemon
+./dist/release/aop-linux-x64 run --background
 ./dist/release/aop-linux-x64 status
 ./dist/release/aop-linux-x64 stop
 

@@ -128,7 +128,10 @@ describe("degraded mode", () => {
       expect(serverTaskFinal?.status).toBe("DONE");
 
       // Verify the work was done
-      const helloFile = join(repo.path, ".worktrees", taskId, "hello.txt");
+      const worktreePath = completedTask?.worktree_path;
+      expect(worktreePath).not.toBeNull();
+      if (!worktreePath) throw new Error("worktree_path is null");
+      const helloFile = join(worktreePath, "hello.txt");
       const helloExists = await Bun.file(helloFile).exists();
       expect(helloExists).toBe(true);
     },

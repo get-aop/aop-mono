@@ -18,7 +18,6 @@ const logger = getLogger("aop", "worktree-ops");
  */
 export class WorktreeOps {
   constructor(
-    private readonly repoPath: string,
     private readonly worktreesDir: string,
     private readonly executor: GitExecutor,
     private readonly branchOps: BranchOps,
@@ -38,7 +37,6 @@ export class WorktreeOps {
     }
 
     await this.ensureWorktreesDir();
-    await this.ensureGitignore();
 
     const baseCommit = await this.branchOps.getCommit(baseBranch);
     await this.executor.exec(["worktree", "add", "-b", taskId, worktreePath, baseBranch]);
@@ -83,24 +81,7 @@ export class WorktreeOps {
     const result = await Bun.$`test -d ${this.worktreesDir}`.quiet().nothrow();
     if (result.exitCode !== 0) {
       await Bun.$`mkdir -p ${this.worktreesDir}`.quiet();
-      logger.debug("Created .worktrees directory");
-    }
-  }
-
-  private async ensureGitignore(): Promise<void> {
-    const gitignorePath = `${this.repoPath}/.gitignore`;
-    const gitignoreFile = Bun.file(gitignorePath);
-    const entry = ".worktrees/";
-
-    if (await gitignoreFile.exists()) {
-      const content = await gitignoreFile.text();
-      if (!content.includes(entry)) {
-        await Bun.write(gitignorePath, `${content.trimEnd()}\n${entry}\n`);
-        logger.debug("Added .worktrees/ to .gitignore");
-      }
-    } else {
-      await Bun.write(gitignorePath, `${entry}\n`);
-      logger.debug("Created .gitignore with .worktrees/");
+      logger.debug("Created worktrees directory");
     }
   }
 }

@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createApp } from "./app.ts";
 import { createCommandContext, type LocalServerContext } from "./context.ts";
@@ -171,6 +173,10 @@ describe("CLI integration tests", () => {
     test("POST /api/repos/:repoId/tasks/:taskId/ready marks task as ready", async () => {
       await createTestRepo(db, "ready-repo", "/path/to/ready-repo");
       await createTestTask(db, "ready-task", "ready-repo", "changes/feat", "DRAFT");
+
+      const changePath = join(aopPaths.repoDir("ready-repo"), "changes/feat");
+      mkdirSync(changePath, { recursive: true });
+      writeFileSync(join(changePath, "tasks.md"), "# Tasks\n- [ ] Task 1");
 
       const response = await fetch(
         `${TEST_SERVER_URL}/api/repos/ready-repo/tasks/ready-task/ready`,

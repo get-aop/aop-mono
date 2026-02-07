@@ -7,8 +7,8 @@ End-to-end tests for the AOP CLI. These tests exercise the full system with real
 ### Task Execution
 - **runAndApply.e2e.ts**: Tests `aop run` and `aop apply` commands - creates worktree, spawns agent, and transfers changes back to main repo
 
-### Daemon Lifecycle
-- **daemon.e2e.ts**: Tests daemon start/stop lifecycle, PID file handling, graceful shutdown
+### Local Server Lifecycle
+- **local-server.e2e.ts**: Tests local server start/stop lifecycle, health checks, graceful shutdown
 
 ### Backlog Management
 - **backlog.e2e.ts**: Tests full task flow from DRAFT to READY to DONE through the queue processor
@@ -21,7 +21,7 @@ End-to-end tests for the AOP CLI. These tests exercise the full system with real
 bun run test:e2e
 
 # Specific test
-bun test ./src/daemon.e2e.ts
+bun test ./src/local-server.e2e.ts
 ```
 
 ## Logging

@@ -60,10 +60,10 @@ const cli = cac("aop");
 
 cli
   .command("run", "Start the local server")
-  .option("--daemon", "Run in background")
+  .option("--background", "Run in background")
   .option("--port <port>", "Port to listen on")
-  .action(async (options: { daemon?: boolean; port?: string }) => {
-    if (options.daemon) {
+  .action(async (options: { background?: boolean; port?: string }) => {
+    if (options.background) {
       await ensureAopDir();
       const proc = Bun.spawn([process.execPath, "run"], {
         stdio: ["ignore", "ignore", "ignore"],

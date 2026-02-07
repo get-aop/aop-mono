@@ -67,10 +67,18 @@ const markTaskReady = async (task: Task, options?: TaskReadyOptions): Promise<vo
   logger.info("Task marked as READY: {taskId}", { taskId: result.data.taskId });
 };
 
-const handleReadyError = (error: { error: string; status?: string }): never => {
+const handleReadyError = (error: {
+  error: string;
+  status?: string;
+  changePath?: string;
+}): never => {
   if (error.error === "Invalid task status") {
     logger.error("Error: Cannot mark task as READY from status {status}", {
       status: error.status ?? "unknown",
+    });
+  } else if (error.error === "Change is missing tasks.md file") {
+    logger.error("Error: Change is missing tasks.md — create it before marking ready", {
+      changePath: error.changePath,
     });
   } else {
     logger.error("Error: {error}", { error: error.error });

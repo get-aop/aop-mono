@@ -10,6 +10,7 @@
   "dependencies": {
     "@aop/cli": "workspace:*",
     "@aop/common": "workspace:*",
+    "@aop/infra": "workspace:*",
     "@aop/server": "workspace:*",
     "kysely": "^0.28.2",
     "kysely-postgres-js": "^3.0.0",

@@ -7,13 +7,13 @@ import {
   cleanupTestRepos,
   copyFixture,
   createTempRepo,
-  type DaemonContext,
+  type E2EServerContext,
   getStepExecutionsForTask,
   isLocalServerRunning,
   runAopCommand,
   setupE2ETestDir,
-  startDaemon,
-  stopDaemon,
+  startE2EServer,
+  stopE2EServer,
   type TempRepoResult,
   triggerServerRefresh,
   waitForTask,
@@ -28,7 +28,7 @@ const E2E_TIMEOUT = 600_000;
 
 describe("ralph loop workflow execution", () => {
   let repo: TempRepoResult;
-  let daemonContext: DaemonContext;
+  let serverContext: E2EServerContext;
   let wasAlreadyRunning = false;
 
   beforeAll(async () => {
@@ -52,10 +52,10 @@ describe("ralph loop workflow execution", () => {
     await setupE2ETestDir();
     repo = await createTempRepo("ralph-loop");
 
-    // Start daemon once for all tests
-    const daemonResult = await startDaemon();
-    daemonContext = daemonResult.context;
-    wasAlreadyRunning = daemonResult.wasAlreadyRunning;
+    // Start local server once for all tests
+    const serverResult = await startE2EServer();
+    serverContext = serverResult.context;
+    wasAlreadyRunning = serverResult.wasAlreadyRunning;
 
     // Initialize repo once
     const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
@@ -68,7 +68,7 @@ describe("ralph loop workflow execution", () => {
   });
 
   afterAll(async () => {
-    await stopDaemon(daemonContext, wasAlreadyRunning);
+    await stopE2EServer(serverContext, wasAlreadyRunning);
     await repo.cleanup();
     await cleanupTestRepos();
   });
@@ -128,7 +128,10 @@ describe("ralph loop workflow execution", () => {
       expect(serverTaskFinal?.status).toBe("DONE");
 
       // Verify the file was created
-      const testFile = join(repo.path, ".worktrees", taskId, "iteration-test.txt");
+      const worktreePath = completedTask?.worktree_path;
+      expect(worktreePath).not.toBeNull();
+      if (!worktreePath) throw new Error("worktree_path is null");
+      const testFile = join(worktreePath, "iteration-test.txt");
       const fileExists = await Bun.file(testFile).exists();
       expect(fileExists).toBe(true);
 
@@ -193,7 +196,10 @@ describe("ralph loop workflow execution", () => {
       expect(serverTaskFinal?.status).toBe("DONE");
 
       // Verify the file was created
-      const testFile = join(repo.path, ".worktrees", taskId, "review-needed.txt");
+      const worktreePath = completedTask?.worktree_path;
+      expect(worktreePath).not.toBeNull();
+      if (!worktreePath) throw new Error("worktree_path is null");
+      const testFile = join(worktreePath, "review-needed.txt");
       const fileExists = await Bun.file(testFile).exists();
       expect(fileExists).toBe(true);
 
