@@ -4,6 +4,7 @@ import type { Database, NewWorkflow, Workflow } from "../db/schema.ts";
 export interface WorkflowRepository {
   findById: (id: string) => Promise<Workflow | null>;
   findByName: (name: string) => Promise<Workflow | null>;
+  listNames: () => Promise<string[]>;
   create: (workflow: NewWorkflow) => Promise<Workflow>;
   upsert: (workflow: NewWorkflow) => Promise<Workflow>;
 }
@@ -25,6 +26,11 @@ export const createWorkflowRepository = (db: Kysely<Database>): WorkflowReposito
       .where("name", "=", name)
       .executeTakeFirst();
     return workflow ?? null;
+  },
+
+  listNames: async (): Promise<string[]> => {
+    const rows = await db.selectFrom("workflows").select("name").orderBy("name").execute();
+    return rows.map((r) => r.name);
   },
 
   create: async (workflow: NewWorkflow): Promise<Workflow> => {

@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import type { Task } from "./types";
 import { KanbanBoard } from "./views/KanbanBoard";
 import { MetricsPage } from "./views/MetricsPage";
+import { SettingsPage } from "./views/SettingsPage";
 import { TaskDetail } from "./views/TaskDetail";
 
-type Route = "board" | "metrics" | "detail";
+type Route = "board" | "metrics" | "settings" | "detail";
 
 interface RouterState {
   route: Route;
@@ -16,6 +17,10 @@ const parseRoute = (): RouterState => {
 
   if (path === "/metrics") {
     return { route: "metrics" };
+  }
+
+  if (path === "/settings") {
+    return { route: "settings" };
   }
 
   const taskMatch = path.match(/^\/tasks\/(.+)$/);
@@ -53,6 +58,10 @@ export const App = () => {
 
   if (routerState.route === "metrics") {
     return <MetricsPage onNavigate={navigate} />;
+  }
+
+  if (routerState.route === "settings") {
+    return <SettingsPage onNavigate={navigate} />;
   }
 
   if (routerState.route === "detail" && routerState.taskId) {

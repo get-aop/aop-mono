@@ -67,12 +67,26 @@ export const getStatus = async (): Promise<{
   };
 };
 
+export const fetchBranches = async (
+  repoId: string,
+): Promise<{ branches: string[]; current: string }> => {
+  return request<{ branches: string[]; current: string }>(`/repos/${repoId}/branches`);
+};
+
+export const fetchWorkflows = async (): Promise<string[]> => {
+  const data = await request<{ workflows: string[] }>("/workflows");
+  return data.workflows;
+};
+
 export const markReady = async (
   repoId: string,
   taskId: string,
   workflow?: string,
+  baseBranch?: string,
 ): Promise<{ taskId: string }> => {
-  const body = workflow ? { workflow } : {};
+  const body: Record<string, string> = {};
+  if (workflow) body.workflow = workflow;
+  if (baseBranch) body.baseBranch = baseBranch;
   return request<{ ok: boolean; taskId: string }>(`/repos/${repoId}/tasks/${taskId}/ready`, {
     method: "POST",
     body: JSON.stringify(body),
@@ -88,6 +102,16 @@ export const removeTask = async (
   return request<{ ok: boolean; taskId: string; aborted: boolean }>(
     `/repos/${repoId}/tasks/${taskId}${query}`,
     { method: "DELETE" },
+  );
+};
+
+export const blockTask = async (
+  repoId: string,
+  taskId: string,
+): Promise<{ taskId: string; agentKilled: boolean }> => {
+  return request<{ ok: boolean; taskId: string; agentKilled: boolean }>(
+    `/repos/${repoId}/tasks/${taskId}/block`,
+    { method: "POST" },
   );
 };
 
@@ -125,4 +149,50 @@ export const registerRepo = async (path: string): Promise<RegisterRepoResponse> 
     method: "POST",
     body: JSON.stringify({ path }),
   });
+};
+
+export interface ApplyTaskResponse {
+  ok: boolean;
+  affectedFiles: string[];
+  conflictingFiles: string[];
+  noChanges?: boolean;
+}
+
+export const applyTask = async (
+  repoId: string,
+  taskId: string,
+  targetBranch?: string,
+): Promise<ApplyTaskResponse> => {
+  const body: Record<string, string> = {};
+  if (targetBranch) body.targetBranch = targetBranch;
+  return request<ApplyTaskResponse>(`/repos/${repoId}/tasks/${taskId}/apply`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+};
+
+export interface SettingEntry {
+  key: string;
+  value: string;
+}
+
+export const getSettings = async (): Promise<SettingEntry[]> => {
+  const data = await request<{ settings: SettingEntry[] }>("/settings");
+  return data.settings;
+};
+
+export const updateSettings = async (settings: SettingEntry[]): Promise<void> => {
+  await request("/settings", {
+    method: "PUT",
+    body: JSON.stringify({ settings }),
+  });
+};
+
+export interface CleanupResult {
+  cleaned: number;
+  failed: number;
+}
+
+export const cleanupWorktrees = async (): Promise<CleanupResult> => {
+  return request<CleanupResult>("/settings/cleanup-worktrees", { method: "POST" });
 };

@@ -9,8 +9,12 @@ import { createRepoRepository } from "../repos/repo-repository.ts";
 import { createRepoService, type RepoService } from "../repos/repo-service.ts";
 import { createTaskRepository } from "../tasks/task-repository.ts";
 import { createTaskService, type TaskService } from "../tasks/task-service.ts";
+import {
+  createWorkflowRepository,
+  type WorkflowRepository,
+} from "../workflow/workflow-repository.ts";
 import { authMiddleware, errorHandler } from "./middleware/index.ts";
-import { auth, health, repos, steps, tasks } from "./routes/index.ts";
+import { auth, health, repos, steps, tasks, workflows } from "./routes/index.ts";
 
 export interface ServerDependencies {
   db: Kysely<Database>;
@@ -23,6 +27,7 @@ export interface AppContext {
   repoService: RepoService;
   taskService: TaskService;
   executionService: ExecutionService;
+  workflowRepository: WorkflowRepository;
 }
 
 let appContext: AppContext | null = null;
@@ -43,7 +48,15 @@ export const createServer = (deps: ServerDependencies) => {
   const executionRepo = createExecutionRepository(deps.db);
   const taskService = createTaskService(taskRepo, executionRepo, repoRepo);
   const executionService = createExecutionService(deps.db);
-  appContext = { db: deps.db, clientService, repoService, taskService, executionService };
+  const workflowRepository = createWorkflowRepository(deps.db);
+  appContext = {
+    db: deps.db,
+    clientService,
+    repoService,
+    taskService,
+    executionService,
+    workflowRepository,
+  };
 
   const app = new Hono();
 
@@ -55,10 +68,12 @@ export const createServer = (deps: ServerDependencies) => {
   app.use("/repos/*", authMiddleware);
   app.use("/tasks/*", authMiddleware);
   app.use("/steps/*", authMiddleware);
+  app.use("/workflows", authMiddleware);
 
   app.route("/", repos);
   app.route("/", tasks);
   app.route("/", steps);
+  app.route("/", workflows);
 
   return Bun.serve({
     fetch: app.fetch,

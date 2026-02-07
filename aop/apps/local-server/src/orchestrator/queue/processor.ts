@@ -51,7 +51,7 @@ export const createQueueProcessor = (
 
   const getRepoMax = async (repoId: string): Promise<number> => {
     const repo = await repoRepository.getById(repoId);
-    return repo?.max_concurrent_tasks ?? 1;
+    return repo?.max_concurrent_tasks ?? 3;
   };
 
   const tryMarkTaskReady = async (task: Task): Promise<TaskReadyResponse | null> => {

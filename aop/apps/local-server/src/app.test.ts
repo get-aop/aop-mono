@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Kysely } from "kysely";
 import { type AppDependencies, createApp } from "./app.ts";
 import { createCommandContext, type LocalServerContext } from "./context.ts";
 import type { Database } from "./db/schema.ts";
 import { type AnyJson, createTestDb, createTestRepo, createTestTask } from "./db/test-utils.ts";
+import { SettingKey } from "./settings/types.ts";
 
 describe("app", () => {
   let db: Kysely<Database>;
@@ -352,6 +353,87 @@ describe("app - static file serving", () => {
     }
 
     await db.destroy();
+  });
+});
+
+describe("app - workflows proxy", () => {
+  let db: Kysely<Database>;
+  let ctx: LocalServerContext;
+  let app: ReturnType<typeof createApp>;
+  const originalFetch = globalThis.fetch;
+  const originalServerUrl = process.env.AOP_SERVER_URL;
+  const originalApiKey = process.env.AOP_API_KEY;
+
+  beforeEach(async () => {
+    // Clear env overrides so settings come from DB
+    delete process.env.AOP_SERVER_URL;
+    delete process.env.AOP_API_KEY;
+
+    db = await createTestDb();
+    ctx = createCommandContext(db);
+    app = createApp({ ctx, startTimeMs: Date.now() });
+  });
+
+  afterEach(async () => {
+    globalThis.fetch = originalFetch;
+    if (originalServerUrl !== undefined) process.env.AOP_SERVER_URL = originalServerUrl;
+    else delete process.env.AOP_SERVER_URL;
+    if (originalApiKey !== undefined) process.env.AOP_API_KEY = originalApiKey;
+    else delete process.env.AOP_API_KEY;
+    await db.destroy();
+  });
+
+  test("returns empty workflows when settings not configured", async () => {
+    const res = await app.request("/api/workflows");
+    const body: AnyJson = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.workflows).toEqual([]);
+  });
+
+  test("proxies workflows from remote server", async () => {
+    await ctx.settingsRepository.set(SettingKey.SERVER_URL, "http://localhost:9999");
+    await ctx.settingsRepository.set(SettingKey.API_KEY, "test-key");
+
+    const mockFetch = mock(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ workflows: ["aop-default", "custom"] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    const res = await app.request("/api/workflows");
+    const body: AnyJson = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.workflows).toEqual(["aop-default", "custom"]);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:9999/workflows",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer test-key",
+        }),
+      }),
+    );
+  });
+
+  test("returns empty workflows when remote server fails", async () => {
+    await ctx.settingsRepository.set(SettingKey.SERVER_URL, "http://localhost:9999");
+    await ctx.settingsRepository.set(SettingKey.API_KEY, "test-key");
+
+    const mockFetch = mock(() =>
+      Promise.resolve(new Response("Internal Server Error", { status: 500 })),
+    );
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    const res = await app.request("/api/workflows");
+    const body: AnyJson = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.workflows).toEqual([]);
   });
 });
 

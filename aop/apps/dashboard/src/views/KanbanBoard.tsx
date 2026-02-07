@@ -147,13 +147,36 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
         <div className="flex items-center gap-6">
           <ConnectionStatus state={connectionState} />
           <CapacityBar working={capacity.working} max={capacity.max} />
-          <nav>
+          <nav className="flex items-center gap-4">
             <button
               type="button"
               onClick={() => onNavigate?.("/metrics")}
               className="cursor-pointer font-mono text-xs text-aop-slate transition-colors hover:text-aop-cream"
             >
               Metrics
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.("/settings")}
+              className="cursor-pointer text-aop-slate transition-colors hover:text-aop-cream"
+              title="Settings"
+            >
+              <svg
+                role="img"
+                aria-label="Settings"
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
             </button>
           </nav>
         </div>

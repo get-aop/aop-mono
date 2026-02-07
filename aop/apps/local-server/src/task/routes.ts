@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { LocalServerContext } from "../context.ts";
 import { getRepoById } from "../repo/handlers.ts";
-import { applyTask, getTaskById, markTaskReady, removeTask } from "./handlers.ts";
+import { applyTask, blockTask, getTaskById, markTaskReady, removeTask } from "./handlers.ts";
 
 export const createTaskRoutes = (ctx: LocalServerContext) => {
   const routes = new Hono();
@@ -107,7 +107,10 @@ export const createTaskRoutes = (ctx: LocalServerContext) => {
       return c.json({ error: "Task not found" }, 404);
     }
 
-    const result = await applyTask(ctx, taskId);
+    const body = await c.req
+      .json<{ targetBranch?: string }>()
+      .catch(() => ({ targetBranch: undefined }));
+    const result = await applyTask(ctx, taskId, body.targetBranch);
 
     if (!result.success) {
       switch (result.error.code) {
@@ -119,22 +122,51 @@ export const createTaskRoutes = (ctx: LocalServerContext) => {
           return c.json({ error: "Repository not found" }, 404);
         case "DIRTY_WORKING_DIRECTORY":
           return c.json({ error: "Main repository has uncommitted changes" }, 409);
-        case "CONFLICT":
-          return c.json(
-            {
-              error: "Conflicts detected",
-              conflictingFiles: result.error.conflictingFiles,
-            },
-            409,
-          );
         case "NO_CHANGES":
           return c.json({ ok: true, affectedFiles: [], noChanges: true });
         case "WORKTREE_NOT_FOUND":
           return c.json({ error: "Worktree not found" }, 404);
+        case "BRANCH_NOT_FOUND":
+          return c.json({ error: "Branch not found", branch: result.error.branch }, 404);
       }
     }
 
-    return c.json({ ok: true, affectedFiles: result.affectedFiles });
+    return c.json({
+      ok: true,
+      affectedFiles: result.affectedFiles,
+      conflictingFiles: result.conflictingFiles,
+    });
+  });
+
+  routes.post("/:taskId/block", async (c) => {
+    const repoId = c.req.param("repoId") as string;
+    const taskId = c.req.param("taskId");
+
+    const repo = await getRepoById(ctx, repoId);
+    if (!repo) {
+      return c.json({ error: "Repo not found" }, 404);
+    }
+
+    const task = await getTaskById(ctx, taskId);
+    if (!task || task.repo_id !== repoId) {
+      return c.json({ error: "Task not found" }, 404);
+    }
+
+    const result = await blockTask(ctx, taskId);
+
+    if (!result.success) {
+      switch (result.error.code) {
+        case "NOT_FOUND":
+          return c.json({ error: "Task not found" }, 404);
+        case "INVALID_STATUS":
+          return c.json(
+            { error: "Task is not currently working", status: result.error.status },
+            409,
+          );
+      }
+    }
+
+    return c.json({ ok: true, taskId: result.taskId, agentKilled: result.agentKilled });
   });
 
   routes.delete("/:taskId", async (c) => {

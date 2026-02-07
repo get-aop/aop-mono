@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, markReady, removeTask } from "../api/client";
+import { ApiError, applyTask, blockTask, markReady, removeTask } from "../api/client";
+import { ApplyDialog } from "../components/ApplyDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { type LogLine, LogViewer } from "../components/LogViewer";
+import { MarkReadyDialog } from "../components/MarkReadyDialog";
 import { StatusBadge } from "../components/StatusBadge";
 import { StepList } from "../components/StepList";
 import { useSSE } from "../hooks/useSSE";
@@ -42,10 +44,14 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [expandedExecutionId, setExpandedExecutionId] = useState<string | null>(null);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  const [showMarkReadyDialog, setShowMarkReadyDialog] = useState(false);
+  const [showApplyDialog, setShowApplyDialog] = useState(false);
+  const [showBlockDialog, setShowBlockDialog] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
-  const [isMarkingReady, setIsMarkingReady] = useState(false);
+  const [isBlocking, setIsBlocking] = useState(false);
   const [logLines, setLogLines] = useState<LogLine[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<"error" | "success">("error");
 
   const activeExecutionId =
     task?.status === "WORKING" ? task.currentExecutionId : expandedExecutionId;
@@ -85,18 +91,43 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
       .catch(() => {});
   }, [task]);
 
-  const handleMarkReady = async () => {
+  const showToast = (message: string, type: "error" | "success" = "error") => {
+    setToastType(type);
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const handleMarkReadyConfirm = async (workflow: string, baseBranch: string) => {
     if (!task) return;
-    setIsMarkingReady(true);
     try {
-      await markReady(task.repoId, task.id);
+      await markReady(task.repoId, task.id, workflow, baseBranch || undefined);
+      setShowMarkReadyDialog(false);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Failed to mark task as ready";
-      setToastMessage(message);
-      setTimeout(() => setToastMessage(null), 4000);
-    } finally {
-      setIsMarkingReady(false);
+      showToast(message);
+      setShowMarkReadyDialog(false);
     }
+  };
+
+  const handleApplyConfirm = async (targetBranch?: string) => {
+    if (!task) return;
+    try {
+      const result = await applyTask(task.repoId, task.id, targetBranch);
+      if (result.noChanges) {
+        showToast("No changes to apply", "success");
+      } else if (result.conflictingFiles.length > 0) {
+        showToast(
+          `Applied ${result.affectedFiles.length} file(s) with ${result.conflictingFiles.length} conflict(s) — resolve manually`,
+          "success",
+        );
+      } else {
+        showToast(`Applied ${result.affectedFiles.length} file(s) successfully`, "success");
+      }
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Failed to apply changes";
+      showToast(message);
+    }
+    setShowApplyDialog(false);
   };
 
   const handleRemove = async () => {
@@ -108,6 +139,21 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
     } finally {
       setIsRemoving(false);
       setShowRemoveDialog(false);
+    }
+  };
+
+  const handleBlock = async () => {
+    if (!task) return;
+    setIsBlocking(true);
+    try {
+      await blockTask(task.repoId, task.id);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Failed to block task";
+      setToastMessage(message);
+      setTimeout(() => setToastMessage(null), 4000);
+    } finally {
+      setIsBlocking(false);
+      setShowBlockDialog(false);
     }
   };
 
@@ -132,8 +178,9 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
         <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-3 overflow-hidden">
           <TaskInfoCard
             task={task}
-            isMarkingReady={isMarkingReady}
-            onMarkReady={handleMarkReady}
+            onMarkReady={() => setShowMarkReadyDialog(true)}
+            onApply={() => setShowApplyDialog(true)}
+            onShowBlockDialog={() => setShowBlockDialog(true)}
             onShowRemoveDialog={() => setShowRemoveDialog(true)}
           />
 
@@ -150,6 +197,21 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
         </div>
       </main>
 
+      <MarkReadyDialog
+        open={showMarkReadyDialog}
+        repoId={task.repoId}
+        onConfirm={handleMarkReadyConfirm}
+        onCancel={() => setShowMarkReadyDialog(false)}
+      />
+
+      <ApplyDialog
+        open={showApplyDialog}
+        repoId={task.repoId}
+        defaultBranch={task.baseBranch}
+        onConfirm={handleApplyConfirm}
+        onCancel={() => setShowApplyDialog(false)}
+      />
+
       <ConfirmDialog
         open={showRemoveDialog}
         title="Remove Task"
@@ -160,8 +222,24 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
         onCancel={() => setShowRemoveDialog(false)}
       />
 
+      <ConfirmDialog
+        open={showBlockDialog}
+        title="Block Task"
+        message={`Are you sure you want to block "${changeName}"? This will stop all running agents. You can resume the task later with "Mark Ready".`}
+        confirmLabel={isBlocking ? "Blocking..." : "Block"}
+        destructive
+        onConfirm={handleBlock}
+        onCancel={() => setShowBlockDialog(false)}
+      />
+
       {toastMessage && (
-        <div className="fixed bottom-4 right-4 rounded-aop-lg bg-aop-blocked/20 px-4 py-3 font-mono text-xs text-aop-blocked">
+        <div
+          className={`fixed bottom-4 right-4 rounded-aop-lg px-4 py-3 font-mono text-xs ${
+            toastType === "success"
+              ? "bg-aop-success/20 text-aop-success"
+              : "bg-aop-blocked/20 text-aop-blocked"
+          }`}
+        >
           {toastMessage}
         </div>
       )}
@@ -216,15 +294,17 @@ const BranchBadge = ({ branch }: { branch: string }) => (
 
 interface TaskInfoCardProps {
   task: Task;
-  isMarkingReady: boolean;
   onMarkReady: () => void;
+  onApply: () => void;
+  onShowBlockDialog: () => void;
   onShowRemoveDialog: () => void;
 }
 
 const TaskInfoCard = ({
   task,
-  isMarkingReady,
   onMarkReady,
+  onApply,
+  onShowBlockDialog,
   onShowRemoveDialog,
 }: TaskInfoCardProps) => {
   const repoName = task.repoPath?.split("/").pop() ?? task.repoPath ?? "";
@@ -240,15 +320,34 @@ const TaskInfoCard = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {task.status === "DRAFT" && (
+          {(task.status === "DRAFT" || task.status === "BLOCKED") && (
             <button
               type="button"
               onClick={onMarkReady}
-              disabled={isMarkingReady}
               data-testid="mark-ready-button"
-              className="cursor-pointer rounded-aop bg-aop-amber px-3 py-1 font-mono text-[10px] text-aop-black transition-colors hover:bg-aop-amber/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="cursor-pointer rounded-aop bg-aop-amber px-3 py-1 font-mono text-[10px] text-aop-black transition-colors hover:bg-aop-amber/90"
             >
-              {isMarkingReady ? "Marking..." : "Mark Ready"}
+              Mark Ready
+            </button>
+          )}
+          {(task.status === "DONE" || task.status === "BLOCKED") && (
+            <button
+              type="button"
+              onClick={onApply}
+              data-testid="apply-button"
+              className="cursor-pointer rounded-aop bg-aop-amber px-3 py-1 font-mono text-[10px] text-aop-black transition-colors hover:bg-aop-amber/90"
+            >
+              Apply
+            </button>
+          )}
+          {task.status === "WORKING" && (
+            <button
+              type="button"
+              onClick={onShowBlockDialog}
+              data-testid="block-task-button"
+              className="cursor-pointer rounded-aop border border-aop-blocked/50 px-3 py-1 font-mono text-[10px] text-aop-blocked transition-colors hover:border-aop-blocked hover:bg-aop-blocked/10"
+            >
+              Block
             </button>
           )}
           <button

@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { findRepoRoot, getRemoteOrigin } from "./utils.ts";
+import { cleanupTestRepos, createTestRepo } from "./test-utils.ts";
+import { findRepoRoot, getRemoteOrigin, listLocalBranches } from "./utils.ts";
 
 const TEST_DIR = join(tmpdir(), "git-utils-test");
 
@@ -38,9 +39,54 @@ describe("findRepoRoot", () => {
   });
 });
 
+describe("listLocalBranches", () => {
+  let repoPath: string;
+
+  beforeEach(async () => {
+    repoPath = await createTestRepo();
+  });
+
+  afterAll(async () => {
+    await cleanupTestRepos();
+  });
+
+  test("returns single branch for new repo", async () => {
+    const result = await listLocalBranches(repoPath);
+    expect(result.current).toBe("main");
+    expect(result.branches).toEqual(["main"]);
+  });
+
+  test("returns multiple branches", async () => {
+    await Bun.$`git checkout -b feature-a`.cwd(repoPath).quiet();
+    await Bun.$`git checkout -b feature-b`.cwd(repoPath).quiet();
+
+    const result = await listLocalBranches(repoPath);
+    expect(result.current).toBe("feature-b");
+    expect(result.branches).toContain("main");
+    expect(result.branches).toContain("feature-a");
+    expect(result.branches).toContain("feature-b");
+    expect(result.branches).toHaveLength(3);
+  });
+});
+
 describe("getRemoteOrigin", () => {
+  let repoPath: string;
+
+  afterAll(async () => {
+    await cleanupTestRepos();
+  });
+
   test("returns null for non-git directory", async () => {
     const origin = await getRemoteOrigin("/tmp");
     expect(origin).toBeNull();
+  });
+
+  test("returns origin url when remote is configured", async () => {
+    repoPath = await createTestRepo();
+    const fakeOrigin = "https://github.com/test/repo.git";
+    await Bun.$`git remote add origin ${fakeOrigin}`.cwd(repoPath).quiet();
+
+    const origin = await getRemoteOrigin(repoPath);
+    expect(origin).toBe(fakeOrigin);
   });
 });

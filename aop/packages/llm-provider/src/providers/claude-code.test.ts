@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, mock, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { LLMProvider } from "../types";
 import { ClaudeCodeProvider, createWatchdog } from "./claude-code";
 
@@ -112,49 +112,42 @@ describe("extractSessionId", () => {
 });
 
 describe("createWatchdog", () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  test("does not trigger callback when activity is within timeout", () => {
+  test("does not trigger callback when activity is within timeout", async () => {
     let onTimeoutCalled = false;
     const lastActivity = Date.now();
 
-    createWatchdog(
+    const watchdog = createWatchdog(
       1000,
       () => lastActivity,
       () => {
         onTimeoutCalled = true;
       },
-      100,
+      50,
     );
 
-    jest.advanceTimersByTime(500);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    watchdog.stop();
     expect(onTimeoutCalled).toBe(false);
   });
 
-  test("triggers callback when inactivity exceeds timeout", () => {
+  test("triggers callback when inactivity exceeds timeout", async () => {
     let onTimeoutCalled = false;
     const startTime = Date.now();
 
     createWatchdog(
       1000,
-      () => startTime - 2000, // simulate 2 seconds of inactivity
+      () => startTime - 2000,
       () => {
         onTimeoutCalled = true;
       },
-      100,
+      50,
     );
 
-    jest.advanceTimersByTime(100);
+    await new Promise((resolve) => setTimeout(resolve, 150));
     expect(onTimeoutCalled).toBe(true);
   });
 
-  test("stop() clears the interval and prevents callback", () => {
+  test("stop() clears the interval and prevents callback", async () => {
     let onTimeoutCalled = false;
     const startTime = Date.now();
 
@@ -164,11 +157,11 @@ describe("createWatchdog", () => {
       () => {
         onTimeoutCalled = true;
       },
-      100,
+      50,
     );
 
     watchdog.stop();
-    jest.advanceTimersByTime(200);
+    await new Promise((resolve) => setTimeout(resolve, 150));
     expect(onTimeoutCalled).toBe(false);
   });
 });

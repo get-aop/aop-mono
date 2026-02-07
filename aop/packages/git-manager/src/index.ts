@@ -1,5 +1,4 @@
 export {
-  ApplyConflictError,
   BranchExistsError,
   BranchNotFoundError,
   DirtyWorkingDirectoryError,
@@ -18,4 +17,4 @@ export type {
   SquashResult,
   WorktreeInfo,
 } from "./types.ts";
-export { findRepoRoot, getRemoteOrigin } from "./utils.ts";
+export { findRepoRoot, getRemoteOrigin, listLocalBranches } from "./utils.ts";

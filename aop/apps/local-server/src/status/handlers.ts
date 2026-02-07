@@ -49,7 +49,7 @@ export const getServerStatus = async (ctx: LocalServerContext): Promise<ServerSt
         name: repo.name,
         path: repo.path,
         working,
-        max: repo.max_concurrent_tasks ?? 1,
+        max: repo.max_concurrent_tasks ?? 3,
         tasks: sseTasks,
       };
     }),

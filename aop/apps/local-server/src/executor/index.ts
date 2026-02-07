@@ -1,4 +1,4 @@
-export { type AbortResult, abortTask } from "./abort.ts";
+export { type AbortResult, type AbortTaskOptions, abortTask } from "./abort.ts";
 export { createExecutionRepository, type ExecutionRepository } from "./execution-repository.ts";
 export {
   type Execution,

@@ -103,20 +103,23 @@ describe("applyCommand", () => {
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
-  test("exits on apply 409 - Conflicts detected", async () => {
+  test("succeeds with conflicts reported", async () => {
     mockFetchServer
       .mockResolvedValueOnce({
         ok: true,
         data: { task: { id: "t1", repo_id: "r1", status: "DONE" } },
       })
       .mockResolvedValueOnce({
-        ok: false,
-        status: 409,
-        error: { error: "Conflicts detected", conflictingFiles: ["a.ts", "b.ts"] },
+        ok: true,
+        data: {
+          ok: true,
+          affectedFiles: ["a.ts", "b.ts"],
+          conflictingFiles: ["a.ts", "b.ts"],
+        },
       });
 
-    await expect(applyCommand("t1")).rejects.toThrow("process.exit");
-    expect(process.exit).toHaveBeenCalledWith(1);
+    await applyCommand("t1");
+    expect(process.exit).not.toHaveBeenCalled();
   });
 
   test("succeeds with noChanges", async () => {
@@ -127,7 +130,7 @@ describe("applyCommand", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        data: { ok: true, affectedFiles: [], noChanges: true },
+        data: { ok: true, affectedFiles: [], conflictingFiles: [], noChanges: true },
       });
 
     await applyCommand("t1");
@@ -142,7 +145,7 @@ describe("applyCommand", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        data: { ok: true, affectedFiles: ["src/a.ts", "src/b.ts"] },
+        data: { ok: true, affectedFiles: ["src/a.ts", "src/b.ts"], conflictingFiles: [] },
       });
 
     await applyCommand("t1");

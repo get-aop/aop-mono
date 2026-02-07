@@ -10,7 +10,7 @@ import {
   symlinkSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { getRemoteOrigin } from "@aop/git-manager";
+import { getRemoteOrigin, listLocalBranches } from "@aop/git-manager";
 import { aopPaths, generateTypeId, getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
@@ -65,7 +65,7 @@ export const initRepo = async (
     path: repoPath,
     name,
     remote_origin: remoteOrigin,
-    max_concurrent_tasks: 1,
+    max_concurrent_tasks: 3,
     created_at: now,
     updated_at: now,
   });
@@ -210,6 +210,10 @@ const checkGitRepo = async (path: string): Promise<boolean> => {
     return false;
   }
 };
+
+export const listRepoBranches = (
+  repoPath: string,
+): Promise<{ branches: string[]; current: string }> => listLocalBranches(repoPath);
 
 export const getRepoById = async (ctx: LocalServerContext, repoId: string) => {
   return ctx.repoRepository.getById(repoId);

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
-  ApplyConflictError,
+  BranchNotFoundError,
   DirtyWorkingDirectoryError,
   GitManager,
   NoChangesError,
@@ -140,8 +140,36 @@ export const removeTask = async (
   return { success: true, taskId: task.id, aborted: false };
 };
 
+export type BlockTaskResult =
+  | { success: true; taskId: string; agentKilled: boolean }
+  | { success: false; error: BlockTaskError };
+
+export type BlockTaskError =
+  | { code: "NOT_FOUND"; identifier: string }
+  | { code: "INVALID_STATUS"; status: string };
+
+export const blockTask = async (
+  ctx: LocalServerContext,
+  identifier: string,
+): Promise<BlockTaskResult> => {
+  const task = await resolveTask(ctx.taskRepository, identifier);
+  if (!task) {
+    return { success: false, error: { code: "NOT_FOUND", identifier } };
+  }
+
+  if (task.status !== "WORKING") {
+    return {
+      success: false,
+      error: { code: "INVALID_STATUS", status: task.status },
+    };
+  }
+
+  const result = await abortTask(ctx, task.id, { targetStatus: "BLOCKED" });
+  return { success: true, taskId: task.id, agentKilled: result.agentKilled };
+};
+
 export type ApplyTaskResult =
-  | { success: true; affectedFiles: string[] }
+  | { success: true; affectedFiles: string[]; conflictingFiles: string[] }
   | { success: false; error: ApplyTaskError };
 
 export type ApplyTaskError =
@@ -149,13 +177,14 @@ export type ApplyTaskError =
   | { code: "INVALID_STATUS"; status: string }
   | { code: "REPO_NOT_FOUND"; taskId: string }
   | { code: "DIRTY_WORKING_DIRECTORY" }
-  | { code: "CONFLICT"; conflictingFiles: string[] }
   | { code: "NO_CHANGES" }
-  | { code: "WORKTREE_NOT_FOUND"; taskId: string };
+  | { code: "WORKTREE_NOT_FOUND"; taskId: string }
+  | { code: "BRANCH_NOT_FOUND"; branch: string };
 
 export const applyTask = async (
   ctx: LocalServerContext,
   identifier: string,
+  targetBranch?: string,
 ): Promise<ApplyTaskResult> => {
   const task = await resolveTask(ctx.taskRepository, identifier);
   if (!task) {
@@ -181,8 +210,12 @@ export const applyTask = async (
   await gitManager.init();
 
   try {
-    const result = await gitManager.applyWorktree(task.id);
-    return { success: true, affectedFiles: result.affectedFiles };
+    const result = await gitManager.applyWorktree(task.id, targetBranch);
+    return {
+      success: true,
+      affectedFiles: result.affectedFiles,
+      conflictingFiles: result.conflictingFiles,
+    };
   } catch (err) {
     return { success: false, error: classifyApplyError(err, task.id) };
   }
@@ -198,14 +231,14 @@ const classifyApplyError = (err: unknown, taskId: string): ApplyTaskError => {
   if (err instanceof DirtyWorkingDirectoryError) {
     return { code: "DIRTY_WORKING_DIRECTORY" };
   }
-  if (err instanceof ApplyConflictError) {
-    return { code: "CONFLICT", conflictingFiles: err.conflictingFiles };
-  }
   if (err instanceof NoChangesError) {
     return { code: "NO_CHANGES" };
   }
   if (err instanceof WorktreeNotFoundError) {
     return { code: "WORKTREE_NOT_FOUND", taskId };
+  }
+  if (err instanceof BranchNotFoundError) {
+    return { code: "BRANCH_NOT_FOUND", branch: err.branch };
   }
   throw err;
 };

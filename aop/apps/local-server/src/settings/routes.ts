@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import type { LocalServerContext } from "../context.ts";
-import { getAllSettings, getSetting, setSetting } from "./handlers.ts";
+import {
+  cleanupRemovedWorktrees,
+  getAllSettings,
+  getSetting,
+  setAllSettings,
+  setSetting,
+} from "./handlers.ts";
 
 export const createSettingsRoutes = (ctx: LocalServerContext) => {
   const routes = new Hono();
@@ -8,6 +14,29 @@ export const createSettingsRoutes = (ctx: LocalServerContext) => {
   routes.get("/", async (c) => {
     const result = await getAllSettings(ctx);
     return c.json({ settings: result.settings });
+  });
+
+  routes.put("/", async (c) => {
+    const body = await c.req.json<{ settings: Array<{ key: string; value: string }> }>();
+
+    if (!Array.isArray(body.settings)) {
+      return c.json({ error: "Missing required field: settings" }, 400);
+    }
+
+    const result = await setAllSettings(ctx, body.settings);
+    if (!result.success) {
+      return c.json(
+        { error: "Invalid key", key: result.error.key, validKeys: result.error.validKeys },
+        400,
+      );
+    }
+
+    return c.json({ ok: true, settings: result.settings });
+  });
+
+  routes.post("/cleanup-worktrees", async (c) => {
+    const result = await cleanupRemovedWorktrees(ctx);
+    return c.json(result);
   });
 
   routes.get("/:key", async (c) => {

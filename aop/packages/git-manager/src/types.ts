@@ -17,4 +17,5 @@ export interface SquashResult {
 
 export interface ApplyResult {
   affectedFiles: string[];
+  conflictingFiles: string[];
 }

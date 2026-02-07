@@ -34,6 +34,24 @@ const parseSSEEvents = (text: string): SSEParsedEvent[] => {
     .filter((e): e is SSEParsedEvent => e !== null);
 };
 
+const collectChunks = async (
+  reader: { read: () => Promise<{ value?: Uint8Array; done: boolean }> },
+  maxReads: number,
+  timeoutMs = 500,
+): Promise<string> => {
+  const decoder = new TextDecoder();
+  let text = "";
+  for (let i = 0; i < maxReads; i++) {
+    const timeout = new Promise<{ value: undefined; done: true }>((resolve) =>
+      setTimeout(() => resolve({ value: undefined, done: true }), timeoutMs),
+    );
+    const result = await Promise.race([reader.read(), timeout]);
+    if (result.value) text += decoder.decode(result.value);
+    if (result.done) break;
+  }
+  return text;
+};
+
 describe("events/routes", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
@@ -112,11 +130,9 @@ describe("events/routes", () => {
       // biome-ignore lint/style/noNonNullAssertion: test code, body always exists
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
-      let text = "";
 
-      // Read init + immediate heartbeat
       const { value: initValue } = await reader.read();
-      text += decoder.decode(initValue);
+      let text = decoder.decode(initValue);
 
       const now = new Date().toISOString();
       await ctx.taskRepository.create({
@@ -129,12 +145,7 @@ describe("events/routes", () => {
       });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
-
-      // Read until we get the task-created event
-      for (let i = 0; i < 3; i++) {
-        const { value } = await reader.read();
-        if (value) text += decoder.decode(value);
-      }
+      text += await collectChunks(reader, 3);
       controller.abort();
 
       const events = parseSSEEvents(text);
@@ -159,21 +170,14 @@ describe("events/routes", () => {
       // biome-ignore lint/style/noNonNullAssertion: test code, body always exists
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
-      let text = "";
 
-      // Read init + immediate heartbeat
       const { value: initValue } = await reader.read();
-      text += decoder.decode(initValue);
+      let text = decoder.decode(initValue);
 
       await ctx.taskRepository.update("task-1", { status: "READY" });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
-
-      // Read until we get the status-changed event
-      for (let i = 0; i < 3; i++) {
-        const { value } = await reader.read();
-        if (value) text += decoder.decode(value);
-      }
+      text += await collectChunks(reader, 3);
       controller.abort();
 
       const events = parseSSEEvents(text);
@@ -200,21 +204,15 @@ describe("events/routes", () => {
       // biome-ignore lint/style/noNonNullAssertion: test code, body always exists
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
-      let text = "";
 
-      // Read init + immediate heartbeat
       const { value: initValue } = await reader.read();
-      text += decoder.decode(initValue);
+      let text = decoder.decode(initValue);
 
       await ctx.taskRepository.markRemoved("task-1");
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       // markRemoved emits both task-status-changed and task-removed events
-      // Read multiple chunks to ensure we get all events
-      for (let i = 0; i < 4; i++) {
-        const { value } = await reader.read();
-        if (value) text += decoder.decode(value);
-      }
+      text += await collectChunks(reader, 4);
       controller.abort();
 
       const events = parseSSEEvents(text);

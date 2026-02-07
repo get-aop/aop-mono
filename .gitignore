@@ -18,6 +18,6 @@ link-claude.sh
 .idea
 .leo
 
-openspec/
+openspec
 aop/.claude/skills/openspec*
 aop/.claude/commands/opsx*

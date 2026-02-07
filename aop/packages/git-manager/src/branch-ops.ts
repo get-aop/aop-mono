@@ -35,6 +35,19 @@ export class BranchOps {
     await this.executor.exec(["checkout", "-"]);
   }
 
+  async listLocal(): Promise<{ branches: string[]; current: string }> {
+    const output = await this.executor.exec(["branch", "--format=%(refname:short)"]);
+    const branches = output
+      .split("\n")
+      .map((b) => b.trim())
+      .filter(Boolean);
+
+    const currentResult = await this.executor.execRaw(["branch", "--show-current"]);
+    const current = currentResult.exitCode === 0 ? currentResult.stdout : (branches[0] ?? "main");
+
+    return { branches, current };
+  }
+
   async getDefaultBranch(): Promise<string> {
     // Try to get the default branch from origin
     const remoteResult = await this.executor.execRaw(["symbolic-ref", "refs/remotes/origin/HEAD"]);

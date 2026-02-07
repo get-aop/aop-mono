@@ -10,6 +10,7 @@ import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
 import {
   applyTask,
+  blockTask,
   getTaskById,
   markTaskReady,
   removeTask,
@@ -321,6 +322,73 @@ describe("task/handlers", () => {
     });
   });
 
+  describe("blockTask", () => {
+    test("returns NOT_FOUND when task does not exist", async () => {
+      const result = await blockTask(ctx, "non-existent");
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("NOT_FOUND");
+        expect((result.error as { identifier: string }).identifier).toBe("non-existent");
+      }
+    });
+
+    test("blocks WORKING task and sets status to BLOCKED", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "WORKING");
+
+      const result = await blockTask(ctx, "task-1");
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.taskId).toBe("task-1");
+        expect(result.agentKilled).toBe(false);
+      }
+
+      const task = await getTaskById(ctx, "task-1");
+      expect(task?.status).toBe("BLOCKED");
+    });
+
+    test("returns INVALID_STATUS for DRAFT task", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+
+      const result = await blockTask(ctx, "task-1");
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("INVALID_STATUS");
+        expect((result.error as { status: string }).status).toBe("DRAFT");
+      }
+    });
+
+    test("returns INVALID_STATUS for DONE task", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+
+      const result = await blockTask(ctx, "task-1");
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("INVALID_STATUS");
+        expect((result.error as { status: string }).status).toBe("DONE");
+      }
+    });
+
+    test("returns INVALID_STATUS for BLOCKED task", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "BLOCKED");
+
+      const result = await blockTask(ctx, "task-1");
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("INVALID_STATUS");
+        expect((result.error as { status: string }).status).toBe("BLOCKED");
+      }
+    });
+  });
+
   describe("applyTask", () => {
     let testRepoPath: string;
 
@@ -538,7 +606,7 @@ describe("task/handlers", () => {
       }
     });
 
-    test("returns CONFLICT when merge has conflicts", async () => {
+    test("applies with conflicts and returns conflicting files", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
 
@@ -569,12 +637,10 @@ describe("task/handlers", () => {
 
       const result = await applyTask(ctx, "task-1");
 
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("CONFLICT");
-        expect((result.error as { conflictingFiles: string[] }).conflictingFiles).toContain(
-          "README.md",
-        );
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.affectedFiles).toContain("README.md");
+        expect(result.conflictingFiles).toContain("README.md");
       }
     });
   });

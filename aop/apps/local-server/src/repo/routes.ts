@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { LocalServerContext } from "../context.ts";
 import { createTaskRoutes } from "../task/routes";
-import { getRepoById, getRepoTasks, initRepo, removeRepo } from "./handlers.ts";
+import { getRepoById, getRepoTasks, initRepo, listRepoBranches, removeRepo } from "./handlers.ts";
 
 export const createRepoRoutes = (ctx: LocalServerContext) => {
   const routes = new Hono();
@@ -56,6 +56,18 @@ export const createRepoRoutes = (ctx: LocalServerContext) => {
       repoId: result.repoId,
       abortedTasks: result.abortedTasks,
     });
+  });
+
+  routes.get("/:id/branches", async (c) => {
+    const id = c.req.param("id");
+
+    const repo = await getRepoById(ctx, id);
+    if (!repo) {
+      return c.json({ error: "Repo not found" }, 404);
+    }
+
+    const result = await listRepoBranches(repo.path);
+    return c.json(result);
   });
 
   routes.get("/:id/tasks", async (c) => {

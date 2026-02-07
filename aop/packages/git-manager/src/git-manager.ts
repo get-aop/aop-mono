@@ -31,8 +31,12 @@ export class GitManager {
     this.mergeOps = new MergeOps(this.executor, this.branchOps, this.metadata, (taskId) =>
       this.worktreeOps.exists(taskId),
     );
-    this.applyOps = new ApplyOps(this.repoPath, worktreesDir, this.metadata, (taskId) =>
-      this.worktreeOps.exists(taskId),
+    this.applyOps = new ApplyOps(
+      this.repoPath,
+      worktreesDir,
+      this.metadata,
+      (taskId) => this.worktreeOps.exists(taskId),
+      this.executor,
     );
   }
 
@@ -58,8 +62,19 @@ export class GitManager {
     return this.worktreeOps.remove(taskId);
   }
 
-  async applyWorktree(taskId: string): Promise<ApplyResult> {
+  async forceRemoveWorktree(taskId: string): Promise<void> {
+    return this.worktreeOps.forceRemove(taskId);
+  }
+
+  async applyWorktree(taskId: string, targetBranch?: string): Promise<ApplyResult> {
+    if (targetBranch) {
+      return this.applyOps.applyWorktreeToTarget(taskId, targetBranch);
+    }
     return this.applyOps.applyWorktree(taskId);
+  }
+
+  async listLocalBranches(): Promise<{ branches: string[]; current: string }> {
+    return this.branchOps.listLocal();
   }
 
   async getDefaultBranch(): Promise<string> {

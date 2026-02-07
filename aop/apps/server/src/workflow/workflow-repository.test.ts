@@ -79,6 +79,24 @@ describe("WorkflowRepository", () => {
     });
   });
 
+  describe("listNames", () => {
+    test("returns empty array when no workflows exist", async () => {
+      const names = await repository.listNames();
+
+      expect(names).toEqual([]);
+    });
+
+    test("returns workflow names in alphabetical order", async () => {
+      await repository.create({ id: "w-1", name: "zeta-workflow", definition: "{}" });
+      await repository.create({ id: "w-2", name: "alpha-workflow", definition: "{}" });
+      await repository.create({ id: "w-3", name: "mid-workflow", definition: "{}" });
+
+      const names = await repository.listNames();
+
+      expect(names).toEqual(["alpha-workflow", "mid-workflow", "zeta-workflow"]);
+    });
+  });
+
   describe("upsert", () => {
     test("inserts new workflow when name does not exist", async () => {
       const workflow = await repository.upsert({

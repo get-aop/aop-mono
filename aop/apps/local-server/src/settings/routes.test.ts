@@ -36,7 +36,7 @@ describe("settings/routes", () => {
         (s: { key: string }) => s.key === "max_concurrent_tasks",
       );
       expect(maxConcurrent).toBeDefined();
-      expect(maxConcurrent.value).toBe("1");
+      expect(maxConcurrent.value).toBe("3");
     });
   });
 
@@ -47,7 +47,7 @@ describe("settings/routes", () => {
 
       expect(res.status).toBe(200);
       expect(body.key).toBe("max_concurrent_tasks");
-      expect(body.value).toBe("1");
+      expect(body.value).toBe("3");
     });
 
     test("returns 400 for invalid key", async () => {
@@ -102,6 +102,71 @@ describe("settings/routes", () => {
 
       expect(res.status).toBe(400);
       expect(body.error).toBe("Missing required field: value");
+    });
+  });
+
+  describe("PUT /api/settings (bulk)", () => {
+    test("saves multiple settings", async () => {
+      const res = await app.request("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          settings: [
+            { key: "max_concurrent_tasks", value: "10" },
+            { key: "agent_timeout_secs", value: "600" },
+          ],
+        }),
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.settings).toHaveLength(2);
+
+      const getRes = await app.request("/api/settings/max_concurrent_tasks");
+      const getBody: AnyJson = await getRes.json();
+      expect(getBody.value).toBe("10");
+    });
+
+    test("returns 400 when settings field is missing", async () => {
+      const res = await app.request("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error).toBe("Missing required field: settings");
+    });
+
+    test("returns 400 when any key is invalid", async () => {
+      const res = await app.request("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          settings: [
+            { key: "max_concurrent_tasks", value: "5" },
+            { key: "not_a_real_key", value: "bad" },
+          ],
+        }),
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error).toBe("Invalid key");
+      expect(body.key).toBe("not_a_real_key");
+    });
+  });
+
+  describe("POST /api/settings/cleanup-worktrees", () => {
+    test("returns cleanup result", async () => {
+      const res = await app.request("/api/settings/cleanup-worktrees", { method: "POST" });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.cleaned).toBe(0);
+      expect(body.failed).toBe(0);
     });
   });
 });

@@ -12,6 +12,7 @@ import { checkDbConnection } from "./settings/handlers.ts";
 import { createSettingsRoutes } from "./settings/routes";
 import { getServerStatus } from "./status/handlers.ts";
 import { resolveTaskByIdentifier } from "./task/handlers.ts";
+import { createWorkflowRoutes } from "./workflow/routes.ts";
 
 export type ServiceStatus = "running" | "stopped";
 
@@ -100,6 +101,8 @@ export const createApp = (deps: AppDependencies) => {
 
   app.get("/api/events", createEventsSSEHandler(ctx, deps.eventsSSEOptions));
   app.get("/api/executions/:executionId/logs", createLogStreamHandler(ctx));
+
+  app.route("/api/workflows", createWorkflowRoutes(ctx));
 
   app.get("/api/metrics", async (c) => {
     const repoId = c.req.query("repoId");

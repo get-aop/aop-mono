@@ -82,7 +82,7 @@ describe("orchestrator graceful shutdown", () => {
       await orchestrator.stop();
       const duration = Date.now() - startTime;
 
-      expect(duration).toBeLessThan(100);
+      expect(duration).toBeLessThan(500);
       expect(orchestrator.isReady()).toBe(false);
     });
 

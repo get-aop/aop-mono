@@ -54,13 +54,6 @@ export class NotAGitRepositoryError extends Error {
   }
 }
 
-export class ApplyConflictError extends Error {
-  constructor(public readonly conflictingFiles: string[]) {
-    super(`Apply conflict in files: ${conflictingFiles.join(", ")}`);
-    this.name = "ApplyConflictError";
-  }
-}
-
 export class DirtyWorkingDirectoryError extends Error {
   constructor() {
     super("Main repository has uncommitted changes. Commit or stash them first.");

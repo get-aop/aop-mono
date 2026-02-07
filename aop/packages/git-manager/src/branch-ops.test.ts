@@ -78,6 +78,29 @@ describe("BranchOps", () => {
     });
   });
 
+  describe("listLocal", () => {
+    test("lists all local branches and current branch", async () => {
+      await Bun.$`git branch feature-a`.cwd(repoPath).quiet();
+      await Bun.$`git branch feature-b`.cwd(repoPath).quiet();
+
+      const result = await branchOps.listLocal();
+
+      expect(result.branches).toContain("main");
+      expect(result.branches).toContain("feature-a");
+      expect(result.branches).toContain("feature-b");
+      expect(result.current).toBe("main");
+    });
+
+    test("reflects current branch after checkout", async () => {
+      await Bun.$`git branch feature`.cwd(repoPath).quiet();
+      await branchOps.checkout("feature");
+
+      const result = await branchOps.listLocal();
+
+      expect(result.current).toBe("feature");
+    });
+  });
+
   describe("getDefaultBranch", () => {
     test("returns main when main branch exists", async () => {
       const defaultBranch = await branchOps.getDefaultBranch();

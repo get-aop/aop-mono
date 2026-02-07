@@ -499,6 +499,73 @@ describe("task/routes", () => {
     });
   });
 
+  describe("POST /api/repos/:repoId/tasks/:taskId/block", () => {
+    test("returns 404 for non-existent repo", async () => {
+      const res = await app.request("/api/repos/non-existent/tasks/task-1/block", {
+        method: "POST",
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("Repo not found");
+    });
+
+    test("returns 404 for non-existent task", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+
+      const res = await app.request("/api/repos/repo-1/tasks/non-existent/block", {
+        method: "POST",
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("Task not found");
+    });
+
+    test("returns 404 when task belongs to different repo", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo1");
+      await createTestRepo(db, "repo-2", "/path/to/repo2");
+      await createTestTask(db, "task-1", "repo-2", "changes/feat", "WORKING");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/block", {
+        method: "POST",
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("Task not found");
+    });
+
+    test("returns 409 for non-WORKING task", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/block", {
+        method: "POST",
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(409);
+      expect(body.error).toBe("Task is not currently working");
+      expect(body.status).toBe("DRAFT");
+    });
+
+    test("blocks WORKING task successfully", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "WORKING");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/block", {
+        method: "POST",
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.taskId).toBe("task-1");
+      expect(body.agentKilled).toBeDefined();
+    });
+  });
+
   describe("POST /api/repos/:repoId/tasks/:taskId/apply", () => {
     test("returns 404 for non-existent repo", async () => {
       const res = await app.request("/api/repos/non-existent/tasks/task-1/apply", {
@@ -680,7 +747,7 @@ describe("task/routes", () => {
       expect(body.error).toBe("Main repository has uncommitted changes");
     });
 
-    test("returns 409 for CONFLICT", async () => {
+    test("applies with conflicts and returns conflicting files", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
 
@@ -713,8 +780,9 @@ describe("task/routes", () => {
       });
       const body: AnyJson = await res.json();
 
-      expect(res.status).toBe(409);
-      expect(body.error).toBe("Conflicts detected");
+      expect(res.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.affectedFiles).toContain("README.md");
       expect(body.conflictingFiles).toContain("README.md");
     });
 

@@ -14,7 +14,7 @@ export const SettingKey = {
 export type SettingKey = (typeof SettingKey)[keyof typeof SettingKey];
 
 export const DEFAULT_SETTINGS: Record<SettingKey, string> = {
-  [SettingKey.MAX_CONCURRENT_TASKS]: "1",
+  [SettingKey.MAX_CONCURRENT_TASKS]: "3",
   [SettingKey.WATCHER_POLL_INTERVAL_SECS]: "30",
   [SettingKey.QUEUE_POLL_INTERVAL_SECS]: "1",
   [SettingKey.AGENT_TIMEOUT_SECS]: "1800",

@@ -48,7 +48,7 @@ const createReposTable = async (db: Kysely<Database>): Promise<void> => {
     .addColumn("path", "text", (col) => col.notNull().unique())
     .addColumn("name", "text")
     .addColumn("remote_origin", "text")
-    .addColumn("max_concurrent_tasks", "integer", (col) => col.defaultTo(1))
+    .addColumn("max_concurrent_tasks", "integer", (col) => col.defaultTo(3))
     .addColumn("created_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
     .addColumn("updated_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
     .execute();

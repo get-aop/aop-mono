@@ -183,6 +183,39 @@ describe("GitManager", () => {
     });
   });
 
+  describe("forceRemoveWorktree", () => {
+    test("force-removes worktree with uncommitted changes", async () => {
+      const manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });
+      await manager.init();
+
+      const worktree = await manager.createWorktree("feat-dirty", "main");
+      await Bun.$`echo "uncommitted" > dirty.txt`.cwd(worktree.path).quiet();
+
+      await manager.forceRemoveWorktree("feat-dirty");
+
+      const dirResult = await Bun.$`test -d ${worktree.path}`.quiet().nothrow();
+      expect(dirResult.exitCode).not.toBe(0);
+    });
+
+    test("silently skips if worktree does not exist", async () => {
+      const manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });
+      await manager.init();
+
+      await expect(manager.forceRemoveWorktree("nonexistent")).resolves.toBeUndefined();
+    });
+
+    test("removes clean worktree", async () => {
+      const manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });
+      await manager.init();
+
+      const worktree = await manager.createWorktree("feat-clean", "main");
+      await manager.forceRemoveWorktree("feat-clean");
+
+      const dirResult = await Bun.$`test -d ${worktree.path}`.quiet().nothrow();
+      expect(dirResult.exitCode).not.toBe(0);
+    });
+  });
+
   describe("removeWorktree", () => {
     test("removes clean worktree and its branch", async () => {
       const manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });

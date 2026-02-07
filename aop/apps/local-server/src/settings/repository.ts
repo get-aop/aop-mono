@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, SettingKey } from "./types.ts";
 export interface SettingsRepository {
   get: (key: SettingKey) => Promise<string>;
   set: (key: SettingKey, value: string) => Promise<void>;
+  setAll: (entries: { key: SettingKey; value: string }[]) => Promise<void>;
   getAll: () => Promise<Setting[]>;
 }
 
@@ -43,6 +44,16 @@ export const createSettingsRepository = (db: Kysely<Database>): SettingsReposito
       .values({ key, value })
       .onConflict((oc) => oc.column("key").doUpdateSet({ value }))
       .execute();
+  },
+
+  setAll: async (entries: { key: SettingKey; value: string }[]): Promise<void> => {
+    for (const { key, value } of entries) {
+      await db
+        .insertInto("settings")
+        .values({ key, value })
+        .onConflict((oc) => oc.column("key").doUpdateSet({ value }))
+        .execute();
+    }
   },
 
   getAll: async (): Promise<Setting[]> => {

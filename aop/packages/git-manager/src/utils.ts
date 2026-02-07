@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { BranchOps } from "./branch-ops.ts";
+import { GitExecutor } from "./git-executor.ts";
 
 /**
  * Traverses up from startPath to find the nearest directory containing a .git folder.
@@ -14,6 +16,14 @@ export const findRepoRoot = (startPath: string): string | null => {
     current = dirname(current);
   }
   return null;
+};
+
+export const listLocalBranches = async (
+  repoPath: string,
+): Promise<{ branches: string[]; current: string }> => {
+  const executor = new GitExecutor(repoPath);
+  const branchOps = new BranchOps(executor);
+  return branchOps.listLocal();
 };
 
 export const getRemoteOrigin = async (repoPath: string): Promise<string | null> => {

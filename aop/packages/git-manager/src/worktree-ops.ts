@@ -66,6 +66,21 @@ export class WorktreeOps {
     logger.info("Removed worktree {taskId}", { taskId });
   }
 
+  async forceRemove(taskId: string): Promise<void> {
+    validateTaskId(taskId);
+
+    if (!(await this.exists(taskId))) {
+      return;
+    }
+
+    const worktreePath = `${this.worktreesDir}/${taskId}`;
+    await this.executor.exec(["worktree", "remove", "--force", worktreePath]);
+    await this.executor.execRaw(["branch", "-D", taskId]);
+    await this.metadata.delete(taskId);
+
+    logger.info("Force-removed worktree {taskId}", { taskId });
+  }
+
   async exists(taskId: string): Promise<boolean> {
     const worktreePath = `${this.worktreesDir}/${taskId}`;
     const result = await Bun.$`test -d ${worktreePath}`.quiet().nothrow();

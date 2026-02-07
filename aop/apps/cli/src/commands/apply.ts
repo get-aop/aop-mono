@@ -16,13 +16,13 @@ interface ResolveResponse {
 interface ApplyResponse {
   ok: boolean;
   affectedFiles: string[];
+  conflictingFiles: string[];
   noChanges?: boolean;
 }
 
 interface ApplyErrorResponse {
   error: string;
   status?: string;
-  conflictingFiles?: string[];
 }
 
 export const applyCommand = async (identifier: string): Promise<void> => {
@@ -58,14 +58,24 @@ export const applyCommand = async (identifier: string): Promise<void> => {
     return;
   }
 
-  printSuccess(applyResult.data.affectedFiles);
+  printSuccess(applyResult.data.affectedFiles, applyResult.data.conflictingFiles);
 };
 
-const printSuccess = (affectedFiles: string[]): void => {
+const printSuccess = (affectedFiles: string[], conflictingFiles: string[]): void => {
   logger.info("\nApplied {count} files:", { count: affectedFiles.length });
   for (const file of affectedFiles) {
     logger.info("  {file}", { file });
   }
+
+  if (conflictingFiles.length > 0) {
+    logger.info("\nConflicts in {count} file(s) — resolve manually:", {
+      count: conflictingFiles.length,
+    });
+    for (const file of conflictingFiles) {
+      logger.info("  {file}", { file });
+    }
+  }
+
   logger.info("\nReview changes and commit when ready.");
 };
 
@@ -91,15 +101,6 @@ const handleConflict = (error: ApplyErrorResponse): void => {
   if (error.error === "Main repository has uncommitted changes") {
     logger.error("\nError: Main repository has uncommitted changes");
     logger.error("Commit or stash your changes first, then re-run apply");
-    return;
-  }
-
-  if (error.error === "Conflicts detected") {
-    logger.error("\nError: Conflicts detected while applying changes");
-    logger.error("Conflicting files:");
-    for (const file of error.conflictingFiles ?? []) {
-      logger.error("  {file}", { file });
-    }
     return;
   }
 
