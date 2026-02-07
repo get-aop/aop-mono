@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Kysely } from "kysely";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
+import type { TaskEvent, TaskEventEmitter } from "../events/task-events.ts";
 import { createTaskRepository, type TaskRepository } from "./repository.ts";
 
 describe("task/repository", () => {
@@ -75,6 +76,32 @@ describe("task/repository", () => {
 
       expect(duplicateTask?.id).toBe("task-1");
       expect(duplicateTask?.status).toBe("DRAFT");
+    });
+
+    test("does not emit task-created when returning existing REMOVED task", async () => {
+      const events: TaskEvent[] = [];
+      const eventEmitter: TaskEventEmitter = {
+        emit: (event) => events.push(event),
+        subscribe: () => () => {},
+        listenerCount: () => 0,
+      };
+      const repoWithEvents = createTaskRepository(db, { eventEmitter });
+
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "REMOVED");
+
+      const now = new Date().toISOString();
+      const result = await repoWithEvents.createIdempotent({
+        id: "task-2",
+        repo_id: "repo-1",
+        change_path: "changes/feat-1",
+        status: "DRAFT",
+        created_at: now,
+        updated_at: now,
+      });
+
+      expect(result?.id).toBe("task-1");
+      expect(result?.status).toBe("REMOVED");
+      expect(events).toHaveLength(0);
     });
   });
 

@@ -114,7 +114,7 @@ export const createTaskRepository = (
         .returningAll()
         .executeTakeFirst();
 
-      if (result) {
+      if (result && result.id === task.id) {
         emitTaskCreated(result);
       }
       return result ?? null;

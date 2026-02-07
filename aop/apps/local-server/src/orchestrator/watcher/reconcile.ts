@@ -22,15 +22,16 @@ export interface ReconcileDeps {
 export const reconcileRepo = async (repo: Repo, deps: ReconcileDeps): Promise<ReconcileResult> => {
   const startTime = performance.now();
   const log = logger.with({ repoId: repo.id, repoPath: repo.path });
-
   const globalChangesPath = aopPaths.openspecChanges(repo.id);
   const changesOnDisk = getChangesOnDisk(globalChangesPath);
-  const activeTasks = await deps.taskRepository.list({ repo_id: repo.id, excludeRemoved: true });
+
+  const allTasks = await deps.taskRepository.list({ repo_id: repo.id });
+  const activeTasks = allTasks.filter((t) => t.status !== "REMOVED");
 
   const created = await createMissingTasks(
     repo.id,
     changesOnDisk,
-    activeTasks,
+    allTasks,
     deps.taskRepository,
     log,
   );
@@ -69,16 +70,16 @@ export const reconcileAllRepos = async (deps: ReconcileDeps): Promise<ReconcileR
 const createMissingTasks = async (
   repoId: string,
   changesOnDisk: string[],
-  activeTasks: Task[],
+  allTasks: Task[],
   taskStore: TaskRepository,
   log: Logger,
 ): Promise<number> => {
-  const activeTaskPaths = new Set(activeTasks.map((t) => t.change_path));
+  const knownTaskPaths = new Set(allTasks.map((t) => t.change_path));
 
   let created = 0;
   for (const changeName of changesOnDisk) {
     const relativeChangePath = join(CHANGES_DIR, changeName);
-    if (activeTaskPaths.has(relativeChangePath)) continue;
+    if (knownTaskPaths.has(relativeChangePath)) continue;
 
     const task = await createDraftTask(repoId, relativeChangePath, taskStore);
     if (task) {
