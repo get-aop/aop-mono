@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /* biome-ignore-all lint/suspicious/noConsole: CLI script */
 /**
  * Print SQLite database stats at a glance.
@@ -10,6 +11,7 @@
 
 import { Database } from "bun:sqlite";
 import { aopPaths } from "@aop/infra";
+import { $ } from "bun";
 
 const dbPath = process.argv[2] ?? aopPaths.db();
 
@@ -27,6 +29,35 @@ const scalar = <T>(db: Database, sql: string, param: string): T => {
   return Object.values(row ?? {})[0] as T;
 };
 
+// bun:sqlite lacks SQLITE_ENABLE_DBSTAT_VTAB on Linux; shell out to system sqlite3
+const dbstatQuery = async (sql: string): Promise<string> => {
+  const result = await $`sqlite3 ${dbPath} ${sql}`.text();
+  return result.trim();
+};
+
+const tableSizes = async (
+  tableNames: string[],
+): Promise<Map<string, { dataBytes: number; idxBytes: number }>> => {
+  const sizes = new Map<string, { dataBytes: number; idxBytes: number }>();
+  const dataRaw = await dbstatQuery(
+    `SELECT name, SUM(pgsize) FROM dbstat WHERE name IN (${tableNames.map((n) => `'${n}'`).join(",")}) GROUP BY name`,
+  );
+  for (const line of dataRaw.split("\n").filter(Boolean)) {
+    const [name = "", bytes = "0"] = line.split("|");
+    sizes.set(name, { dataBytes: Number(bytes), idxBytes: 0 });
+  }
+  const idxRaw = await dbstatQuery(
+    `SELECT i.tbl_name, SUM(d.pgsize) FROM dbstat d JOIN sqlite_master i ON d.name = i.name WHERE i.type='index' AND i.tbl_name IN (${tableNames.map((n) => `'${n}'`).join(",")}) GROUP BY i.tbl_name`,
+  );
+  for (const line of idxRaw.split("\n").filter(Boolean)) {
+    const [name = "", bytes = "0"] = line.split("|");
+    const entry = sizes.get(name) ?? { dataBytes: 0, idxBytes: 0 };
+    entry.idxBytes = Number(bytes);
+    sizes.set(name, entry);
+  }
+  return sizes;
+};
+
 ensureAnalyzed(dbPath);
 const db = new Database(dbPath, { readonly: true });
 
@@ -35,6 +66,8 @@ const tables = db
     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
   )
   .all();
+
+const sizes = await tableSizes(tables.map((t) => t.name));
 
 type Row = {
   tbl: string;
@@ -58,16 +91,8 @@ const stats: Row[] = tables.map(({ name }) => ({
     "SELECT COUNT(*) AS v FROM sqlite_master WHERE type='index' AND tbl_name = ?",
     name,
   ),
-  data_bytes: scalar<number>(
-    db,
-    "SELECT COALESCE(SUM(pgsize), 0) AS v FROM dbstat WHERE name = ?",
-    name,
-  ),
-  idx_bytes: scalar<number>(
-    db,
-    "SELECT COALESCE(SUM(d.pgsize), 0) AS v FROM dbstat d JOIN sqlite_master i ON d.name = i.name WHERE i.type='index' AND i.tbl_name = ?",
-    name,
-  ),
+  data_bytes: sizes.get(name)?.dataBytes ?? 0,
+  idx_bytes: sizes.get(name)?.idxBytes ?? 0,
 }));
 
 db.close();

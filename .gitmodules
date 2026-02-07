@@ -13,3 +13,6 @@
 [submodule "external/OpenSpec"]
 	path = external/OpenSpec
 	url = https://github.com/Fission-AI/OpenSpec
+[submodule "external/claude-code-viewer"]
+	path = external/claude-code-viewer
+	url = https://github.com/d-kimuson/claude-code-viewer
