@@ -2,7 +2,7 @@ import { mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { getLogger } from "@aop/infra";
 
-const logger = getLogger("create-task:draft");
+const logger = getLogger("create-task-draft");
 
 export interface BrainstormRequirements {
   title: string;

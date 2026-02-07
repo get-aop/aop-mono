@@ -1,7 +1,7 @@
 import { getLogger } from "@aop/infra";
 import Handlebars from "handlebars";
 
-const logger = getLogger("aop", "template-resolver");
+const logger = getLogger("template-resolver");
 
 export interface WorktreeContext {
   path: string;

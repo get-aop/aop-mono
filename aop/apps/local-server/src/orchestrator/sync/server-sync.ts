@@ -17,9 +17,9 @@ import {
   TaskReadyResponseSchema,
   TaskStatusResponseSchema,
 } from "@aop/common/protocol";
-import { getLogger } from "@aop/infra";
+import { getLogger, injectTraceHeaders } from "@aop/infra";
 
-const logger = getLogger("aop", "server-sync");
+const logger = getLogger("server-sync");
 
 export interface ServerSyncConfig {
   serverUrl: string;
@@ -351,12 +351,14 @@ class ServerSyncImpl implements ServerSync {
   ): Promise<unknown> {
     const url = `${this.config.serverUrl}${endpoint}`;
 
+    const headers = injectTraceHeaders({
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${this.config.apiKey}`,
+    });
+
     const response = await fetch(url, {
       method,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.config.apiKey}`,
-      },
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
 

@@ -7,11 +7,13 @@ import {
   NoChangesError,
   WorktreeNotFoundError,
 } from "@aop/git-manager";
-import { aopPaths } from "@aop/infra";
+import { aopPaths, getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { abortTask } from "../executor/index.ts";
 import { resolveTask } from "./resolve.ts";
+
+const logger = getLogger("task");
 
 export const getTaskById = async (
   ctx: LocalServerContext,
@@ -50,6 +52,7 @@ export const markTaskReady = async (
 ): Promise<MarkTaskReadyResult> => {
   const task = await resolveTask(ctx.taskRepository, identifier);
   if (!task) {
+    logger.warn("Mark ready failed: task not found {identifier}", { identifier });
     return { success: false, error: { code: "NOT_FOUND", identifier } };
   }
 
@@ -61,6 +64,10 @@ export const markTaskReady = async (
   }
 
   if (task.status !== "DRAFT" && task.status !== "BLOCKED") {
+    logger.warn("Mark ready failed: invalid status {status} for task {taskId}", {
+      status: task.status,
+      taskId: task.id,
+    });
     return {
       success: false,
       error: { code: "INVALID_STATUS", status: task.status },
@@ -69,6 +76,9 @@ export const markTaskReady = async (
 
   const changePath = join(aopPaths.repoDir(task.repo_id), task.change_path);
   if (!hasTasksFile(changePath)) {
+    logger.warn("Mark ready failed: missing tasks.md at {changePath}", {
+      changePath: task.change_path,
+    });
     return {
       success: false,
       error: { code: "MISSING_TASKS_FILE", changePath: task.change_path },
@@ -83,9 +93,14 @@ export const markTaskReady = async (
   });
 
   if (!updated) {
+    logger.error("Mark ready failed: update returned null for task {taskId}", { taskId: task.id });
     return { success: false, error: { code: "UPDATE_FAILED" } };
   }
 
+  logger.info("Task marked ready {taskId} ({changePath})", {
+    taskId: updated.id,
+    changePath: updated.change_path,
+  });
   return { success: true, task: updated };
 };
 
@@ -110,6 +125,7 @@ export const removeTask = async (
 ): Promise<RemoveTaskResult> => {
   const task = await resolveTask(ctx.taskRepository, identifier);
   if (!task) {
+    logger.warn("Remove failed: task not found {identifier}", { identifier });
     return { success: false, error: { code: "NOT_FOUND", identifier } };
   }
 
@@ -122,21 +138,30 @@ export const removeTask = async (
 
   if (task.status === "WORKING") {
     if (!options.force) {
+      logger.warn("Remove blocked: task {taskId} is working (use force)", { taskId: task.id });
       return {
         success: false,
         error: { code: "TASK_WORKING", taskId: task.id },
       };
     }
 
+    logger.info("Force removing working task {taskId}, aborting agent", { taskId: task.id });
     await abortTask(ctx, task.id);
     return { success: true, taskId: task.id, aborted: true };
   }
 
   const success = await ctx.taskRepository.markRemoved(task.id);
   if (!success) {
+    logger.error("Remove failed: markRemoved returned false for task {taskId}", {
+      taskId: task.id,
+    });
     return { success: false, error: { code: "REMOVE_FAILED" } };
   }
 
+  logger.info("Task removed {taskId} ({changePath})", {
+    taskId: task.id,
+    changePath: task.change_path,
+  });
   return { success: true, taskId: task.id, aborted: false };
 };
 
@@ -154,17 +179,27 @@ export const blockTask = async (
 ): Promise<BlockTaskResult> => {
   const task = await resolveTask(ctx.taskRepository, identifier);
   if (!task) {
+    logger.warn("Block failed: task not found {identifier}", { identifier });
     return { success: false, error: { code: "NOT_FOUND", identifier } };
   }
 
   if (task.status !== "WORKING") {
+    logger.warn("Block failed: task {taskId} status is {status}, expected WORKING", {
+      taskId: task.id,
+      status: task.status,
+    });
     return {
       success: false,
       error: { code: "INVALID_STATUS", status: task.status },
     };
   }
 
+  logger.info("Blocking task {taskId}, aborting agent", { taskId: task.id });
   const result = await abortTask(ctx, task.id, { targetStatus: "BLOCKED" });
+  logger.info("Task blocked {taskId} (agentKilled={agentKilled})", {
+    taskId: task.id,
+    agentKilled: result.agentKilled,
+  });
   return { success: true, taskId: task.id, agentKilled: result.agentKilled };
 };
 
@@ -188,10 +223,15 @@ export const applyTask = async (
 ): Promise<ApplyTaskResult> => {
   const task = await resolveTask(ctx.taskRepository, identifier);
   if (!task) {
+    logger.warn("Apply failed: task not found {identifier}", { identifier });
     return { success: false, error: { code: "NOT_FOUND", identifier } };
   }
 
   if (task.status !== "DONE" && task.status !== "BLOCKED") {
+    logger.warn("Apply failed: task {taskId} status is {status}", {
+      taskId: task.id,
+      status: task.status,
+    });
     return {
       success: false,
       error: { code: "INVALID_STATUS", status: task.status },
@@ -200,24 +240,40 @@ export const applyTask = async (
 
   const repo = await ctx.repoRepository.getById(task.repo_id);
   if (!repo) {
+    logger.error("Apply failed: repo not found for task {taskId}", { taskId: task.id });
     return {
       success: false,
       error: { code: "REPO_NOT_FOUND", taskId: task.id },
     };
   }
 
+  logger.info("Applying task {taskId} to {targetBranch}", {
+    taskId: task.id,
+    targetBranch: targetBranch ?? "current branch",
+  });
+
   const gitManager = new GitManager({ repoPath: repo.path, repoId: repo.id });
   await gitManager.init();
 
   try {
     const result = await gitManager.applyWorktree(task.id, targetBranch);
+    logger.info("Task applied {taskId}: {fileCount} files affected, {conflictCount} conflicts", {
+      taskId: task.id,
+      fileCount: result.affectedFiles.length,
+      conflictCount: result.conflictingFiles.length,
+    });
     return {
       success: true,
       affectedFiles: result.affectedFiles,
       conflictingFiles: result.conflictingFiles,
     };
   } catch (err) {
-    return { success: false, error: classifyApplyError(err, task.id) };
+    const classified = classifyApplyError(err, task.id);
+    logger.warn("Apply failed for task {taskId}: {code}", {
+      taskId: task.id,
+      code: classified.code,
+    });
+    return { success: false, error: classified };
   }
 };
 

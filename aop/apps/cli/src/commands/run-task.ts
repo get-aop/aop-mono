@@ -2,7 +2,7 @@ import { getLogger } from "@aop/infra";
 import { createSpinner } from "../format/spinner.ts";
 import { fetchServer, requireServer } from "./client.ts";
 
-const logger = getLogger("aop", "cli", "run-task");
+const logger = getLogger("cli", "run-task");
 
 interface RunTaskSuccessResponse {
   status: "success";

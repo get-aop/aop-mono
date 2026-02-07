@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { configureLogging, getLogger } from "@aop/infra";
 
-const log = getLogger("dashboard", "build");
+const log = getLogger("build");
 
 const DIST_DIR = "./dist";
 const SRC_DIR = "./src";
@@ -71,7 +71,7 @@ async function buildHTML(jsFile?: string): Promise<void> {
 }
 
 async function build(): Promise<void> {
-  await configureLogging({ format: "pretty" });
+  await configureLogging({ format: "pretty", serviceName: "dashboard" });
   log.info("Building dashboard...");
 
   // Clean dist
@@ -89,7 +89,7 @@ async function build(): Promise<void> {
 }
 
 build().catch(async (err) => {
-  await configureLogging({ format: "pretty" });
+  await configureLogging({ format: "pretty", serviceName: "dashboard" });
   log.error("Build failed: {error}", { error: String(err) });
   process.exit(1);
 });

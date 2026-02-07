@@ -1,7 +1,7 @@
 import { getLogger } from "@aop/infra";
 import type { ClaudeCodeSession } from "@aop/llm-provider";
 
-const logger = getLogger("aop", "local-server", "background-runner");
+const logger = getLogger("background-runner");
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 2000;

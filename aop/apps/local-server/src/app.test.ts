@@ -412,12 +412,12 @@ describe("app - workflows proxy", () => {
     expect(body.workflows).toEqual(["aop-default", "custom"]);
     expect(mockFetch).toHaveBeenCalledWith(
       "http://localhost:9999/workflows",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "Bearer test-key",
-        }),
-      }),
+      expect.objectContaining({ headers: expect.any(Headers) }),
     );
+    const callHeaders = (mockFetch.mock.calls[0] as unknown as [string, RequestInit])[1]
+      .headers as Headers;
+    expect(callHeaders.get("Authorization")).toBe("Bearer test-key");
+    expect(callHeaders.get("Content-Type")).toBe("application/json");
   });
 
   test("returns empty workflows when remote server fails", async () => {

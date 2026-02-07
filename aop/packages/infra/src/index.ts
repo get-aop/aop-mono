@@ -18,6 +18,17 @@ export {
 } from "./logger.ts";
 
 export {
+  getActiveSpanId,
+  getActiveTraceId,
+  getTracer,
+  getTracerProvider,
+  initTracing,
+  injectTraceHeaders,
+  resetTracing,
+  runWithSpan,
+} from "./tracing.ts";
+
+export {
   generateTypeId,
   getTypeIdPrefix,
   isValidTypeId,

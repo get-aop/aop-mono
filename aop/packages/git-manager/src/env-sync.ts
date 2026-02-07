@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { getLogger } from "@aop/infra";
 import type { GitExecutor } from "./git-executor.ts";
 
-const logger = getLogger("aop", "env-sync");
+const logger = getLogger("env-sync");
 
 export const discoverEnvFiles = async (executor: GitExecutor): Promise<string[]> => {
   const envGlobs = [".env*", "**/.env*"];

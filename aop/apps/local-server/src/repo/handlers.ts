@@ -44,6 +44,7 @@ export const initRepo = async (
 
   const isGitRepo = await checkGitRepo(repoPath);
   if (!isGitRepo) {
+    logger.warn("Init repo failed: not a git repo at {path}", { path: repoPath });
     return {
       success: false,
       error: { code: "NOT_A_GIT_REPO", path: repoPath },
@@ -53,6 +54,10 @@ export const initRepo = async (
   const existing = await repoRepository.getByPath(repoPath);
   if (existing) {
     await setupOpenspecSymlink(repoPath, existing.id);
+    logger.info("Repo already registered {repoId} at {path}", {
+      repoId: existing.id,
+      path: repoPath,
+    });
     return { success: true, repoId: existing.id, alreadyExists: true };
   }
 
@@ -73,6 +78,11 @@ export const initRepo = async (
   createRepoDirs(repo.id);
   await setupOpenspecSymlink(repoPath, repo.id);
 
+  logger.info("Repo initialized {repoId} ({name}) at {path}", {
+    repoId: repo.id,
+    name,
+    path: repoPath,
+  });
   return { success: true, repoId: repo.id, alreadyExists: false };
 };
 
@@ -85,6 +95,7 @@ export const removeRepo = async (
 
   const repo = await repoRepository.getByPath(repoPath);
   if (!repo) {
+    logger.warn("Remove repo failed: not found at {path}", { path: repoPath });
     return { success: false, error: { code: "NOT_FOUND", path: repoPath } };
   }
 
@@ -93,6 +104,10 @@ export const removeRepo = async (
     repo_id: repo.id,
   });
   if (workingTasks.length > 0 && !options.force) {
+    logger.warn("Remove repo blocked: {count} working tasks for {repoId}", {
+      count: workingTasks.length,
+      repoId: repo.id,
+    });
     return {
       success: false,
       error: { code: "HAS_WORKING_TASKS", count: workingTasks.length },
@@ -101,14 +116,26 @@ export const removeRepo = async (
 
   let abortedTasks = 0;
   if (workingTasks.length > 0) {
+    logger.info("Force removing repo {repoId}, aborting {count} tasks", {
+      repoId: repo.id,
+      count: workingTasks.length,
+    });
     abortedTasks = await abortWorkingTasks(ctx, workingTasks);
   }
 
   const removed = await repoRepository.remove(repo.id);
   if (!removed) {
+    logger.error("Remove repo failed: repository.remove returned false for {repoId}", {
+      repoId: repo.id,
+    });
     return { success: false, error: { code: "REMOVE_FAILED" } };
   }
 
+  logger.info("Repo removed {repoId} at {path} (aborted {abortedTasks} tasks)", {
+    repoId: repo.id,
+    path: repoPath,
+    abortedTasks,
+  });
   return { success: true, repoId: repo.id, abortedTasks };
 };
 
@@ -223,7 +250,7 @@ export const getRepoTasks = async (ctx: LocalServerContext, repoId: string) => {
   return ctx.taskRepository.list({ repo_id: repoId, excludeRemoved: true });
 };
 
-const logger = getLogger("aop", "repos-handlers");
+const logger = getLogger("repos-handlers");
 
 const abortWorkingTasks = async (ctx: LocalServerContext, tasks: Task[]): Promise<number> => {
   let abortedCount = 0;

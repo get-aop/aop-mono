@@ -1,3 +1,5 @@
+import { getLogger, getTracerProvider } from "@aop/infra";
+import { otel } from "@hono/otel";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
 import { createClientRepository } from "../clients/client-repository.ts";
@@ -15,6 +17,8 @@ import {
 } from "../workflow/workflow-repository.ts";
 import { authMiddleware, errorHandler } from "./middleware/index.ts";
 import { auth, health, repos, steps, tasks, workflows } from "./routes/index.ts";
+
+const logger = getLogger("api");
 
 export interface ServerDependencies {
   db: Kysely<Database>;
@@ -39,7 +43,7 @@ export const getAppContext = (): AppContext => {
   return appContext;
 };
 
-export const createServer = (deps: ServerDependencies) => {
+export const createApp = (deps: ServerDependencies) => {
   const clientRepo = createClientRepository(deps.db);
   const clientService = createClientService(clientRepo);
   const repoRepo = createRepoRepository(deps.db);
@@ -60,7 +64,40 @@ export const createServer = (deps: ServerDependencies) => {
 
   const app = new Hono();
 
+  app.use("*", otel({ tracerProvider: getTracerProvider() }));
+
   app.onError(errorHandler);
+
+  app.use("*", async (c, next) => {
+    const path = new URL(c.req.url).pathname;
+    if (path === "/health") {
+      return next();
+    }
+
+    const method = c.req.method;
+    const start = Date.now();
+    logger.info("{method} {path}", { method, path });
+
+    await next();
+
+    const status = c.res.status;
+    const durationMs = Date.now() - start;
+    if (status >= 400) {
+      logger.warn("{method} {path} → {status} ({durationMs}ms)", {
+        method,
+        path,
+        status,
+        durationMs,
+      });
+    } else {
+      logger.info("{method} {path} → {status} ({durationMs}ms)", {
+        method,
+        path,
+        status,
+        durationMs,
+      });
+    }
+  });
 
   app.route("/", health);
   app.route("/", auth);
@@ -74,6 +111,12 @@ export const createServer = (deps: ServerDependencies) => {
   app.route("/", tasks);
   app.route("/", steps);
   app.route("/", workflows);
+
+  return app;
+};
+
+export const createServer = (deps: ServerDependencies) => {
+  const app = createApp(deps);
 
   return Bun.serve({
     fetch: app.fetch,

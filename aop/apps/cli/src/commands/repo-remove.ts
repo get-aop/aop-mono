@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { getLogger } from "@aop/infra";
 import { fetchServer } from "./client.ts";
 
-const logger = getLogger("aop", "cli", "repo:remove");
+const logger = getLogger("cli", "repo-remove");
 
 export interface RemoveRepoOptions {
   force?: boolean;

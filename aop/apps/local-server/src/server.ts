@@ -6,7 +6,7 @@ import { createDatabase, getDefaultDbPath } from "./db/connection.ts";
 import { runMigrations } from "./db/migrations.ts";
 import { createOrchestrator } from "./orchestrator/index.ts";
 
-const logger = getLogger("aop", "local-server");
+const logger = getLogger("local-server");
 
 export interface ServerOptions {
   port?: number;

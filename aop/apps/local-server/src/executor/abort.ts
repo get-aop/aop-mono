@@ -4,7 +4,7 @@ import type { ServerSync } from "../orchestrator/sync/server-sync.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import * as processUtils from "./process-utils.ts";
 
-const logger = getLogger("aop", "executor", "abort");
+const logger = getLogger("executor", "abort");
 
 const GRACEFUL_SHUTDOWN_MS = 3000;
 

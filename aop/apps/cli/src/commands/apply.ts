@@ -1,7 +1,7 @@
 import { getLogger } from "@aop/infra";
 import { fetchServer, requireServer } from "./client.ts";
 
-const logger = getLogger("aop", "cli", "apply");
+const logger = getLogger("cli", "apply");
 
 interface Task {
   id: string;

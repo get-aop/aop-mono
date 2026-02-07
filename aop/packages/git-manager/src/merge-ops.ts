@@ -11,7 +11,7 @@ import type { MetadataStore } from "./metadata.ts";
 import type { SquashResult } from "./types.ts";
 import { validateTaskId } from "./validation.ts";
 
-const logger = getLogger("aop", "merge-ops");
+const logger = getLogger("merge-ops");
 
 /**
  * Squash merge, conflict detection, and abort cleanup operations.

@@ -7,7 +7,13 @@ import type {
   TaskStatus,
 } from "@aop/common/protocol";
 import { GitManager, WorktreeExistsError, type WorktreeInfo } from "@aop/git-manager";
-import { aopPaths, createFileOutputHandler, generateTypeId, getLogger } from "@aop/infra";
+import {
+  aopPaths,
+  createFileOutputHandler,
+  generateTypeId,
+  getLogger,
+  runWithSpan,
+} from "@aop/infra";
 import { ClaudeCodeProvider, extractAssistantText, formatToolInput } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
@@ -19,7 +25,7 @@ import { SettingKey } from "../settings/types.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import type { ExecuteResult, ExecutorContext } from "./types.ts";
 
-const logger = getLogger("aop", "executor");
+const logger = getLogger("executor");
 
 export interface ExecuteTaskOptions {
   ctx: LocalServerContext;
@@ -38,87 +44,88 @@ export const executeTask = async (
   executionInfo: ExecutionInfo,
   serverSync?: ServerSync,
   provider?: ClaudeCodeProvider,
-): Promise<ExecuteResult> => {
-  const log = logger.with({ taskId: task.id, changePath: task.change_path });
-  log.info("Starting task execution");
+): Promise<ExecuteResult> =>
+  runWithSpan("execute-task", async () => {
+    const log = logger.with({ taskId: task.id, changePath: task.change_path });
+    log.info("Starting task execution");
 
-  const executorCtx = await buildContext(ctx, task);
-  await markTaskWorking(ctx, task, executorCtx.worktreePath, serverSync);
+    const executorCtx = await buildContext(ctx, task);
+    await markTaskWorking(ctx, task, executorCtx.worktreePath, serverSync);
 
-  const worktreeInfo = await createWorktree(executorCtx);
-  setupWorktreeOpenspecSymlink(worktreeInfo.path, executorCtx.repoId);
-  log.info("Worktree ready at {path}", { path: worktreeInfo.path });
+    const worktreeInfo = await createWorktree(executorCtx);
+    setupWorktreeOpenspecSymlink(worktreeInfo.path, executorCtx.repoId);
+    log.info("Worktree ready at {path}", { path: worktreeInfo.path });
 
-  let currentStep = stepCommand;
-  let currentExecution = executionInfo;
+    let currentStep = stepCommand;
+    let currentExecution = executionInfo;
 
-  const executionId = await createExecutionRecord(ctx, task.id);
-  log.info("Created execution record", { executionId });
+    const executionId = await createExecutionRecord(ctx, task.id);
+    log.info("Created execution record", { executionId });
 
-  while (true) {
-    const stepId = await createStepRecord(ctx, executionId, currentStep.type);
-    log.info("Created step record", {
-      executionId,
-      stepId,
-      stepType: currentStep.type,
-    });
+    while (true) {
+      const stepId = await createStepRecord(ctx, executionId, currentStep.type);
+      log.info("Created step record", {
+        executionId,
+        stepId,
+        stepType: currentStep.type,
+      });
 
-    const prompt = await buildPromptForExecution({
-      executorCtx,
-      worktreeInfo,
-      stepCommand: currentStep,
-      executionId: currentExecution.id,
-    });
-    log.info("Prompt rendered for step {stepType}, starting agent", {
-      stepType: currentStep.type,
-    });
+      const prompt = await buildPromptForExecution({
+        executorCtx,
+        worktreeInfo,
+        stepCommand: currentStep,
+        executionId: currentExecution.id,
+      });
+      log.info("Prompt rendered for step {stepType}, starting agent", {
+        stepType: currentStep.type,
+      });
 
-    const result = await runAgentWithTimeout({
-      ctx,
-      executorCtx,
-      prompt,
-      stepId,
-      executionId,
-      signals: currentStep.signals,
-      provider,
-    });
-    log.info("Agent finished step {stepType}", {
-      stepType: currentStep.type,
-      exitCode: result.exitCode,
-      status: result.status,
-      signal: result.signal,
-    });
+      const result = await runAgentWithTimeout({
+        ctx,
+        executorCtx,
+        prompt,
+        stepId,
+        executionId,
+        signals: currentStep.signals,
+        provider,
+      });
+      log.info("Agent finished step {stepType}", {
+        stepType: currentStep.type,
+        exitCode: result.exitCode,
+        status: result.status,
+        signal: result.signal,
+      });
 
-    const completionStatus = result.status === "success" ? "completed" : "failed";
-    ctx.logBuffer.markComplete(executionId, completionStatus);
+      const completionStatus = result.status === "success" ? "completed" : "failed";
+      ctx.logBuffer.markComplete(executionId, completionStatus);
 
-    await persistExecutionLogs(ctx, executionId);
+      await persistExecutionLogs(ctx, executionId);
 
-    const nextStepInfo = await finalizeExecutionAndGetNextStep(
-      ctx,
-      task.id,
-      executionId,
-      stepId,
-      result,
-      serverSync,
-      {
-        serverStepId: currentStep.id,
-        serverExecutionId: currentExecution.id,
-        attempt: currentStep.attempt,
-      },
-    );
+      const nextStepInfo = await finalizeExecutionAndGetNextStep(
+        ctx,
+        task.id,
+        executionId,
+        stepId,
+        result,
+        serverSync,
+        {
+          serverStepId: currentStep.id,
+          serverExecutionId: currentExecution.id,
+          attempt: currentStep.attempt,
+        },
+      );
 
-    if (!nextStepInfo) {
-      return result;
+      if (!nextStepInfo) {
+        return result;
+      }
+
+      currentStep = nextStepInfo.step;
+      currentExecution = nextStepInfo.execution;
+      log.info("Continuing to next step: {stepType}", {
+        stepType: currentStep.type,
+      });
     }
-
-    currentStep = nextStepInfo.step;
-    currentExecution = nextStepInfo.execution;
-    log.info("Continuing to next step: {stepType}", {
-      stepType: currentStep.type,
-    });
-  }
-};
+  });
 
 export const buildContext = async (
   ctx: LocalServerContext,

@@ -89,7 +89,7 @@ await loadEnvFile();
 import { AOP_PORTS, AOP_URLS } from "@aop/common";
 import { configureLogging, getLogger } from "@aop/infra";
 
-const log = getLogger("dev", "orchestrator");
+const log = getLogger("orchestrator");
 
 interface ParsedArgs {
   dbOnly: boolean;
@@ -279,7 +279,7 @@ const startServer = (): ProcessHandle => {
   log.info("Starting AOP server...");
   const proc = Bun.spawn(["bun", "run", "--watch", "./src/main.ts"], {
     cwd: "./apps/server",
-    env: process.env,
+    env: { ...process.env, AOP_LOG_FORMAT: "pretty" },
     stdout: "inherit",
     stderr: "inherit",
   });
@@ -333,7 +333,7 @@ const shutdown = async (processes: ProcessHandle[], includeDb: boolean): Promise
 };
 
 const main = async () => {
-  await configureLogging({ format: "pretty" });
+  await configureLogging({ format: "pretty", serviceName: "dev" });
 
   const { dbOnly, noLocal, noDashboard } = parseArgs();
 
@@ -388,7 +388,7 @@ const main = async () => {
 };
 
 main().catch(async (err) => {
-  await configureLogging({ level: "error" });
+  await configureLogging({ level: "error", serviceName: "dev" });
   log.fatal("Fatal error: {error}", { error: String(err) });
   process.exit(1);
 });

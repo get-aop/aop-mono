@@ -5,7 +5,7 @@ import type { MetadataStore } from "./metadata.ts";
 import type { ApplyResult } from "./types.ts";
 import { validateTaskId } from "./validation.ts";
 
-const logger = getLogger("aop", "apply-ops");
+const logger = getLogger("apply-ops");
 
 const extractField = (block: string, prefix: string): string | undefined => {
   const line = block.split("\n").find((l) => l.startsWith(prefix));

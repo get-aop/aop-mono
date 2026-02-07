@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { AOP_PORTS, AOP_URLS } from "@aop/common";
-import { configureLogging, getLogger } from "@aop/infra";
+import { configureLogging, getLogger, initTracing } from "@aop/infra";
 import { createServer } from "./api/server.ts";
 import { createDatabase, runMigrations } from "./db/connection.ts";
 import {
@@ -9,10 +9,12 @@ import {
   syncWorkflows,
 } from "./workflow/index.ts";
 
-const logger = getLogger("aop-server", "main");
+const logger = getLogger("main");
 
 const main = async () => {
-  await configureLogging({ format: "json" });
+  const logFormat = process.env.AOP_LOG_FORMAT === "pretty" ? "pretty" : "json";
+  await configureLogging({ format: logFormat, serviceName: "server" });
+  initTracing("server");
 
   const port = AOP_PORTS.SERVER;
 

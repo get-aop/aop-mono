@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { aopPaths, getLogger } from "@aop/infra";
 import type { WatcherConfig, WatcherEvent } from "./types.ts";
 
-const logger = getLogger("aop", "watcher");
+const logger = getLogger("watcher");
 
 const DEFAULT_DEBOUNCE_MS = 500;
 

@@ -4,7 +4,7 @@ import type { Question, QuestionOption } from "@aop/llm-provider";
 import { createSpinner } from "../format/spinner.ts";
 import { fetchServer, requireServer } from "./client.ts";
 
-const logger = getLogger("aop", "cli", "create-task");
+const logger = getLogger("cli", "create-task");
 type CreateTaskLogger = Pick<typeof logger, "debug" | "error" | "info" | "warn">;
 
 interface CreateTaskRuntime {

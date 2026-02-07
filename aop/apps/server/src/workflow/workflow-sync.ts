@@ -3,7 +3,7 @@ import { getLogger } from "@aop/infra";
 import type { WorkflowDefinition } from "./types.ts";
 import type { WorkflowRepository } from "./workflow-repository.ts";
 
-const logger = getLogger("aop-server", "workflow-sync");
+const logger = getLogger("workflow-sync");
 
 export const syncWorkflows = async (
   repository: WorkflowRepository,

@@ -18,7 +18,7 @@ import { createExecutionRepository } from "./execution-repository.ts";
 import { createStepExecutionRepository } from "./step-execution-repository.ts";
 
 const DEFAULT_WORKFLOW_NAME = "aop-default";
-const logger = getLogger("aop", "execution-service");
+const logger = getLogger("execution-service");
 
 const parseVisitedSteps = (visitedSteps: string): string[] => {
   try {
@@ -157,6 +157,13 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
       });
     });
 
+    logger.info("Workflow started for task {taskId}: execution {executionId}, step {stepType}", {
+      taskId,
+      executionId,
+      stepType: initialStep.type,
+      workflowName: targetWorkflowName,
+    });
+
     return {
       status: "WORKING",
       execution: { id: executionId, workflowId: workflow.id },
@@ -267,6 +274,10 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
         completed_at: new Date(),
       });
       await repos.taskRepo.update(execution.task_id, { status: "DONE" });
+      logger.info("Workflow completed for task {taskId}, execution {executionId}", {
+        taskId: execution.task_id,
+        executionId: execution.id,
+      });
       return { taskStatus: "DONE", step: null };
     }
 
@@ -276,6 +287,10 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
         completed_at: new Date(),
       });
       await repos.taskRepo.update(execution.task_id, { status: "BLOCKED" });
+      logger.warn("Workflow blocked for task {taskId}, execution {executionId}", {
+        taskId: execution.task_id,
+        executionId: execution.id,
+      });
       return {
         taskStatus: "BLOCKED",
         step: null,
@@ -318,6 +333,16 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
       prompt_template: nextStep.promptTemplate,
       status: "running",
     });
+
+    logger.info(
+      "Step transition for task {taskId}: {stepType} (iteration {iteration}, execution {executionId})",
+      {
+        taskId: execution.task_id,
+        stepType: nextStep.type,
+        iteration: newIteration,
+        executionId: execution.id,
+      },
+    );
 
     return {
       taskStatus: "WORKING",

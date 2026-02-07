@@ -1,7 +1,7 @@
 import { getLogger } from "@aop/infra";
 import { fetchServer } from "./client.ts";
 
-const logger = getLogger("aop", "cli", "repo:init");
+const logger = getLogger("cli", "repo-init");
 
 interface RepoInitResponse {
   ok: boolean;

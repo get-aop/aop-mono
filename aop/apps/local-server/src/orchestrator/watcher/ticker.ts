@@ -1,6 +1,6 @@
 import { getLogger } from "@aop/infra";
 
-const logger = getLogger("aop", "ticker");
+const logger = getLogger("ticker");
 
 export interface TickerConfig {
   intervalMs: number;

@@ -8,7 +8,7 @@
 import { AOP_PORTS, AOP_URLS } from "@aop/common";
 import { configureLogging, getLogger } from "@aop/infra";
 
-const log = getLogger("dashboard", "dev");
+const log = getLogger("dev");
 
 const PORT = AOP_PORTS.DASHBOARD;
 const API_URL = AOP_URLS.LOCAL_SERVER;
@@ -150,7 +150,7 @@ const serveSpaFallback = async (): Promise<Response> => {
 };
 
 const main = async () => {
-  await configureLogging({ format: "pretty" });
+  await configureLogging({ format: "pretty", serviceName: "dashboard" });
 
   Bun.serve({
     port: PORT,

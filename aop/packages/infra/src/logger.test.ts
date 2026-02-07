@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { configureLogging, getLogger, resetLogging } from "./logger.ts";
+import { initTracing, resetTracing } from "./tracing.ts";
 
 const TEST_LOG_DIR = "tmp/aop-logger-test";
 const PRETTY_LOG_PATH = `${TEST_LOG_DIR}/app.log`;
@@ -8,6 +9,7 @@ const JSON_LOG_PATH = `${TEST_LOG_DIR}/app.jsonl`;
 
 afterEach(async () => {
   await resetLogging();
+  resetTracing();
 });
 
 describe("getLogger", () => {
@@ -219,6 +221,173 @@ describe("file sinks", () => {
     expect(parsed[0].value).toBe(42);
     expect(parsed[1].message).toBe("Error occurred");
     expect(parsed[1].code).toBe("E001");
+  });
+});
+
+describe("serviceName injection", () => {
+  const SVC_LOG_DIR = "tmp/aop-svc-test";
+  const SVC_PRETTY_PATH = `${SVC_LOG_DIR}/app.log`;
+  const SVC_JSON_PATH = `${SVC_LOG_DIR}/app.jsonl`;
+
+  beforeEach(async () => {
+    await resetLogging();
+    resetTracing();
+    if (existsSync(SVC_LOG_DIR)) rmSync(SVC_LOG_DIR, { recursive: true });
+    mkdirSync(SVC_LOG_DIR, { recursive: true });
+  });
+
+  test("injects service name into JSON log records", async () => {
+    await configureLogging({
+      serviceName: "local-server",
+      sinks: {
+        console: false,
+        files: [{ path: SVC_JSON_PATH, format: "json" }],
+      },
+    });
+
+    const logger = getLogger("reconcile");
+    logger.info("Reconciliation complete");
+
+    await Bun.sleep(50);
+    await resetLogging();
+
+    const content = await Bun.file(SVC_JSON_PATH).text();
+    const log = JSON.parse(content.trim());
+    expect(log.service).toBe("local-server");
+    expect(log.message).toBe("Reconciliation complete");
+  });
+
+  test("injects service name into pretty log output", async () => {
+    await configureLogging({
+      serviceName: "server",
+      sinks: {
+        console: false,
+        files: [{ path: SVC_PRETTY_PATH, format: "pretty" }],
+      },
+    });
+
+    const logger = getLogger("workflow");
+    logger.info("Step completed");
+
+    await Bun.sleep(50);
+    await resetLogging();
+
+    const content = await Bun.file(SVC_PRETTY_PATH).text();
+    expect(content).toContain("[server]");
+    expect(content).toContain("Step completed");
+  });
+
+  test("does not inject service when serviceName is not set", async () => {
+    await configureLogging({
+      sinks: {
+        console: false,
+        files: [{ path: SVC_JSON_PATH, format: "json" }],
+      },
+    });
+
+    const logger = getLogger("test");
+    logger.info("No service");
+
+    await Bun.sleep(50);
+    await resetLogging();
+
+    const content = await Bun.file(SVC_JSON_PATH).text();
+    const log = JSON.parse(content.trim());
+    expect(log.service).toBeUndefined();
+  });
+});
+
+describe("trace context injection", () => {
+  const TRACE_LOG_DIR = "tmp/aop-trace-test";
+  const TRACE_JSON_PATH = `${TRACE_LOG_DIR}/app.jsonl`;
+  const TRACE_PRETTY_PATH = `${TRACE_LOG_DIR}/app.log`;
+
+  beforeEach(async () => {
+    await resetLogging();
+    resetTracing();
+    if (existsSync(TRACE_LOG_DIR)) rmSync(TRACE_LOG_DIR, { recursive: true });
+    mkdirSync(TRACE_LOG_DIR, { recursive: true });
+  });
+
+  test("injects traceId and spanId when OTel span is active", async () => {
+    initTracing("test-service");
+    await configureLogging({
+      serviceName: "local-server",
+      sinks: {
+        console: false,
+        files: [{ path: TRACE_JSON_PATH, format: "json" }],
+      },
+    });
+
+    const { trace } = await import("@opentelemetry/api");
+    const tracer = trace.getTracer("test");
+
+    tracer.startActiveSpan("test-request", (span) => {
+      const logger = getLogger("reconcile");
+      logger.info("Inside span");
+      span.end();
+    });
+
+    await Bun.sleep(50);
+    await resetLogging();
+
+    const content = await Bun.file(TRACE_JSON_PATH).text();
+    const log = JSON.parse(content.trim());
+    expect(log.traceId).toBeDefined();
+    expect(log.traceId).toHaveLength(32);
+    expect(log.spanId).toBeDefined();
+    expect(log.spanId).toHaveLength(16);
+    expect(log.service).toBe("local-server");
+  });
+
+  test("does not inject trace fields when no span is active", async () => {
+    await configureLogging({
+      serviceName: "server",
+      sinks: {
+        console: false,
+        files: [{ path: TRACE_JSON_PATH, format: "json" }],
+      },
+    });
+
+    const logger = getLogger("main");
+    logger.info("No active span");
+
+    await Bun.sleep(50);
+    await resetLogging();
+
+    const content = await Bun.file(TRACE_JSON_PATH).text();
+    const log = JSON.parse(content.trim());
+    expect(log.traceId).toBeUndefined();
+    expect(log.spanId).toBeUndefined();
+    expect(log.service).toBe("server");
+  });
+
+  test("shows abbreviated traceId in pretty output", async () => {
+    initTracing("test-service");
+    await configureLogging({
+      serviceName: "local-server",
+      sinks: {
+        console: false,
+        files: [{ path: TRACE_PRETTY_PATH, format: "pretty" }],
+      },
+    });
+
+    const { trace } = await import("@opentelemetry/api");
+    const tracer = trace.getTracer("test");
+
+    tracer.startActiveSpan("test-request", (span) => {
+      const logger = getLogger("reconcile");
+      logger.info("Traced message");
+      span.end();
+    });
+
+    await Bun.sleep(50);
+    await resetLogging();
+
+    const content = await Bun.file(TRACE_PRETTY_PATH).text();
+    expect(content).toContain("[local-server]");
+    expect(content).toMatch(/t:[a-f0-9]{8}/);
+    expect(content).toContain("Traced message");
   });
 });
 

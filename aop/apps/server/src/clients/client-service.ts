@@ -1,5 +1,8 @@
 import type { AuthResponse } from "@aop/common/protocol";
+import { getLogger } from "@aop/infra";
 import type { ClientRepository } from "./client-repository.ts";
+
+const logger = getLogger("client-service");
 
 export interface AuthSuccess {
   success: true;
@@ -37,6 +40,7 @@ export const createClientService = (clientRepo: ClientRepository): ClientService
       ? Math.min(requestedMaxConcurrentTasks, client.max_concurrent_tasks)
       : client.max_concurrent_tasks;
 
+    logger.info("Client authenticated {clientId}", { clientId: client.id });
     return {
       success: true,
       response: {

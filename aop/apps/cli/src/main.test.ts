@@ -136,7 +136,11 @@ describe("setupLogging", () => {
     });
 
     expect(mkdirMock).not.toHaveBeenCalled();
-    expect(configureLoggingMock).toHaveBeenCalledWith({ level: "info", format: "pretty" });
+    expect(configureLoggingMock).toHaveBeenCalledWith({
+      level: "info",
+      format: "pretty",
+      serviceName: "cli",
+    });
   });
 
   test("configures file sinks when log dir is set", async () => {
@@ -156,6 +160,7 @@ describe("setupLogging", () => {
     expect(configureLoggingMock).toHaveBeenCalledWith({
       level: "debug",
       format: "pretty",
+      serviceName: "cli",
       sinks: {
         console: true,
         files: [

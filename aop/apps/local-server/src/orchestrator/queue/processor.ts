@@ -1,5 +1,5 @@
 import type { ExecutionInfo, StepCommand, TaskReadyResponse } from "@aop/common/protocol";
-import { getLogger } from "@aop/infra";
+import { getLogger, runWithSpan } from "@aop/infra";
 import type { Task } from "../../db/schema.ts";
 import type { RepoRepository } from "../../repo/repository.ts";
 import type { SettingsRepository } from "../../settings/repository.ts";
@@ -7,7 +7,7 @@ import { SettingKey } from "../../settings/types.ts";
 import type { ConcurrencyLimits, TaskRepository } from "../../task/repository.ts";
 import type { ServerSync } from "../sync/server-sync.ts";
 
-const logger = getLogger("aop", "queue-processor");
+const logger = getLogger("queue-processor");
 
 export interface QueueProcessorConfig {
   pollIntervalMs?: number;
@@ -116,7 +116,7 @@ export const createQueueProcessor = (
     if (!running) return;
 
     try {
-      await processOnce();
+      await runWithSpan("queue-process", () => processOnce());
     } catch (err) {
       logger.error("Queue processor error: {error}", { error: String(err), err });
     }

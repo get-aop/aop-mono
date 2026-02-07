@@ -1,13 +1,14 @@
 #!/usr/bin/env bun
 
-import { configureLogging, getLogger } from "@aop/infra";
+import { configureLogging, getLogger, initTracing } from "@aop/infra";
 import { getPort } from "./config.ts";
 import { startServer } from "./server.ts";
 
-const logger = getLogger("aop", "local-server");
+const logger = getLogger("local-server");
 
 const main = async () => {
-  await configureLogging({ level: "info", format: "pretty" });
+  await configureLogging({ level: "info", format: "pretty", serviceName: "local-server" });
+  initTracing("local-server");
   const handle = await startServer({ port: getPort() });
 
   const shutdown = async () => {

@@ -1,7 +1,7 @@
 import { getLogger } from "@aop/infra";
 import { fetchServer } from "./client.ts";
 
-const logger = getLogger("aop", "cli", "config:set");
+const logger = getLogger("cli", "config-set");
 
 interface SetSettingResponse {
   ok: boolean;

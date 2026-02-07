@@ -3,7 +3,7 @@ import { getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
 import { DEFAULT_SETTINGS, isValidSettingKey, type SettingKey, VALID_KEYS } from "./types.ts";
 
-const logger = getLogger("aop", "settings");
+const logger = getLogger("settings");
 
 export type GetSettingResult =
   | { success: true; key: string; value: string }

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import type { ExecutionInfo, StepCommand, TaskStatus } from "@aop/common/protocol";
-import { getLogger } from "@aop/infra";
+import { getLogger, runWithSpan } from "@aop/infra";
 import type { OrchestratorStatus } from "../app.ts";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
@@ -17,7 +17,7 @@ import {
   type WatcherManager,
 } from "./watcher/index.ts";
 
-const logger = getLogger("aop", "orchestrator");
+const logger = getLogger("orchestrator");
 
 export interface Orchestrator {
   start: () => Promise<void>;
@@ -106,18 +106,20 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
     const repos = await ctx.repoRepository.getAll();
 
     watcher = createWatcherManager(async (event) => {
-      logger.debug("Watcher event: {type} {changeName}", {
-        type: event.type,
-        changeName: event.changeName,
-        repoId: event.repoId,
-      });
-      const repo = await ctx.repoRepository.getById(event.repoId);
-      if (repo) {
-        await reconcileRepo(repo, {
-          repoRepository: ctx.repoRepository,
-          taskRepository: ctx.taskRepository,
+      await runWithSpan("watcher-event", async () => {
+        logger.debug("Watcher event: {type} {changeName}", {
+          type: event.type,
+          changeName: event.changeName,
+          repoId: event.repoId,
         });
-      }
+        const repo = await ctx.repoRepository.getById(event.repoId);
+        if (repo) {
+          await reconcileRepo(repo, {
+            repoRepository: ctx.repoRepository,
+            taskRepository: ctx.taskRepository,
+          });
+        }
+      });
     });
 
     for (const repo of repos) {
@@ -196,38 +198,40 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
   const refreshWatchedRepos = async (): Promise<void> => {
     if (!watcher) return;
 
-    const startTime = performance.now();
-    const repos = await ctx.repoRepository.getAll();
+    await runWithSpan("refresh", async () => {
+      const startTime = performance.now();
+      const repos = await ctx.repoRepository.getAll();
 
-    let removedCount = 0;
-    for (const repo of repos) {
-      if (!existsSync(repo.path)) {
-        logger.info("Repo path no longer exists, removing: {repoPath}", {
-          repoId: repo.id,
-          repoPath: repo.path,
-        });
-        watcher.removeRepo(repo.id);
-        await ctx.repoRepository.remove(repo.id);
-        removedCount++;
-        continue;
+      let removedCount = 0;
+      for (const repo of repos) {
+        if (!existsSync(repo.path)) {
+          logger.info("Repo path no longer exists, removing: {repoPath}", {
+            repoId: repo.id,
+            repoPath: repo.path,
+          });
+          watcher?.removeRepo(repo.id);
+          await ctx.repoRepository.remove(repo.id);
+          removedCount++;
+          continue;
+        }
+        watcher?.addRepo(repo.id, repo.path);
       }
-      watcher.addRepo(repo.id, repo.path);
-    }
 
-    await reconcileAllRepos({
-      repoRepository: ctx.repoRepository,
-      taskRepository: ctx.taskRepository,
+      await reconcileAllRepos({
+        repoRepository: ctx.repoRepository,
+        taskRepository: ctx.taskRepository,
+      });
+
+      const durationMs = Math.round(performance.now() - startTime);
+      logger.info(
+        "Refresh complete in {durationMs}ms, watching {count} repos, removed {removedCount}",
+        {
+          durationMs,
+          count: repos.length - removedCount,
+          removedCount,
+        },
+      );
     });
-
-    const durationMs = Math.round(performance.now() - startTime);
-    logger.info(
-      "Refresh complete in {durationMs}ms, watching {count} repos, removed {removedCount}",
-      {
-        durationMs,
-        count: repos.length - removedCount,
-        removedCount,
-      },
-    );
   };
 
   const waitForExecutingTasks = async (): Promise<void> => {

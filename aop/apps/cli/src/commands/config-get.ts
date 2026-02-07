@@ -1,7 +1,7 @@
 import { getLogger } from "@aop/infra";
 import { fetchServer } from "./client.ts";
 
-const logger = getLogger("aop", "cli", "config:get");
+const logger = getLogger("cli", "config-get");
 
 interface Setting {
   key: string;

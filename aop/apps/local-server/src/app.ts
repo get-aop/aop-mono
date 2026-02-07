@@ -1,3 +1,5 @@
+import { getLogger, getTracerProvider } from "@aop/infra";
+import { otel } from "@hono/otel";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { LocalServerContext } from "./context.ts";
@@ -13,6 +15,8 @@ import { createSettingsRoutes } from "./settings/routes";
 import { getServerStatus } from "./status/handlers.ts";
 import { resolveTaskByIdentifier } from "./task/handlers.ts";
 import { createWorkflowRoutes } from "./workflow/routes.ts";
+
+const logger = getLogger("api");
 
 export type ServiceStatus = "running" | "stopped";
 
@@ -41,6 +45,8 @@ export const createApp = (deps: AppDependencies) => {
   const { ctx, dashboardStaticPath, dashboardDevOrigin } = deps;
   const app = new Hono();
 
+  app.use("*", otel({ tracerProvider: getTracerProvider() }));
+
   app.use(
     "/api/*",
     cors({
@@ -51,6 +57,38 @@ export const createApp = (deps: AppDependencies) => {
       credentials: true,
     }),
   );
+
+  // Request logging middleware — skip noisy endpoints (SSE, health)
+  app.use("/api/*", async (c, next) => {
+    const path = new URL(c.req.url).pathname;
+    if (path === "/api/health" || path === "/api/events" || path.endsWith("/logs")) {
+      return next();
+    }
+
+    const method = c.req.method;
+    const start = Date.now();
+    logger.info("{method} {path}", { method, path });
+
+    await next();
+
+    const status = c.res.status;
+    const durationMs = Date.now() - start;
+    if (status >= 400) {
+      logger.warn("{method} {path} → {status} ({durationMs}ms)", {
+        method,
+        path,
+        status,
+        durationMs,
+      });
+    } else {
+      logger.info("{method} {path} → {status} ({durationMs}ms)", {
+        method,
+        path,
+        status,
+        durationMs,
+      });
+    }
+  });
 
   app.get("/api/health", async (c) => {
     const { startTimeMs } = deps;

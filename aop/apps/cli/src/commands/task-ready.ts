@@ -2,7 +2,7 @@ import type { SSEServerStatus, SSETask } from "@aop/common";
 import { getLogger } from "@aop/infra";
 import { fetchServer } from "./client.ts";
 
-const logger = getLogger("aop", "cli", "task:ready");
+const logger = getLogger("cli", "task-ready");
 
 export interface TaskReadyOptions {
   workflow?: string;

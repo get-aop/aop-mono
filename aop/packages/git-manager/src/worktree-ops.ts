@@ -11,7 +11,7 @@ import type { MetadataStore } from "./metadata.ts";
 import type { WorktreeInfo } from "./types.ts";
 import { validateTaskId } from "./validation.ts";
 
-const logger = getLogger("aop", "worktree-ops");
+const logger = getLogger("worktree-ops");
 
 /**
  * Worktree create/remove lifecycle operations.

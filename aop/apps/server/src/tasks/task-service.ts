@@ -1,7 +1,10 @@
 import type { TaskStatus, TaskStatusResponse } from "@aop/common/protocol";
+import { getLogger } from "@aop/infra";
 import type { ExecutionRepository } from "../executions/execution-repository.ts";
 import type { RepoRepository } from "../repos/repo-repository.ts";
 import type { TaskRepository } from "./task-repository.ts";
+
+const logger = getLogger("task-service");
 
 export interface TaskNotFoundError {
   success: false;
@@ -46,6 +49,8 @@ export const createTaskService = (
       status,
       synced_at: syncedAt,
     });
+
+    logger.info("Task synced {taskId} status={status}", { taskId, status });
   },
 
   getTaskStatus: async (clientId, taskId) => {

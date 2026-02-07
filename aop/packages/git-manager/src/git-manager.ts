@@ -9,7 +9,7 @@ import { MetadataStore } from "./metadata.ts";
 import type { ApplyResult, GitManagerOptions, SquashResult, WorktreeInfo } from "./types.ts";
 import { WorktreeOps } from "./worktree-ops.ts";
 
-const logger = getLogger("aop", "git-manager");
+const logger = getLogger("git-manager");
 
 export class GitManager {
   private readonly executor: GitExecutor;

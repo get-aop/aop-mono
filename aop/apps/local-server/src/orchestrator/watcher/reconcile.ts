@@ -5,7 +5,7 @@ import type { NewTask, Repo, Task } from "../../db/schema.ts";
 import type { RepoRepository } from "../../repo/repository.ts";
 import type { TaskRepository } from "../../task/repository.ts";
 
-const logger = getLogger("aop", "reconcile");
+const logger = getLogger("reconcile");
 
 const CHANGES_DIR = "openspec/changes";
 

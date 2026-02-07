@@ -4,7 +4,7 @@ import type { LocalServerContext } from "../context.ts";
 import { runWithRetry } from "../session/background-runner.ts";
 import { saveDraft } from "./draft.ts";
 
-const logger = getLogger("aop", "local-server", "create-task");
+const logger = getLogger("create-task");
 
 const MAX_CONTINUATION_RETRIES = 3;
 const DEFAULT_TURN_TIMEOUT_MS = 90 * 1000;

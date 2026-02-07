@@ -111,7 +111,7 @@ export const setupLogging = async (
 
   const logDir = process.env.AOP_LOG_DIR;
   const logLevel = (process.env.AOP_LOG_LEVEL as LogLevel) || "info";
-  const options: LoggingOptions = { level: logLevel, format: "pretty" };
+  const options: LoggingOptions = { level: logLevel, format: "pretty", serviceName: "cli" };
 
   if (logDir) {
     await runtime.mkdir(logDir, { recursive: true });

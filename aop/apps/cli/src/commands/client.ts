@@ -1,7 +1,7 @@
 import { AOP_URLS } from "@aop/common";
 import { getLogger } from "@aop/infra";
 
-const logger = getLogger("aop", "cli", "client");
+const logger = getLogger("cli", "client");
 
 const HEALTH_CHECK_TIMEOUT_MS = 1000;
 

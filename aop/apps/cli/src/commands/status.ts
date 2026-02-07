@@ -2,7 +2,7 @@ import type { SSERepoWithTasks, SSEServerStatus, SSETask } from "@aop/common";
 import { getLogger } from "@aop/infra";
 import { fetchServer } from "./client.ts";
 
-const logger = getLogger("aop", "cli", "status");
+const logger = getLogger("cli", "status");
 
 export interface StatusOptions {
   json?: boolean;

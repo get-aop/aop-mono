@@ -1,7 +1,7 @@
 import { getLogger } from "@aop/infra";
 import { fetchServer } from "./client.ts";
 
-const logger = getLogger("aop", "cli", "task:remove");
+const logger = getLogger("cli", "task-remove");
 
 export interface RemoveTaskOptions {
   force?: boolean;

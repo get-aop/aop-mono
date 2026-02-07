@@ -5,7 +5,7 @@ import { Glob } from "bun";
 import type { WorkflowDefinition } from "./types.ts";
 import { parseWorkflowYaml } from "./yaml-parser.ts";
 
-const logger = getLogger("aop-server", "workflow-loader");
+const logger = getLogger("workflow-loader");
 
 export class WorkflowLoadError extends Error {
   constructor(message: string) {

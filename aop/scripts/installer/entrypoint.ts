@@ -10,7 +10,7 @@ import cac from "cac";
 
 declare const BUILD_VERSION: string;
 
-const logger = getLogger("aop", "entrypoint");
+const logger = getLogger("entrypoint");
 
 const AOP_DIR = join(homedir(), ".aop");
 const PID_FILE = join(AOP_DIR, "server.pid");
