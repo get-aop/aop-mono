@@ -1,33 +1,49 @@
 import * as readline from "node:readline";
 import { getLogger } from "@aop/infra";
 import type { Question, QuestionOption } from "@aop/llm-provider";
+import { createSpinner } from "../format/spinner.ts";
 import { fetchServer, requireServer } from "./client.ts";
 
 const logger = getLogger("aop", "cli", "create-task");
+type CreateTaskLogger = Pick<typeof logger, "debug" | "error" | "info" | "warn">;
+
+interface CreateTaskRuntime {
+  createInterface: typeof readline.createInterface;
+  createSpinner: typeof createSpinner;
+  cwd: () => string;
+  exit: typeof process.exit;
+  fetchServer: typeof fetchServer;
+  logger: CreateTaskLogger;
+  offSignal: typeof process.off;
+  onSignal: typeof process.on;
+  requireServer: typeof requireServer;
+  writeStdout: (chunk: string) => void;
+}
+
+type CreateTaskRuntimeOverrides = Partial<CreateTaskRuntime>;
+
+const createRuntime = (overrides: CreateTaskRuntimeOverrides = {}): CreateTaskRuntime => {
+  return {
+    createInterface: readline.createInterface,
+    createSpinner,
+    cwd: () => process.cwd(),
+    exit: process.exit,
+    fetchServer,
+    logger,
+    offSignal: process.off,
+    onSignal: process.on,
+    requireServer,
+    writeStdout: (chunk: string) => {
+      process.stdout.write(chunk);
+    },
+    ...overrides,
+  };
+};
 
 export interface CreateTaskCommandOptions {
   debug?: boolean;
   raw?: boolean;
 }
-
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-const createSpinner = (label: string): { stop: () => void } => {
-  const start = Date.now();
-  let frame = 0;
-  const interval = setInterval(() => {
-    const elapsed = Math.floor((Date.now() - start) / 1000);
-    const icon = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
-    process.stdout.write(`\r${icon} ${label} (${elapsed}s)`);
-    frame++;
-  }, 120);
-  return {
-    stop: () => {
-      clearInterval(interval);
-      process.stdout.write("\r\x1b[K");
-    },
-  };
-};
 
 interface CreateTaskQuestionResponse {
   status: "question";
@@ -98,44 +114,50 @@ const parseAnswer = (answer: string, question: Question): string => {
   return translateNumberToLabel(trimmed, options);
 };
 
-const printAssistantOutput = (assistantOutput?: string): boolean => {
+const printAssistantOutput = (runtime: CreateTaskRuntime, assistantOutput?: string): boolean => {
   if (!assistantOutput) return false;
   const trimmed = assistantOutput.trim();
   if (!trimmed) return false;
-  process.stdout.write(`\n${trimmed}\n\n`);
+  runtime.writeStdout(`\n${trimmed}\n\n`);
   return true;
 };
 
-const printQuestionPrompt = (question: Question, count: number, max: number): void => {
+const printQuestionPrompt = (
+  runtime: CreateTaskRuntime,
+  question: Question,
+  count: number,
+  max: number,
+): void => {
   const header = question.header ? ` [${question.header}]` : "";
   const suffix = max > 0 ? `/${max}` : "";
-  process.stdout.write(`\n\nQuestion ${count}${suffix}${header}: ${question.question}\n`);
+  runtime.writeStdout(`\n\nQuestion ${count}${suffix}${header}: ${question.question}\n`);
 };
 
-const printQuestionOptions = (question: Question): void => {
+const printQuestionOptions = (runtime: CreateTaskRuntime, question: Question): void => {
   if (!question.options || question.options.length === 0) return;
 
-  process.stdout.write("\n");
+  runtime.writeStdout("\n");
   for (const [index, option] of question.options.entries()) {
-    process.stdout.write(`${formatOptionLine(option, index)}\n`);
+    runtime.writeStdout(`${formatOptionLine(option, index)}\n`);
   }
-  process.stdout.write("\n");
+  runtime.writeStdout("\n");
   if (question.multiSelect) {
-    process.stdout.write("(Enter comma-separated numbers, or type a custom response)\n\n");
+    runtime.writeStdout("(Enter comma-separated numbers, or type a custom response)\n\n");
     return;
   }
-  process.stdout.write("(Enter a number, or type a custom response)\n\n");
+  runtime.writeStdout("(Enter a number, or type a custom response)\n\n");
 };
 
 const displayQuestion = (
+  runtime: CreateTaskRuntime,
   question: Question,
   count: number,
   max: number,
   assistantOutput?: string,
 ): void => {
-  if (printAssistantOutput(assistantOutput)) return;
-  printQuestionPrompt(question, count, max);
-  printQuestionOptions(question);
+  if (printAssistantOutput(runtime, assistantOutput)) return;
+  printQuestionPrompt(runtime, question, count, max);
+  printQuestionOptions(runtime, question);
 };
 
 const ask = (rl: readline.Interface, prompt: string): Promise<string> => {
@@ -158,46 +180,52 @@ const askConfirmation = async (rl: readline.Interface, prompt: string): Promise<
   return answer === "y" || answer === "yes";
 };
 
-const exitWithError = (message: string, error: string): never => {
-  logger.error(message, { error });
-  process.exit(1);
+const exitWithError = (runtime: CreateTaskRuntime, message: string, error: string): never => {
+  runtime.logger.error(message, { error });
+  return runtime.exit(1);
 };
 
-const unwrapOrExit = <T>(result: FetchResult<T>, message: string, debug?: boolean): T => {
+const unwrapOrExit = <T>(
+  runtime: CreateTaskRuntime,
+  result: FetchResult<T>,
+  message: string,
+  debug?: boolean,
+): T => {
   if (!result.ok) {
     if (debug) {
-      logger.debug("Server error response: {response}", {
+      runtime.logger.debug("Server error response: {response}", {
         response: JSON.stringify(result.error, null, 2),
       });
     }
     const assistantOutput = result.error.assistantOutput;
     if (typeof assistantOutput === "string" && assistantOutput.trim().length > 0) {
-      printAssistantOutput(assistantOutput);
+      printAssistantOutput(runtime, assistantOutput);
     }
-    return exitWithError(message, result.error.error);
+    return exitWithError(runtime, message, result.error.error);
   }
   return result.data;
 };
 
 const startCreateTask = async (
+  runtime: CreateTaskRuntime,
   description: string,
   cwd: string,
   debug?: boolean,
 ): Promise<CreateTaskStepResponse> => {
-  const spinner = createSpinner("Brainstorming");
+  const spinner = runtime.createSpinner("Brainstorming");
   try {
-    const result = await fetchServer<CreateTaskStepResponse>("/api/create-task/start", {
+    const result = await runtime.fetchServer<CreateTaskStepResponse>("/api/create-task/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ description, cwd }),
     });
     spinner.stop();
     if (debug) {
-      logger.debug("Start response: {response}", {
+      runtime.logger.debug("Start response: {response}", {
         response: JSON.stringify(result, null, 2),
       });
     }
-    return unwrapOrExit(result, "Failed to start create-task: {error}", debug);
+    return unwrapOrExit(runtime, result, "Failed to start create-task: {error}", debug);
   } catch (err) {
     spinner.stop();
     throw err;
@@ -205,13 +233,14 @@ const startCreateTask = async (
 };
 
 const answerQuestion = async (
+  runtime: CreateTaskRuntime,
   sessionId: string,
   answer: string,
   debug?: boolean,
 ): Promise<CreateTaskStepResponse> => {
-  const spinner = createSpinner("Processing answer");
+  const spinner = runtime.createSpinner("Processing answer");
   try {
-    const result = await fetchServer<CreateTaskStepResponse>(
+    const result = await runtime.fetchServer<CreateTaskStepResponse>(
       `/api/create-task/${sessionId}/answer`,
       {
         method: "POST",
@@ -221,11 +250,11 @@ const answerQuestion = async (
     );
     spinner.stop();
     if (debug) {
-      logger.debug("Answer response: {response}", {
+      runtime.logger.debug("Answer response: {response}", {
         response: JSON.stringify(result, null, 2),
       });
     }
-    return unwrapOrExit(result, "Failed to continue create-task: {error}", debug);
+    return unwrapOrExit(runtime, result, "Failed to continue create-task: {error}", debug);
   } catch (err) {
     spinner.stop();
     throw err;
@@ -233,13 +262,14 @@ const answerQuestion = async (
 };
 
 const finalizeCreateTask = async (
+  runtime: CreateTaskRuntime,
   sessionId: string,
   createChange: boolean,
   debug?: boolean,
 ): Promise<CreateTaskFinalizeResponse> => {
-  const spinner = createSpinner("Finalizing");
+  const spinner = runtime.createSpinner("Finalizing");
   try {
-    const result = await fetchServer<CreateTaskFinalizeResponse>(
+    const result = await runtime.fetchServer<CreateTaskFinalizeResponse>(
       `/api/create-task/${sessionId}/finalize`,
       {
         method: "POST",
@@ -249,11 +279,11 @@ const finalizeCreateTask = async (
     );
     spinner.stop();
     if (debug) {
-      logger.debug("Finalize response: {response}", {
+      runtime.logger.debug("Finalize response: {response}", {
         response: JSON.stringify(result, null, 2),
       });
     }
-    return unwrapOrExit(result, "Failed to finalize create-task: {error}", debug);
+    return unwrapOrExit(runtime, result, "Failed to finalize create-task: {error}", debug);
   } catch (err) {
     spinner.stop();
     throw err;
@@ -261,6 +291,7 @@ const finalizeCreateTask = async (
 };
 
 const runQuestionLoop = async (
+  runtime: CreateTaskRuntime,
   rl: readline.Interface,
   initialStep: CreateTaskStepResponse,
   setSessionId: (sessionId: string) => void,
@@ -270,63 +301,75 @@ const runQuestionLoop = async (
   setSessionId(step.sessionId);
 
   while (step.status === "question") {
-    displayQuestion(step.question, step.questionCount, step.maxQuestions, step.assistantOutput);
+    displayQuestion(
+      runtime,
+      step.question,
+      step.questionCount,
+      step.maxQuestions,
+      step.assistantOutput,
+    );
     const answer = await askQuestionAnswer(rl, step.question);
-    step = await answerQuestion(step.sessionId, answer, debug);
+    step = await answerQuestion(runtime, step.sessionId, answer, debug);
     setSessionId(step.sessionId);
   }
 
   return step;
 };
 
-const logFinalizeResult = (result: CreateTaskFinalizeResponse): void => {
+const logFinalizeResult = (
+  runtime: CreateTaskRuntime,
+  result: CreateTaskFinalizeResponse,
+): void => {
   if (result.warning) {
-    logger.warn(result.warning);
+    runtime.logger.warn(result.warning);
   }
   if (result.draftPath) {
-    logger.info("Draft saved to: {path}", { path: result.draftPath });
+    runtime.logger.info("Draft saved to: {path}", { path: result.draftPath });
   }
   if (result.changeName) {
-    logger.info("Change created: {changeName}", { changeName: result.changeName });
+    runtime.logger.info("Change created: {changeName}", { changeName: result.changeName });
     return;
   }
-  logger.info("Brainstorming complete. Requirements saved.");
+  runtime.logger.info("Brainstorming complete. Requirements saved.");
 };
 
 export const createTaskCommand = async (
   description?: string,
   options: CreateTaskCommandOptions = {},
+  runtimeOverrides: CreateTaskRuntimeOverrides = {},
 ): Promise<void> => {
-  await requireServer();
-  const cwd = process.cwd();
+  const runtime = createRuntime(runtimeOverrides);
+  await runtime.requireServer();
+  const cwd = runtime.cwd();
   const debug = options.debug;
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const rl = runtime.createInterface({ input: process.stdin, output: process.stdout });
 
   let sessionId = "";
 
   const cancel = async (): Promise<void> => {
     if (sessionId) {
-      await fetchServer(`/api/create-task/${sessionId}/cancel`, {
+      await runtime.fetchServer(`/api/create-task/${sessionId}/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
     }
     rl.close();
-    process.exit(130);
+    runtime.exit(130);
   };
 
-  process.on("SIGINT", cancel);
-  process.on("SIGTERM", cancel);
+  runtime.onSignal("SIGINT", cancel);
+  runtime.onSignal("SIGTERM", cancel);
 
   try {
     const taskDescription = description ?? (await askDescription(rl));
     if (!taskDescription.trim()) {
-      logger.error("No task description provided");
-      process.exit(1);
+      runtime.logger.error("No task description provided");
+      runtime.exit(1);
     }
 
-    const startStep = await startCreateTask(taskDescription, cwd, debug);
+    const startStep = await startCreateTask(runtime, taskDescription, cwd, debug);
     const completedStep = await runQuestionLoop(
+      runtime,
       rl,
       startStep,
       (id) => {
@@ -334,16 +377,21 @@ export const createTaskCommand = async (
       },
       debug,
     );
-    printAssistantOutput(completedStep.assistantOutput);
+    printAssistantOutput(runtime, completedStep.assistantOutput);
     const shouldCreateChange = await askConfirmation(
       rl,
       "Create OpenSpec change from these requirements?",
     );
-    const finalized = await finalizeCreateTask(completedStep.sessionId, shouldCreateChange, debug);
-    logFinalizeResult(finalized);
+    const finalized = await finalizeCreateTask(
+      runtime,
+      completedStep.sessionId,
+      shouldCreateChange,
+      debug,
+    );
+    logFinalizeResult(runtime, finalized);
   } finally {
     rl.close();
-    process.off("SIGINT", cancel);
-    process.off("SIGTERM", cancel);
+    runtime.offSignal("SIGINT", cancel);
+    runtime.offSignal("SIGTERM", cancel);
   }
 };

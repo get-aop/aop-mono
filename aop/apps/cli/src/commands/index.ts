@@ -4,6 +4,7 @@ export { configSetCommand } from "./config-set.ts";
 export { createTaskCommand } from "./create-task.ts";
 export { repoInitCommand } from "./repo-init.ts";
 export { repoRemoveCommand } from "./repo-remove.ts";
+export { runTaskCommand } from "./run-task.ts";
 export { statusCommand } from "./status.ts";
 export { taskReadyCommand } from "./task-ready.ts";
 export { taskRemoveCommand } from "./task-remove.ts";

@@ -31,7 +31,9 @@
       "Bash(npx playwright:*)"
     ]
   },
-  "model": "opus",
+  "enabledMcpjsonServers": [
+    "playwright"
+  ],
   "hooks": {
     "Notification": [
       {
@@ -60,6 +62,5 @@
     "linear@claude-plugins-official": false,
     "code-review@claude-plugins-official": false,
     "playwright@claude-plugins-official": false
-  },
-  "enabledMcpjsonServers": ["playwright"]
+  }
 }

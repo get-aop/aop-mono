@@ -1,13 +1,12 @@
 import { generateTypeId, getLogger } from "@aop/infra";
 import { ClaudeCodeSession, type Question, type QuestionOption } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
+import { runWithRetry } from "../session/background-runner.ts";
 import { saveDraft } from "./draft.ts";
 
 const logger = getLogger("aop", "local-server", "create-task");
 
 const MAX_CONTINUATION_RETRIES = 3;
-const MAX_BACKGROUND_RETRIES = 2;
-const RETRY_DELAY_MS = 2000;
 const DEFAULT_TURN_TIMEOUT_MS = 90 * 1000;
 const DEFAULT_BACKGROUND_TIMEOUT_MS = 3 * 60 * 1000;
 const DEFAULT_BRAINSTORM_COMMAND = "/aop:brainstorming";
@@ -107,18 +106,6 @@ interface ClaudeRunState {
   lastOutput: string;
   completed: boolean;
   errorMessage: string | null;
-}
-
-interface BackgroundTurnState {
-  output: string;
-  errorMessage: string | null;
-  timedOut: boolean;
-}
-
-interface BackgroundRunResult {
-  success: boolean;
-  output: string;
-  sessionId?: string;
 }
 
 type ClaudeDecision = CreateTaskStepResponse | { retryPrompt: string };
@@ -679,68 +666,8 @@ export const createCreateTaskService = (
     return runtimes.get(sessionId) ?? null;
   };
 
-  const runBackgroundTurn = async (
-    runtime: RuntimeSession,
-    input: string,
-  ): Promise<BackgroundTurnState> => {
-    const state: BackgroundTurnState = {
-      output: "",
-      errorMessage: null,
-      timedOut: false,
-    };
-
-    const onMessage = (content: string): void => {
-      state.output += content;
-    };
-    const onCompleted = (output: string): void => {
-      state.output = output;
-    };
-    const onError = (code: number): void => {
-      state.errorMessage = `Claude process exited with code ${code}`;
-    };
-
-    runtime.claudeSession.on("message", onMessage);
-    runtime.claudeSession.on("completed", onCompleted);
-    runtime.claudeSession.on("error", onError);
-
-    const timeoutId = setTimeout(() => {
-      state.timedOut = true;
-      runtime.claudeSession.kill();
-    }, DEFAULT_BACKGROUND_TIMEOUT_MS);
-
-    try {
-      await runtime.claudeSession.resume(runtime.claudeSessionId, input);
-    } catch (err) {
-      state.errorMessage = err instanceof Error ? err.message : String(err);
-    } finally {
-      clearTimeout(timeoutId);
-      runtime.claudeSession.off("message", onMessage);
-      runtime.claudeSession.off("completed", onCompleted);
-      runtime.claudeSession.off("error", onError);
-    }
-
-    const latestSessionId = runtime.claudeSession.sessionId;
-    if (latestSessionId) {
-      runtime.claudeSessionId = latestSessionId;
-    }
-
-    return state;
-  };
-
-  const toBackgroundTurnFailure = (turn: BackgroundTurnState): BackgroundRunResult | null => {
-    if (turn.timedOut) {
-      return {
-        success: false,
-        output: `Background command timed out after ${DEFAULT_BACKGROUND_TIMEOUT_MS}ms`,
-      };
-    }
-
-    if (turn.errorMessage) {
-      return { success: false, output: turn.errorMessage };
-    }
-
-    return null;
-  };
+  const detectQuestion = (output: string): boolean =>
+    parseQuestionFromAssistantOutput(output) !== null;
 
   const resolveClaudeDecision = async (
     runtime: RuntimeSession,
@@ -770,12 +697,20 @@ export const createCreateTaskService = (
     };
   };
 
+  const bgRunnerOpts = {
+    timeoutMs: DEFAULT_BACKGROUND_TIMEOUT_MS,
+    detectQuestion,
+  };
+
   const finalizeWithChange = async (
     runtime: RuntimeSession,
     requirements: BrainstormingResult,
   ): Promise<CreateTaskFinalizeSuccess> => {
     const changeName = toKebabCase(requirements.title);
-    const newResult = await runWithRetry(runtime, "/opsx:new", changeName);
+    const newResult = await runWithRetry(runtime, "/opsx:new", {
+      ...bgRunnerOpts,
+      autoAnswer: changeName,
+    });
 
     if (!newResult.success) {
       const draftPath = await saveDraft(runtime.cwd, changeName, requirements);
@@ -790,7 +725,10 @@ export const createCreateTaskService = (
     }
 
     runtime.claudeSessionId = newResult.sessionId ?? runtime.claudeSessionId;
-    const ffResult = await runWithRetry(runtime, "/opsx:ff", changeName);
+    const ffResult = await runWithRetry(runtime, "/opsx:ff", {
+      ...bgRunnerOpts,
+      autoAnswer: changeName,
+    });
     await markSessionCompleted(runtime);
 
     if (!ffResult.success) {
@@ -809,64 +747,6 @@ export const createCreateTaskService = (
       requirements,
       changeName,
     };
-  };
-
-  const runBackgroundInSession = async (
-    runtime: RuntimeSession,
-    prompt: string,
-    autoAnswer?: string,
-  ): Promise<BackgroundRunResult> => {
-    const first = await runBackgroundTurn(runtime, prompt);
-    const firstFailure = toBackgroundTurnFailure(first);
-    if (firstFailure) return firstFailure;
-
-    const parsedQuestion = parseQuestionFromAssistantOutput(first.output);
-    if (!parsedQuestion)
-      return { success: true, output: first.output, sessionId: runtime.claudeSessionId };
-
-    if (!autoAnswer) {
-      return {
-        success: false,
-        output: "Background command requested user input but no auto-answer was provided",
-      };
-    }
-
-    const second = await runBackgroundTurn(runtime, autoAnswer);
-    const secondFailure = toBackgroundTurnFailure(second);
-    if (secondFailure) return secondFailure;
-
-    if (parseQuestionFromAssistantOutput(second.output)) {
-      return {
-        success: false,
-        output: "Background command requested multiple questions unexpectedly",
-      };
-    }
-    return { success: true, output: second.output, sessionId: runtime.claudeSessionId };
-  };
-
-  const runWithRetry = async (
-    runtime: RuntimeSession,
-    prompt: string,
-    autoAnswer?: string,
-  ): Promise<BackgroundRunResult> => {
-    for (let attempt = 1; attempt <= MAX_BACKGROUND_RETRIES; attempt++) {
-      const result = await runBackgroundInSession(runtime, prompt, autoAnswer);
-      if (result.success) {
-        return result;
-      }
-
-      logger.warn("Background command failed", {
-        prompt,
-        attempt,
-        output: result.output.slice(0, 500),
-      });
-
-      if (attempt < MAX_BACKGROUND_RETRIES) {
-        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-      }
-    }
-
-    return { success: false, output: `Command failed after ${MAX_BACKGROUND_RETRIES} attempts` };
   };
 
   return {
