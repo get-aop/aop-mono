@@ -289,8 +289,10 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
       throw new Error("Expected next step in transition but none provided");
     }
 
+    // Always place the next step at the end so .at(-1) correctly tracks the current step.
+    // When looping back to a visited step, move it to the end rather than leaving it in place.
     const updatedVisitedSteps = iterationContext.visitedSteps.includes(nextStep.id)
-      ? iterationContext.visitedSteps
+      ? [...iterationContext.visitedSteps.filter((s) => s !== nextStep.id), nextStep.id]
       : [...iterationContext.visitedSteps, nextStep.id];
     const newIteration = transition.shouldIncrementIteration
       ? iterationContext.iteration + 1

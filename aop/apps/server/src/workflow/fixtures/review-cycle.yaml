@@ -1,0 +1,37 @@
+version: 1
+name: review-cycle
+initialStep: implement
+steps:
+  implement:
+    id: implement
+    type: implement
+    promptTemplate: implement.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: review
+      - condition: failure
+        target: __blocked__
+  review:
+    id: review
+    type: review
+    promptTemplate: review.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: __done__
+      - condition: failure
+        target: fix
+        maxIterations: 2
+        onMaxIterations: __blocked__
+  fix:
+    id: fix
+    type: debug
+    promptTemplate: fix.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: review
+terminalStates:
+  - __done__
+  - __blocked__

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { join } from "node:path";
+import { loadOfficialWorkflow } from "./test-utils.ts";
 import { TransitionSchema } from "./types.ts";
 import { WorkflowParseError } from "./workflow-parser.ts";
 import { createWorkflowStateMachine } from "./workflow-state-machine.ts";
@@ -317,14 +317,8 @@ describe("TransitionSchema", () => {
 });
 
 describe("aop-default workflow integration", () => {
-  const loadAopDefaultWorkflow = async () => {
-    const workflowPath = join(import.meta.dir, "../../workflows/aop-default.yaml");
-    const content = await Bun.file(workflowPath).text();
-    return parseWorkflowYaml(content);
-  };
-
   test("parses aop-default workflow from file", async () => {
-    const workflow = await loadAopDefaultWorkflow();
+    const workflow = await loadOfficialWorkflow("aop-default");
 
     expect(workflow.name).toBe("aop-default");
     expect(workflow.initialStep).toBe("iterate");
@@ -338,7 +332,7 @@ describe("aop-default workflow integration", () => {
   });
 
   test("iterate step has correct signals and transitions", async () => {
-    const workflow = await loadAopDefaultWorkflow();
+    const workflow = await loadOfficialWorkflow("aop-default");
     const step = workflow.steps.iterate;
 
     expect(step?.signals).toEqual(["CHUNK_DONE", "ALL_TASKS_DONE"]);
@@ -350,7 +344,7 @@ describe("aop-default workflow integration", () => {
   });
 
   test("full-review step has maxIterations constraint", async () => {
-    const workflow = await loadAopDefaultWorkflow();
+    const workflow = await loadOfficialWorkflow("aop-default");
     const step = workflow.steps["full-review"];
     const failTransition = step?.transitions.find((t) => t.condition === "REVIEW_FAILED");
 
@@ -359,7 +353,7 @@ describe("aop-default workflow integration", () => {
   });
 
   test("fix-issues step has afterIteration conditional routing", async () => {
-    const workflow = await loadAopDefaultWorkflow();
+    const workflow = await loadOfficialWorkflow("aop-default");
     const step = workflow.steps["fix-issues"];
     const fixTransition = step?.transitions.find((t) => t.condition === "FIX_COMPLETE");
 
@@ -369,7 +363,7 @@ describe("aop-default workflow integration", () => {
   });
 
   test("complete workflow execution flow: happy path", async () => {
-    const workflow = await loadAopDefaultWorkflow();
+    const workflow = await loadOfficialWorkflow("aop-default");
     const sm = createWorkflowStateMachine(workflow);
 
     const initial = sm.getInitialStep();
@@ -395,7 +389,7 @@ describe("aop-default workflow integration", () => {
   });
 
   test("workflow flow: review fails then fix then quick-review passes", async () => {
-    const workflow = await loadAopDefaultWorkflow();
+    const workflow = await loadOfficialWorkflow("aop-default");
     const sm = createWorkflowStateMachine(workflow);
     const ctx = { iteration: 0, visitedSteps: ["iterate", "full-review"] };
 
@@ -424,7 +418,7 @@ describe("aop-default workflow integration", () => {
   });
 
   test("workflow flow: second iteration routes fix to full-review", async () => {
-    const workflow = await loadAopDefaultWorkflow();
+    const workflow = await loadOfficialWorkflow("aop-default");
     const sm = createWorkflowStateMachine(workflow);
     const ctx = {
       iteration: 1,
@@ -441,7 +435,7 @@ describe("aop-default workflow integration", () => {
   });
 
   test("workflow blocks after maxIterations exceeded", async () => {
-    const workflow = await loadAopDefaultWorkflow();
+    const workflow = await loadOfficialWorkflow("aop-default");
     const sm = createWorkflowStateMachine(workflow);
     const ctx = {
       iteration: 2,

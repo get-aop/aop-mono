@@ -1,0 +1,36 @@
+version: 1
+name: signal-loop
+initialStep: iterate
+steps:
+  iterate:
+    id: iterate
+    type: iterate
+    promptTemplate: iterate.md.hbs
+    maxAttempts: 1
+    signals:
+      - TASK_COMPLETE
+      - NEEDS_REVIEW
+    transitions:
+      - condition: TASK_COMPLETE
+        target: __done__
+      - condition: NEEDS_REVIEW
+        target: review
+      - condition: __none__
+        target: iterate
+      - condition: success
+        target: __done__
+      - condition: failure
+        target: __blocked__
+  review:
+    id: review
+    type: review
+    promptTemplate: review.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: __done__
+      - condition: failure
+        target: __blocked__
+terminalStates:
+  - __done__
+  - __blocked__

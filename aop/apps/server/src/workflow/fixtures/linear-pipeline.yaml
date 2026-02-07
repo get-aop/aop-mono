@@ -1,0 +1,37 @@
+version: 1
+name: linear-pipeline
+initialStep: implement
+steps:
+  implement:
+    id: implement
+    type: implement
+    promptTemplate: implement.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: test
+      - condition: failure
+        target: __blocked__
+  test:
+    id: test
+    type: test
+    promptTemplate: test.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: __done__
+      - condition: failure
+        target: debug
+  debug:
+    id: debug
+    type: debug
+    promptTemplate: debug.md.hbs
+    maxAttempts: 2
+    transitions:
+      - condition: success
+        target: test
+      - condition: failure
+        target: __blocked__
+terminalStates:
+  - __done__
+  - __blocked__

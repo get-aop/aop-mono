@@ -1,0 +1,47 @@
+version: 1
+name: conditional-routing
+initialStep: implement
+steps:
+  implement:
+    id: implement
+    type: implement
+    promptTemplate: implement.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: full-review
+      - condition: failure
+        target: __blocked__
+  full-review:
+    id: full-review
+    type: review
+    promptTemplate: full-review.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: __done__
+      - condition: failure
+        target: fix
+  fix:
+    id: fix
+    type: debug
+    promptTemplate: fix.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: quick-review
+        afterIteration: 1
+        thenTarget: full-review
+  quick-review:
+    id: quick-review
+    type: review
+    promptTemplate: quick-review.md.hbs
+    maxAttempts: 1
+    transitions:
+      - condition: success
+        target: __done__
+      - condition: failure
+        target: fix
+terminalStates:
+  - __done__
+  - __blocked__
