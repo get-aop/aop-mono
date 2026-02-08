@@ -93,14 +93,17 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
   const syncActiveTasksToServer = async (): Promise<void> => {
     if (!serverSync || serverSync.isDegraded()) return;
 
+    const repos = await ctx.repoRepository.getAll();
+    const repoIds = new Set(repos.map((r) => r.id));
     const tasks = await ctx.taskRepository.list({ excludeRemoved: true });
-    if (tasks.length === 0) return;
+    const activeTasks = tasks.filter((t) => repoIds.has(t.repo_id));
+    if (activeTasks.length === 0) return;
 
-    for (const task of tasks) {
+    for (const task of activeTasks) {
       await serverSync.syncTask(task.id, task.repo_id, task.status as TaskStatus);
     }
 
-    logger.info("Synced {count} active tasks to server on startup", { count: tasks.length });
+    logger.info("Synced {count} active tasks to server on startup", { count: activeTasks.length });
   };
 
   const startWatcher = async (): Promise<void> => {

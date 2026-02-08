@@ -123,6 +123,17 @@ export const removeRepo = async (
     abortedTasks = await abortWorkingTasks(ctx, workingTasks);
   }
 
+  // Mark all remaining non-REMOVED tasks as REMOVED before deleting the repo
+  const remainingTasks = await taskRepository.list({
+    repo_id: repo.id,
+    excludeRemoved: true,
+  });
+  for (const task of remainingTasks) {
+    if (task.status !== "WORKING") {
+      await taskRepository.markRemoved(task.id);
+    }
+  }
+
   const removed = await repoRepository.remove(repo.id);
   if (!removed) {
     logger.error("Remove repo failed: repository.remove returned false for {repoId}", {

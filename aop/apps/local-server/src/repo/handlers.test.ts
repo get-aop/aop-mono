@@ -232,6 +232,38 @@ describe("repo/handlers", () => {
 
       expect(result.success).toBe(true);
     });
+
+    test("marks non-working tasks as REMOVED when repo is removed", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DRAFT");
+      await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "READY");
+      await createTestTask(db, "task-3", "repo-1", "changes/feat-3", "DONE");
+
+      const result = await removeRepo(ctx, "/test/repo");
+
+      expect(result.success).toBe(true);
+
+      const task1 = await ctx.taskRepository.get("task-1");
+      const task2 = await ctx.taskRepository.get("task-2");
+      const task3 = await ctx.taskRepository.get("task-3");
+      expect(task1?.status).toBe("REMOVED");
+      expect(task2?.status).toBe("REMOVED");
+      expect(task3?.status).toBe("REMOVED");
+    });
+
+    test("does not leave orphaned tasks after repo removal", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DRAFT");
+      await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "READY");
+
+      await removeRepo(ctx, "/test/repo");
+
+      const remainingTasks = await ctx.taskRepository.list({
+        repo_id: "repo-1",
+        excludeRemoved: true,
+      });
+      expect(remainingTasks).toHaveLength(0);
+    });
   });
 
   describe("getRepoById", () => {

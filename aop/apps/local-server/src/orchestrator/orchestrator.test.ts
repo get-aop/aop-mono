@@ -3,7 +3,7 @@ import type { Kysely } from "kysely";
 import type { OrchestratorStatus } from "../app.ts";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
-import { createTestDb } from "../db/test-utils.ts";
+import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
 
 interface MockOrchestrator {
   start: () => Promise<void>;
@@ -59,6 +59,49 @@ const createMockOrchestrator = (_ctx: LocalServerContext): MockOrchestrator => {
     },
   };
 };
+
+describe("syncActiveTasksToServer filtering", () => {
+  let db: Kysely<Database>;
+  let ctx: LocalServerContext;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    ctx = createCommandContext(db);
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  test("filters out tasks whose repo no longer exists", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo-1");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DRAFT");
+    await createTestTask(db, "task-2", "orphan-repo", "changes/feat-2", "READY");
+    await createTestTask(db, "task-3", "orphan-repo", "changes/feat-3", "DONE");
+
+    const repos = await ctx.repoRepository.getAll();
+    const repoIds = new Set(repos.map((r) => r.id));
+    const tasks = await ctx.taskRepository.list({ excludeRemoved: true });
+    const activeTasks = tasks.filter((t) => repoIds.has(t.repo_id));
+
+    expect(activeTasks).toHaveLength(1);
+    expect(activeTasks[0]?.id).toBe("task-1");
+  });
+
+  test("returns all tasks when no repos are orphaned", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo-1");
+    await createTestRepo(db, "repo-2", "/test/repo-2");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DRAFT");
+    await createTestTask(db, "task-2", "repo-2", "changes/feat-2", "READY");
+
+    const repos = await ctx.repoRepository.getAll();
+    const repoIds = new Set(repos.map((r) => r.id));
+    const tasks = await ctx.taskRepository.list({ excludeRemoved: true });
+    const activeTasks = tasks.filter((t) => repoIds.has(t.repo_id));
+
+    expect(activeTasks).toHaveLength(2);
+  });
+});
 
 describe("orchestrator graceful shutdown", () => {
   let db: Kysely<Database>;
