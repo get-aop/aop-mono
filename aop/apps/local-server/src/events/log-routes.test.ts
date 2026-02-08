@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
@@ -512,5 +515,245 @@ describe("log-routes", () => {
       expect(lines[0]?.content).toBe("before abort");
       expect(lines[1]?.content).toBe("after abort - should not appear");
     });
+  });
+});
+
+describe("log-routes file-based streaming", () => {
+  let db: Kysely<Database>;
+  let ctx: LocalServerContext;
+  let app: Hono;
+  let testDir: string;
+
+  const writeJsonl = (filename: string, entries: Record<string, unknown>[]): string => {
+    const path = join(testDir, filename);
+    writeFileSync(path, `${entries.map((e) => JSON.stringify(e)).join("\n")}\n`);
+    return path;
+  };
+
+  const setupFileRoute = (isProcessAlive: (pid: number) => boolean) => {
+    app = new Hono();
+    app.get(
+      "/api/executions/:executionId/logs",
+      createLogStreamHandler(ctx, {
+        logsDir: testDir,
+        isProcessAlive,
+        pollIntervalMs: 50,
+      }),
+    );
+  };
+
+  const createRunningExecution = async (execId: string, stepId: string, agentPid: number) => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+    await ctx.executionRepository.createExecution({
+      id: execId,
+      task_id: "task-1",
+      status: ExecutionStatus.RUNNING,
+      started_at: new Date().toISOString(),
+    });
+    await ctx.executionRepository.createStepExecution({
+      id: stepId,
+      execution_id: execId,
+      step_type: "implement",
+      agent_pid: agentPid,
+      session_id: null,
+      status: "running",
+      exit_code: null,
+      signal: null,
+      error: null,
+      started_at: new Date().toISOString(),
+      ended_at: null,
+    });
+  };
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    const logBuffer = createLogBuffer();
+    ctx = createCommandContext(db, { logBuffer });
+    testDir = join(tmpdir(), `log-routes-file-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("streams from log file when agent is already dead", async () => {
+    const stepId = "step-1";
+    await createRunningExecution("exec-1", stepId, 99999);
+
+    writeJsonl(`${stepId}.jsonl`, [
+      { type: "assistant", message: { content: [{ type: "text", text: "Hello from file" }] } },
+      { type: "tool_use", tool_name: "Bash", input: { command: "ls" } },
+    ]);
+
+    setupFileRoute(() => false);
+
+    const res = await app.request("/api/executions/exec-1/logs");
+    expect(res.status).toBe(200);
+
+    const text = await res.text();
+    const events = parseSSEEvents(text);
+    const parsed = events.map((e) => JSON.parse(e.data));
+
+    const replayEvent = parsed.find((e) => e.type === "replay");
+    expect(replayEvent).toBeDefined();
+    expect(replayEvent.lines).toHaveLength(2);
+    expect(replayEvent.lines[0].content).toBe("Hello from file");
+    expect(replayEvent.lines[1].content).toBe("[Bash] ls");
+
+    const completeEvent = parsed.find((e) => e.type === "complete");
+    expect(completeEvent).toBeDefined();
+  });
+
+  it("resumes from Last-Event-ID offset", async () => {
+    const stepId = "step-2";
+    await createRunningExecution("exec-2", stepId, 99998);
+
+    writeJsonl(`${stepId}.jsonl`, [
+      { type: "assistant", message: { content: [{ type: "text", text: "line 1" }] } },
+      { type: "assistant", message: { content: [{ type: "text", text: "line 2" }] } },
+      { type: "assistant", message: { content: [{ type: "text", text: "line 3" }] } },
+    ]);
+
+    setupFileRoute(() => false);
+
+    const res = await app.request("/api/executions/exec-2/logs", {
+      headers: { "Last-Event-ID": "0" },
+    });
+    expect(res.status).toBe(200);
+
+    const text = await res.text();
+    const events = parseSSEEvents(text);
+    const parsed = events.map((e) => JSON.parse(e.data));
+
+    const replayEvent = parsed.find((e) => e.type === "replay");
+    expect(replayEvent).toBeDefined();
+    expect(replayEvent.lines).toHaveLength(2);
+    expect(replayEvent.lines[0].content).toBe("line 2");
+    expect(replayEvent.lines[1].content).toBe("line 3");
+
+    expect(events[0]?.id).toBe("1");
+  });
+
+  it("skips all lines when Last-Event-ID exceeds line count", async () => {
+    const stepId = "step-3";
+    await createRunningExecution("exec-3", stepId, 99997);
+
+    writeJsonl(`${stepId}.jsonl`, [
+      { type: "assistant", message: { content: [{ type: "text", text: "only line" }] } },
+    ]);
+
+    setupFileRoute(() => false);
+
+    const res = await app.request("/api/executions/exec-3/logs", {
+      headers: { "Last-Event-ID": "10" },
+    });
+    expect(res.status).toBe(200);
+
+    const text = await res.text();
+    const events = parseSSEEvents(text);
+    const parsed = events.map((e) => JSON.parse(e.data));
+
+    const replayEvent = parsed.find((e) => e.type === "replay");
+    expect(replayEvent).toBeUndefined();
+
+    const completeEvent = parsed.find((e) => e.type === "complete");
+    expect(completeEvent).toBeDefined();
+  });
+
+  it("polls file and detects agent exit", async () => {
+    const stepId = "step-4";
+    await createRunningExecution("exec-4", stepId, 99996);
+
+    writeJsonl(`${stepId}.jsonl`, [
+      { type: "assistant", message: { content: [{ type: "text", text: "initial" }] } },
+    ]);
+
+    let alive = true;
+    setupFileRoute(() => alive);
+
+    const responsePromise = app.request("/api/executions/exec-4/logs");
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const logFile = join(testDir, `${stepId}.jsonl`);
+    const newEntry = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "new output" }] },
+    });
+    writeFileSync(logFile, `${newEntry}\n`, { flag: "a" });
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    await ctx.executionRepository.updateExecution("exec-4", {
+      status: ExecutionStatus.COMPLETED,
+      completed_at: new Date().toISOString(),
+    });
+    alive = false;
+
+    const res = await responsePromise;
+    expect(res.status).toBe(200);
+
+    const text = await res.text();
+    const events = parseSSEEvents(text);
+    const parsed = events.map((e) => JSON.parse(e.data));
+
+    const replayEvent = parsed.find((e) => e.type === "replay");
+    expect(replayEvent).toBeDefined();
+    expect(replayEvent.lines[0].content).toBe("initial");
+
+    const completeEvent = parsed.find((e) => e.type === "complete");
+    expect(completeEvent).toBeDefined();
+    expect(completeEvent.status).toBe("completed");
+  });
+
+  it("falls back to LogBuffer when no step execution exists", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+    await ctx.executionRepository.createExecution({
+      id: "exec-5",
+      task_id: "task-1",
+      status: ExecutionStatus.RUNNING,
+      started_at: new Date().toISOString(),
+    });
+
+    setupFileRoute(() => false);
+
+    ctx.logBuffer.push("exec-5", {
+      stream: "stdout",
+      content: "from buffer",
+      timestamp: "2024-01-01T00:00:00.000Z",
+    });
+    ctx.logBuffer.markComplete("exec-5", "completed");
+
+    const res = await app.request("/api/executions/exec-5/logs");
+    const text = await res.text();
+    const events = parseSSEEvents(text);
+    const parsed = events.map((e) => JSON.parse(e.data));
+
+    const replayEvent = parsed.find((e) => e.type === "replay");
+    expect(replayEvent).toBeDefined();
+    expect(replayEvent.lines[0].content).toBe("from buffer");
+  });
+
+  it("assigns event IDs aligned with line count", async () => {
+    const stepId = "step-6";
+    await createRunningExecution("exec-6", stepId, 99994);
+
+    writeJsonl(`${stepId}.jsonl`, [
+      { type: "assistant", message: { content: [{ type: "text", text: "line 1" }] } },
+      { type: "assistant", message: { content: [{ type: "text", text: "line 2" }] } },
+    ]);
+
+    setupFileRoute(() => false);
+
+    const res = await app.request("/api/executions/exec-6/logs");
+    const text = await res.text();
+    const events = parseSSEEvents(text);
+
+    expect(events[0]?.id).toBe("0");
+    expect(events[1]?.id).toBe("2");
   });
 });

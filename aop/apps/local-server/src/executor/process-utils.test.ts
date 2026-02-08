@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isProcessAlive } from "./process-utils.ts";
+import { isClaudeProcess, isProcessAlive } from "./process-utils.ts";
 
 describe("isProcessAlive", () => {
   test("returns true for current process", () => {
@@ -7,7 +7,16 @@ describe("isProcessAlive", () => {
   });
 
   test("returns false for non-existent process", () => {
-    // Use a very high PID that's unlikely to exist
     expect(isProcessAlive(999999999)).toBe(false);
+  });
+});
+
+describe("isClaudeProcess", () => {
+  test("returns false for non-existent process", () => {
+    expect(isClaudeProcess(999999999)).toBe(false);
+  });
+
+  test("returns false for non-claude process", () => {
+    expect(isClaudeProcess(process.pid)).toBe(false);
   });
 });

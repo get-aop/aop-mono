@@ -24,6 +24,7 @@ export interface ExecutionRepository {
   getStepExecutionsByExecutionId: (executionId: string) => Promise<StepExecution[]>;
   getLatestStepExecution: (taskId: string) => Promise<StepExecution | null>;
   cancelRunningStepExecutions: () => Promise<number>;
+  getRunningStepExecutions: () => Promise<(StepExecution & { task_id: string })[]>;
 
   saveExecutionLogs: (logs: NewExecutionLog[]) => Promise<void>;
   getExecutionLogs: (executionId: string) => Promise<ExecutionLog[]>;
@@ -173,6 +174,16 @@ export const createExecutionRepository = (db: Kysely<Database>): ExecutionReposi
       .execute();
 
     return running.length;
+  },
+
+  getRunningStepExecutions: async (): Promise<(StepExecution & { task_id: string })[]> => {
+    return db
+      .selectFrom("step_executions")
+      .innerJoin("executions", "executions.id", "step_executions.execution_id")
+      .selectAll("step_executions")
+      .select("executions.task_id")
+      .where("step_executions.status", "=", "running")
+      .execute();
   },
 
   saveExecutionLogs: async (logs: NewExecutionLog[]): Promise<void> => {

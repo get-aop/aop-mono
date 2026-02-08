@@ -91,24 +91,14 @@ describe("executeTask", () => {
       timedOut: false,
     }));
 
-    const result = await executeTask(
-      ctx,
-      task,
-      stepCommand,
-      executionInfo,
-      undefined,
-      mockProvider as never,
-    );
+    await executeTask(ctx, task, stepCommand, executionInfo, undefined, mockProvider as never);
 
-    expect(result.exitCode).toBe(0);
-    expect(result.status).toBe("success");
     expect(mockProvider.run).toHaveBeenCalled();
 
     const updatedTask = await ctx.taskRepository.get("task-exec-1");
     expect(updatedTask?.status).toBe("DONE");
     expect(updatedTask?.worktree_path).toBe(aopPaths.worktree("repo-1", "task-exec-1"));
 
-    // Verify execution records were created
     const executions = await db
       .selectFrom("executions")
       .selectAll()
@@ -145,17 +135,7 @@ describe("executeTask", () => {
       timedOut: false,
     }));
 
-    const result = await executeTask(
-      ctx,
-      task,
-      stepCommand,
-      executionInfo,
-      undefined,
-      mockProvider as never,
-    );
-
-    expect(result.exitCode).toBe(1);
-    expect(result.status).toBe("failure");
+    await executeTask(ctx, task, stepCommand, executionInfo, undefined, mockProvider as never);
 
     const updatedTask = await ctx.taskRepository.get("task-exec-2");
     expect(updatedTask?.status).toBe("BLOCKED");
@@ -188,16 +168,7 @@ describe("executeTask", () => {
       timedOut: true,
     }));
 
-    const result = await executeTask(
-      ctx,
-      task,
-      stepCommand,
-      executionInfo,
-      undefined,
-      mockProvider as never,
-    );
-
-    expect(result.status).toBe("timeout");
+    await executeTask(ctx, task, stepCommand, executionInfo, undefined, mockProvider as never);
 
     const updatedTask = await ctx.taskRepository.get("task-exec-3");
     expect(updatedTask?.status).toBe("BLOCKED");
@@ -239,7 +210,7 @@ describe("executeTask", () => {
       timedOut: false,
     }));
 
-    const result = await executeTask(
+    await executeTask(
       ctx,
       task,
       stepCommand,
@@ -248,7 +219,6 @@ describe("executeTask", () => {
       mockProvider as never,
     );
 
-    expect(result.status).toBe("success");
     expect(mockServerSync.syncTask).toHaveBeenCalledWith("task-exec-4", "repo-1", "WORKING");
     expect(mockServerSync.completeStep).toHaveBeenCalled();
   });
@@ -311,7 +281,7 @@ describe("executeTask", () => {
       };
     });
 
-    const result = await executeTask(
+    await executeTask(
       ctx,
       task,
       stepCommand,
@@ -320,7 +290,6 @@ describe("executeTask", () => {
       mockProvider as never,
     );
 
-    expect(result.status).toBe("success");
     expect(callCount).toBe(2);
     expect(mockServerSync.completeStep).toHaveBeenCalledTimes(2);
   });

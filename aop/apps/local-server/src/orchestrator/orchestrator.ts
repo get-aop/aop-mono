@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
 import type { ExecutionInfo, StepCommand, TaskStatus } from "@aop/common/protocol";
-import { getLogger, runWithSpan } from "@aop/infra";
+import { aopPaths, getLogger, runWithSpan } from "@aop/infra";
 import type { OrchestratorStatus } from "../app.ts";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { executeTask } from "../executor/executor.ts";
+import { recoverStaleTasks } from "../executor/recovery.ts";
 import { SettingKey } from "../settings/types.ts";
 import { createQueueProcessor, type QueueProcessor } from "./queue/processor.ts";
 import { createDegradedServerSync, createServerSync, type ServerSync } from "./sync/server-sync.ts";
@@ -273,20 +274,13 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
     }
   };
 
-  const resetStaleTasks = async (): Promise<void> => {
-    // Cancel stale step executions first (inner-most), then executions, then tasks
-    const cancelledSteps = await ctx.executionRepository.cancelRunningStepExecutions();
-    const cancelledExecutions = await ctx.executionRepository.cancelRunningExecutions();
-    const resetTasks = await ctx.taskRepository.resetStaleWorkingTasks();
+  const handleStaleTaskRecovery = async (): Promise<void> => {
+    const result = await recoverStaleTasks(ctx, { logsDir: aopPaths.logs() });
 
-    if (resetTasks > 0 || cancelledExecutions > 0 || cancelledSteps > 0) {
+    if (result.recovered > 0 || result.reset > 0 || result.reattached > 0) {
       logger.info(
-        "Reset {taskCount} stale tasks, cancelled {execCount} executions and {stepCount} steps",
-        {
-          taskCount: resetTasks,
-          execCount: cancelledExecutions,
-          stepCount: cancelledSteps,
-        },
+        "Startup recovery: {recovered} recovered from logs, {reattached} reattached to alive agents, {reset} reset to READY",
+        { ...result },
       );
     }
   };
@@ -296,7 +290,7 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
       const startTime = performance.now();
       logger.info("Starting orchestrator");
 
-      await resetStaleTasks();
+      await handleStaleTaskRecovery();
       await initializeServerSync();
       await startWatcher();
       await startTicker();

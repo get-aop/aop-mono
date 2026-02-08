@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import type { LLMProvider, RunOptions, RunResult } from "../types";
 
 interface StreamContext {
@@ -25,6 +26,14 @@ export const createWatchdog = (
   }, checkIntervalMs);
 
   return { stop: () => clearInterval(intervalId) };
+};
+
+const getFileMtime = (path: string): number => {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return Date.now();
+  }
 };
 
 export class ClaudeCodeProvider implements LLMProvider {
@@ -64,13 +73,64 @@ export class ClaudeCodeProvider implements LLMProvider {
   }
 
   async run(options: RunOptions): Promise<RunResult> {
+    if (options.logFilePath) {
+      return this.runWithFileOutput(options, options.logFilePath);
+    }
+    return this.runWithPipeOutput(options);
+  }
+
+  private async runWithFileOutput(options: RunOptions, logFilePath: string): Promise<RunResult> {
+    const spawnEnv = options.env ? { ...process.env, ...options.env } : undefined;
+
+    const proc = Bun.spawn({
+      cmd: this.buildCommand(options),
+      stdout: Bun.file(logFilePath),
+      stderr: "ignore",
+      stdin: "ignore",
+      cwd: options.cwd,
+      detached: true,
+      ...(spawnEnv && { env: spawnEnv }),
+    });
+
+    proc.unref();
+
+    const pid = proc.pid;
+    options.onSpawn?.(pid);
+
+    let timedOut = false;
+    let watchdog: Watchdog | undefined;
+
+    if (options.inactivityTimeoutMs) {
+      watchdog = createWatchdog(
+        options.inactivityTimeoutMs,
+        () => getFileMtime(logFilePath),
+        () => {
+          timedOut = true;
+          proc.kill();
+        },
+      );
+    }
+
+    const exitCode = await proc.exited;
+    watchdog?.stop();
+
+    return { exitCode, pid, timedOut };
+  }
+
+  private async runWithPipeOutput(options: RunOptions): Promise<RunResult> {
+    const spawnEnv = options.env ? { ...process.env, ...options.env } : undefined;
+
     const proc = Bun.spawn({
       cmd: this.buildCommand(options),
       stdout: "pipe",
       stderr: "inherit",
       stdin: "inherit",
       cwd: options.cwd,
+      ...(spawnEnv && { env: spawnEnv }),
     });
+
+    const pid = proc.pid;
+    options.onSpawn?.(pid);
 
     let lastActivity = Date.now();
     let timedOut = false;
@@ -98,7 +158,7 @@ export class ClaudeCodeProvider implements LLMProvider {
     await this.processStream(proc.stdout, ctx);
     watchdog?.stop();
 
-    return { exitCode: await proc.exited, sessionId: ctx.sessionId, timedOut };
+    return { exitCode: await proc.exited, pid, sessionId: ctx.sessionId, timedOut };
   }
 
   private async processStream(

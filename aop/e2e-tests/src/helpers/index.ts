@@ -20,6 +20,16 @@ export {
   stopE2EServer,
 } from "./e2e-server";
 export {
+  getLocalExecution,
+  getLocalExecutionsByTaskId,
+  getLocalStepExecutions,
+  getLocalStepExecutionsByTaskId,
+  type LocalExecution,
+  type LocalStepExecution,
+  type WaitForLocalStepOptions,
+  waitForLocalStepWithPid,
+} from "./local-db";
+export {
   isLocalServerRunning,
   type LocalServerContext,
   type StartLocalServerOptions,

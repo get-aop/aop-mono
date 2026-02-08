@@ -17,7 +17,7 @@ import {
   ensureDir,
   finalizeExecutionAndGetNextStep,
   markTaskWorking,
-  runAgentWithTimeout,
+  processAgentCompletion,
   setupWorktreeOpenspecSymlink,
 } from "./executor.ts";
 import type { ExecutorContext } from "./types.ts";
@@ -451,239 +451,68 @@ describe("executor", () => {
     });
   });
 
-  describe("runAgentWithTimeout", () => {
-    test("runs agent and returns success result", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
-      await ctx.executionRepository.createExecution({
-        id: "exec-1",
-        task_id: "task-1",
-        status: ExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
-      await ctx.executionRepository.createStepExecution({
-        id: "step-1",
-        execution_id: "exec-1",
-        status: StepExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
-
-      const task = createMockTask();
-
+  describe("processAgentCompletion", () => {
+    test("returns success result for zero exit code", () => {
       const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
       mkdirSync(testLogsDir, { recursive: true });
+      const logFile = join(testLogsDir, "test.jsonl");
 
-      const executorCtx: ExecutorContext = {
-        task,
-        repoId: "repo-1",
-        repoPath: "/test/repo",
-        changePath: "/test/repo/changes/feat-1",
-        worktreePath: tmpdir(),
-        logsDir: testLogsDir,
-        timeoutSecs: 300,
-      };
-
-      const mockProvider = {
-        run: mock(() =>
-          Promise.resolve({
-            exitCode: 0,
-            sessionId: "session-123",
-            timedOut: false,
-          }),
-        ),
-      };
-
-      const result = await runAgentWithTimeout({
-        ctx,
-        executorCtx,
-        prompt: "test prompt",
-        stepId: "step-1",
-        executionId: "exec-1",
-        signals: ["DONE"],
-        provider: mockProvider as never,
-      });
+      const result = processAgentCompletion(
+        logFile,
+        { exitCode: 0, sessionId: "session-123", timedOut: false },
+        [],
+      );
 
       expect(result.exitCode).toBe(0);
       expect(result.status).toBe("success");
       expect(result.sessionId).toBe("session-123");
 
-      const step = await ctx.executionRepository.getStepExecution("step-1");
-      expect(step?.session_id).toBe("session-123");
-
       if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
     });
 
-    test("returns failure result when agent exits with non-zero code", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
-      await ctx.executionRepository.createExecution({
-        id: "exec-1",
-        task_id: "task-1",
-        status: ExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
-      await ctx.executionRepository.createStepExecution({
-        id: "step-1",
-        execution_id: "exec-1",
-        status: StepExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
-
-      const task = createMockTask();
-
-      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
-      mkdirSync(testLogsDir, { recursive: true });
-
-      const executorCtx: ExecutorContext = {
-        task,
-        repoId: "repo-1",
-        repoPath: "/test/repo",
-        changePath: "/test/repo/changes/feat-1",
-        worktreePath: tmpdir(),
-        logsDir: testLogsDir,
-        timeoutSecs: 300,
-      };
-
-      const mockProvider = {
-        run: mock(() =>
-          Promise.resolve({
-            exitCode: 1,
-            sessionId: "session-123",
-            timedOut: false,
-          }),
-        ),
-      };
-
-      const result = await runAgentWithTimeout({
-        ctx,
-        executorCtx,
-        prompt: "test prompt",
-        stepId: "step-1",
-        executionId: "exec-1",
-        provider: mockProvider as never,
-      });
+    test("returns failure result for non-zero exit code", () => {
+      const result = processAgentCompletion(
+        "/nonexistent/log.jsonl",
+        { exitCode: 1, sessionId: "session-123", timedOut: false },
+        [],
+      );
 
       expect(result.exitCode).toBe(1);
       expect(result.status).toBe("failure");
-
-      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
     });
 
-    test("returns timeout result when agent times out", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
-      await ctx.executionRepository.createExecution({
-        id: "exec-1",
-        task_id: "task-1",
-        status: ExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
-      await ctx.executionRepository.createStepExecution({
-        id: "step-1",
-        execution_id: "exec-1",
-        status: StepExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
-
-      const task = createMockTask();
-
-      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
-      mkdirSync(testLogsDir, { recursive: true });
-
-      const executorCtx: ExecutorContext = {
-        task,
-        repoId: "repo-1",
-        repoPath: "/test/repo",
-        changePath: "/test/repo/changes/feat-1",
-        worktreePath: tmpdir(),
-        logsDir: testLogsDir,
-        timeoutSecs: 300,
-      };
-
-      const mockProvider = {
-        run: mock(() =>
-          Promise.resolve({
-            exitCode: -1,
-            timedOut: true,
-          }),
-        ),
-      };
-
-      const result = await runAgentWithTimeout({
-        ctx,
-        executorCtx,
-        prompt: "test prompt",
-        stepId: "step-1",
-        executionId: "exec-1",
-        provider: mockProvider as never,
-      });
+    test("returns timeout result when timedOut is true", () => {
+      const result = processAgentCompletion(
+        "/nonexistent/log.jsonl",
+        { exitCode: -1, timedOut: true },
+        [],
+      );
 
       expect(result.status).toBe("timeout");
-
-      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
     });
 
-    test("processes output through onOutput handler and detects signals", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
-      await ctx.executionRepository.createExecution({
-        id: "exec-1",
-        task_id: "task-1",
-        status: ExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
-      await ctx.executionRepository.createStepExecution({
-        id: "step-1",
-        execution_id: "exec-1",
-        status: StepExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
-
-      const task = createMockTask();
+    test("detects signals from log file content", () => {
       const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
       mkdirSync(testLogsDir, { recursive: true });
+      const logFile = join(testLogsDir, "test.jsonl");
 
-      const executorCtx: ExecutorContext = {
-        task,
-        repoId: "repo-1",
-        repoPath: "/test/repo",
-        changePath: "/test/repo/changes/feat-1",
-        worktreePath: tmpdir(),
-        logsDir: testLogsDir,
-        timeoutSecs: 300,
-      };
-
-      const mockProvider = {
-        run: mock(async (opts: { onOutput: (data: unknown) => void }) => {
-          opts.onOutput({
-            type: "assistant",
-            message: {
-              content: [
-                {
-                  type: "text",
-                  text: "Processing <aop>IMPL_DONE</aop> signal",
-                },
-              ],
-            },
-          });
-          opts.onOutput({
-            type: "assistant",
-            message: { content: [{ type: "text", text: "More output" }] },
-          });
-          opts.onOutput({ type: "other", data: "ignored" });
-          return { exitCode: 0, sessionId: "session-456", timedOut: false };
+      const logContent = [
+        JSON.stringify({
+          type: "assistant",
+          message: { content: [{ type: "text", text: "Processing <aop>IMPL_DONE</aop> signal" }] },
         }),
-      };
+        JSON.stringify({
+          type: "assistant",
+          message: { content: [{ type: "text", text: "More output" }] },
+        }),
+      ].join("\n");
+      Bun.write(logFile, logContent);
 
-      const result = await runAgentWithTimeout({
-        ctx,
-        executorCtx,
-        prompt: "test prompt",
-        stepId: "step-1",
-        executionId: "exec-1",
-        signals: ["IMPL_DONE"],
-        provider: mockProvider as never,
-      });
+      const result = processAgentCompletion(
+        logFile,
+        { exitCode: 0, sessionId: "session-456", timedOut: false },
+        ["IMPL_DONE"],
+      );
 
       expect(result.exitCode).toBe(0);
       expect(result.status).toBe("success");
@@ -692,53 +521,15 @@ describe("executor", () => {
       if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
     });
 
-    test("handles provider without sessionId", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
-      await ctx.executionRepository.createExecution({
-        id: "exec-1",
-        task_id: "task-1",
-        status: ExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
-      await ctx.executionRepository.createStepExecution({
-        id: "step-1",
-        execution_id: "exec-1",
-        status: StepExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
-
-      const task = createMockTask();
-      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
-      mkdirSync(testLogsDir, { recursive: true });
-
-      const executorCtx: ExecutorContext = {
-        task,
-        repoId: "repo-1",
-        repoPath: "/test/repo",
-        changePath: "/test/repo/changes/feat-1",
-        worktreePath: tmpdir(),
-        logsDir: testLogsDir,
-        timeoutSecs: 300,
-      };
-
-      const mockProvider = {
-        run: mock(() => Promise.resolve({ exitCode: 0, timedOut: false })),
-      };
-
-      const result = await runAgentWithTimeout({
-        ctx,
-        executorCtx,
-        prompt: "test prompt",
-        stepId: "step-1",
-        executionId: "exec-1",
-        provider: mockProvider as never,
-      });
+    test("handles missing log file gracefully", () => {
+      const result = processAgentCompletion(
+        "/nonexistent/log.jsonl",
+        { exitCode: 0, timedOut: false },
+        [],
+      );
 
       expect(result.exitCode).toBe(0);
       expect(result.sessionId).toBeUndefined();
-
-      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
     });
   });
 

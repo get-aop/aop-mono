@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, symlinkSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type {
   ExecutionInfo,
@@ -7,17 +7,11 @@ import type {
   TaskStatus,
 } from "@aop/common/protocol";
 import { GitManager, WorktreeExistsError, type WorktreeInfo } from "@aop/git-manager";
-import {
-  aopPaths,
-  createFileOutputHandler,
-  generateTypeId,
-  getLogger,
-  runWithSpan,
-} from "@aop/infra";
-import { ClaudeCodeProvider, extractAssistantText, formatToolInput } from "@aop/llm-provider";
+import { aopPaths, generateTypeId, getLogger } from "@aop/infra";
+import { ClaudeCodeProvider, extractAssistantText } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
-import type { LogBuffer } from "../events/log-buffer.ts";
+import { forEachJsonlEntry, parseJsonlEntry } from "../events/log-file-tailer.ts";
 import type { ServerSync } from "../orchestrator/sync/server-sync.ts";
 import { detectSignal } from "../orchestrator/sync/signal-detector.ts";
 import { createTemplateContext, resolveTemplate } from "../orchestrator/sync/template-resolver.ts";
@@ -33,7 +27,6 @@ export interface ExecuteTaskOptions {
   stepCommand: StepCommand;
   executionInfo: ExecutionInfo;
   serverSync?: ServerSync;
-  /** For testing: inject a custom provider */
   provider?: ClaudeCodeProvider;
 }
 
@@ -44,88 +37,198 @@ export const executeTask = async (
   executionInfo: ExecutionInfo,
   serverSync?: ServerSync,
   provider?: ClaudeCodeProvider,
-): Promise<ExecuteResult> =>
-  runWithSpan("execute-task", async () => {
-    const log = logger.with({ taskId: task.id, changePath: task.change_path });
-    log.info("Starting task execution");
+): Promise<void> => {
+  const log = logger.with({ taskId: task.id, changePath: task.change_path });
+  log.info("Starting task execution");
 
-    const executorCtx = await buildContext(ctx, task);
-    await markTaskWorking(ctx, task, executorCtx.worktreePath, serverSync);
+  const executorCtx = await buildContext(ctx, task);
+  await markTaskWorking(ctx, task, executorCtx.worktreePath, serverSync);
 
-    const worktreeInfo = await createWorktree(executorCtx);
-    setupWorktreeOpenspecSymlink(worktreeInfo.path, executorCtx.repoId);
-    log.info("Worktree ready at {path}", { path: worktreeInfo.path });
+  const worktreeInfo = await createWorktree(executorCtx);
+  setupWorktreeOpenspecSymlink(worktreeInfo.path, executorCtx.repoId);
+  log.info("Worktree ready at {path}", { path: worktreeInfo.path });
 
-    let currentStep = stepCommand;
-    let currentExecution = executionInfo;
+  const executionId = await createExecutionRecord(ctx, task.id);
+  log.info("Created execution record", { executionId });
 
-    const executionId = await createExecutionRecord(ctx, task.id);
-    log.info("Created execution record", { executionId });
+  return launchStep({
+    ctx,
+    executorCtx,
+    worktreeInfo,
+    executionId,
+    stepCommand,
+    executionInfo,
+    taskId: task.id,
+    repoId: task.repo_id,
+    serverSync,
+    provider,
+  });
+};
 
-    while (true) {
-      const stepId = await createStepRecord(ctx, executionId, currentStep.type);
-      log.info("Created step record", {
-        executionId,
-        stepId,
-        stepType: currentStep.type,
-      });
+interface LaunchStepOptions {
+  ctx: LocalServerContext;
+  executorCtx: ExecutorContext;
+  worktreeInfo: WorktreeInfo;
+  executionId: string;
+  stepCommand: StepCommand;
+  executionInfo: ExecutionInfo;
+  taskId: string;
+  repoId: string;
+  serverSync?: ServerSync;
+  provider?: ClaudeCodeProvider;
+}
 
-      const prompt = await buildPromptForExecution({
-        executorCtx,
-        worktreeInfo,
-        stepCommand: currentStep,
-        executionId: currentExecution.id,
-      });
-      log.info("Prompt rendered for step {stepType}, starting agent", {
-        stepType: currentStep.type,
-      });
+const launchStep = async (opts: LaunchStepOptions): Promise<void> => {
+  const {
+    ctx,
+    executorCtx,
+    worktreeInfo,
+    executionId,
+    stepCommand,
+    executionInfo,
+    taskId,
+    repoId,
+    serverSync,
+    provider,
+  } = opts;
 
-      const result = await runAgentWithTimeout({
-        ctx,
-        executorCtx,
-        prompt,
-        stepId,
-        executionId,
-        signals: currentStep.signals,
-        provider,
-      });
-      log.info("Agent finished step {stepType}", {
-        stepType: currentStep.type,
+  const stepId = await createStepRecord(ctx, executionId, stepCommand.type);
+  logger.info("Created step record", {
+    executionId,
+    stepId,
+    stepType: stepCommand.type,
+  });
+
+  const prompt = await buildPromptForExecution({
+    executorCtx,
+    worktreeInfo,
+    stepCommand,
+    executionId: executionInfo.id,
+  });
+  logger.info("Prompt rendered for step {stepType}, spawning agent", {
+    stepType: stepCommand.type,
+  });
+
+  return spawnAgentWithReaper({
+    ctx,
+    executorCtx,
+    worktreeInfo,
+    prompt,
+    stepId,
+    executionId,
+    stepCommand,
+    executionInfo,
+    taskId,
+    repoId,
+    signals: stepCommand.signals,
+    serverSync,
+    provider,
+  });
+};
+
+interface SpawnAgentOptions {
+  ctx: LocalServerContext;
+  executorCtx: ExecutorContext;
+  worktreeInfo: WorktreeInfo;
+  prompt: string;
+  stepId: string;
+  executionId: string;
+  stepCommand: StepCommand;
+  executionInfo: ExecutionInfo;
+  taskId: string;
+  repoId: string;
+  signals?: string[];
+  serverSync?: ServerSync;
+  provider?: ClaudeCodeProvider;
+}
+
+const spawnAgentWithReaper = (opts: SpawnAgentOptions): Promise<void> => {
+  const {
+    ctx,
+    executorCtx,
+    worktreeInfo,
+    prompt,
+    stepId,
+    executionId,
+    stepCommand,
+    executionInfo,
+    taskId,
+    repoId,
+    signals = [],
+    serverSync,
+    provider = new ClaudeCodeProvider(),
+  } = opts;
+
+  const logFile = join(executorCtx.logsDir, `${stepId}.jsonl`);
+  const timeoutMs = executorCtx.timeoutSecs * 1000;
+
+  return provider
+    .run({
+      prompt,
+      cwd: executorCtx.worktreePath,
+      logFilePath: logFile,
+      env: {
+        AOP_TASK_ID: taskId,
+        AOP_STEP_ID: stepId,
+      },
+      onSpawn: async (pid) => {
+        await ctx.executionRepository.updateStepExecution(stepId, {
+          agent_pid: pid,
+        });
+        logger.info("Agent spawned with PID {pid}", { pid, stepId });
+      },
+      inactivityTimeoutMs: timeoutMs,
+    })
+    .then(async (runResult) => {
+      const result = processAgentCompletion(logFile, runResult, signals);
+      logger.info("Agent finished step {stepType}", {
+        stepType: stepCommand.type,
         exitCode: result.exitCode,
         status: result.status,
         signal: result.signal,
       });
 
+      populateLogBuffer(ctx, logFile, executionId);
+
       const completionStatus = result.status === "success" ? "completed" : "failed";
       ctx.logBuffer.markComplete(executionId, completionStatus);
 
       await persistExecutionLogs(ctx, executionId);
+      cleanupLogFile(logFile);
 
       const nextStepInfo = await finalizeExecutionAndGetNextStep(
         ctx,
-        task.id,
+        taskId,
         executionId,
         stepId,
         result,
         serverSync,
         {
-          serverStepId: currentStep.id,
-          serverExecutionId: currentExecution.id,
-          attempt: currentStep.attempt,
+          serverStepId: stepCommand.id,
+          serverExecutionId: executionInfo.id,
+          attempt: stepCommand.attempt,
         },
       );
 
-      if (!nextStepInfo) {
-        return result;
+      if (nextStepInfo) {
+        logger.info("Continuing to next step: {stepType}", {
+          stepType: nextStepInfo.step.type,
+        });
+        await launchStep({
+          ctx,
+          executorCtx,
+          worktreeInfo,
+          executionId,
+          stepCommand: nextStepInfo.step,
+          executionInfo: nextStepInfo.execution,
+          taskId,
+          repoId,
+          serverSync,
+          provider,
+        });
       }
-
-      currentStep = nextStepInfo.step;
-      currentExecution = nextStepInfo.execution;
-      log.info("Continuing to next step: {stepType}", {
-        stepType: currentStep.type,
-      });
-    }
-  });
+    });
+};
 
 export const buildContext = async (
   ctx: LocalServerContext,
@@ -251,7 +354,10 @@ export const createWorktree = async (ctx: ExecutorContext): Promise<WorktreeInfo
 
 export const setupWorktreeOpenspecSymlink = (worktreePath: string, repoId: string): void => {
   const localOpenspec = join(worktreePath, aopPaths.relativeOpenspec());
-  if (existsSync(localOpenspec)) return;
+  try {
+    lstatSync(localOpenspec);
+    return;
+  } catch {}
   const globalOpenspec = aopPaths.openspec(repoId);
   symlinkSync(globalOpenspec, localOpenspec);
 };
@@ -278,94 +384,60 @@ export const buildPromptForExecution = async (opts: BuildPromptOptions): Promise
   return resolveTemplate(stepCommand.promptTemplate, templateContext);
 };
 
-export interface RunAgentOptions {
-  ctx: LocalServerContext;
-  executorCtx: ExecutorContext;
-  prompt: string;
-  stepId: string;
-  executionId: string;
-  /** Signal keywords to detect in agent output */
-  signals?: string[];
-  /** For testing: inject a custom provider */
-  provider?: ClaudeCodeProvider;
-}
-
-export const runAgentWithTimeout = async (opts: RunAgentOptions): Promise<ExecuteResult> => {
-  const {
-    ctx,
-    executorCtx,
-    prompt,
-    stepId,
-    executionId,
-    signals = [],
-    provider = new ClaudeCodeProvider(),
-  } = opts;
-  const logFile = join(executorCtx.logsDir, `${executorCtx.task.id}.jsonl`);
-  const timeoutMs = executorCtx.timeoutSecs * 1000;
-
+export const processAgentCompletion = (
+  logFile: string,
+  runResult: { exitCode: number; sessionId?: string; timedOut?: boolean },
+  signals: string[],
+): ExecuteResult => {
   const collectedText: string[] = [];
-  const outputHandler = createFileOutputHandler({
-    logFile,
-    onOutput: (data) => {
+
+  if (existsSync(logFile)) {
+    const content = readFileSync(logFile, "utf-8");
+    forEachJsonlEntry(content, (data) => {
       const text = extractAssistantText(data);
-      if (text) {
-        collectedText.push(text);
-        pushLogLine(ctx.logBuffer, executionId, text, "stdout");
-      }
-
-      if (data.type === "tool_use") {
-        const toolName = (data.tool_name ?? data.name ?? "tool") as string;
-        const input = (data.input ?? {}) as Record<string, unknown>;
-        const formatted = formatToolInput(toolName, input);
-        pushLogLine(ctx.logBuffer, executionId, `[${toolName}] ${formatted}`, "stdout");
-      }
-
-      if (data.type === "result" && data.subtype === "error") {
-        const errorMsg = String(data.result ?? "Unknown error");
-        pushLogLine(ctx.logBuffer, executionId, errorMsg, "stderr");
-      }
-    },
-  });
-
-  const result = await provider.run({
-    prompt,
-    cwd: executorCtx.worktreePath,
-    onOutput: outputHandler,
-    inactivityTimeoutMs: timeoutMs,
-  });
-
-  if (result.sessionId) {
-    await ctx.executionRepository.updateStepExecution(stepId, {
-      session_id: result.sessionId,
+      if (text) collectedText.push(text);
     });
   }
 
-  const status = result.timedOut ? "timeout" : result.exitCode === 0 ? "success" : "failure";
+  const status = runResult.timedOut ? "timeout" : runResult.exitCode === 0 ? "success" : "failure";
   const fullOutput = collectedText.join("\n");
   const { signal } = detectSignal(fullOutput, signals);
 
   return {
-    exitCode: result.exitCode,
-    sessionId: result.sessionId,
+    exitCode: runResult.exitCode,
+    sessionId: runResult.sessionId,
     status,
     signal,
   };
 };
 
-const pushLogLine = (
-  logBuffer: LogBuffer,
+export const populateLogBuffer = (
+  ctx: LocalServerContext,
+  logFile: string,
   executionId: string,
-  content: string,
-  stream: "stdout" | "stderr",
 ): void => {
-  logBuffer.push(executionId, {
-    stream,
-    content,
-    timestamp: new Date().toISOString(),
+  if (!existsSync(logFile)) return;
+
+  const content = readFileSync(logFile, "utf-8");
+  forEachJsonlEntry(content, (data) => {
+    for (const line of parseJsonlEntry(data)) {
+      ctx.logBuffer.push(executionId, line);
+    }
   });
 };
 
-const persistExecutionLogs = async (
+export const cleanupLogFile = (logFile: string): void => {
+  try {
+    unlinkSync(logFile);
+  } catch (err) {
+    logger.warn("Failed to cleanup log file: {error}", {
+      logFile,
+      error: String(err),
+    });
+  }
+};
+
+export const persistExecutionLogs = async (
   ctx: LocalServerContext,
   executionId: string,
 ): Promise<void> => {

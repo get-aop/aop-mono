@@ -3,13 +3,17 @@ import type { SSEStreamingApi } from "hono/streaming";
 export interface SSEStreamHelper {
   sendEvent: <T>(type: string, data: T) => Promise<boolean>;
   sendRaw: (type: string, data: string) => Promise<boolean>;
+  setNextEventId: (id: number) => void;
   registerCleanup: (fn: () => void) => void;
   runCleanup: () => void;
   isCleanedUp: () => boolean;
 }
 
-export const createSSEStreamHelper = (stream: SSEStreamingApi): SSEStreamHelper => {
-  let eventId = 0;
+export const createSSEStreamHelper = (
+  stream: SSEStreamingApi,
+  startEventId = 0,
+): SSEStreamHelper => {
+  let eventId = startEventId;
   const cleanupFns: (() => void)[] = [];
   let cleanedUp = false;
 
@@ -45,6 +49,10 @@ export const createSSEStreamHelper = (stream: SSEStreamingApi): SSEStreamHelper 
     },
 
     sendRaw,
+
+    setNextEventId: (id: number): void => {
+      eventId = id;
+    },
 
     registerCleanup: (fn: () => void): void => {
       cleanupFns.push(fn);

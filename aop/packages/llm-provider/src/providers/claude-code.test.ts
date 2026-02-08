@@ -18,11 +18,13 @@ const createMockReadableStream = (chunks: string[]): ReadableStream<Uint8Array> 
 };
 
 interface MockProcess {
+  pid: number;
   stdout: ReadableStream<Uint8Array>;
   stderr: string;
   stdin: string;
   exited: Promise<number>;
   kill: () => void;
+  unref: () => void;
 }
 
 describe("ClaudeCodeProvider", () => {
@@ -174,14 +176,16 @@ describe("run", () => {
   });
 
   const createMockProcess = (chunks: string[], exitCode = 0): MockProcess => ({
+    pid: 12345,
     stdout: createMockReadableStream(chunks),
     stderr: "inherit",
     stdin: "inherit",
     exited: Promise.resolve(exitCode),
     kill: mock(() => {}),
+    unref: mock(() => {}),
   });
 
-  test("processes stream and returns exit code", async () => {
+  test("processes stream and returns exit code and pid", async () => {
     const mockProc = createMockProcess(['{"type":"text"}\n']);
     spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
       mockProc as unknown as ReturnType<typeof Bun.spawn>,
@@ -191,7 +195,57 @@ describe("run", () => {
     const result = await provider.run({ prompt: "test" });
 
     expect(result.exitCode).toBe(0);
+    expect(result.pid).toBe(12345);
     expect(result.timedOut).toBeFalsy();
+  });
+
+  test("calls onSpawn callback with pid", async () => {
+    const mockProc = createMockProcess(['{"type":"text"}\n']);
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    let spawnedPid: number | undefined;
+    const provider = new ClaudeCodeProvider();
+    await provider.run({
+      prompt: "test",
+      onSpawn: (pid) => {
+        spawnedPid = pid;
+      },
+    });
+
+    expect(spawnedPid).toBe(12345);
+  });
+
+  test("passes env vars to spawn", async () => {
+    const mockProc = createMockProcess([]);
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    await provider.run({
+      prompt: "test",
+      env: { AOP_TASK_ID: "task-1", AOP_STEP_ID: "step-1" },
+    });
+
+    const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+    const env = spawnArgs.env as Record<string, string>;
+    expect(env.AOP_TASK_ID).toBe("task-1");
+    expect(env.AOP_STEP_ID).toBe("step-1");
+  });
+
+  test("does not set env when no env option provided", async () => {
+    const mockProc = createMockProcess([]);
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    await provider.run({ prompt: "test" });
+
+    const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(spawnArgs.env).toBeUndefined();
   });
 
   test("extracts session ID from stream", async () => {
@@ -347,6 +401,7 @@ describe("run with inactivity timeout", () => {
 
   test("does not timeout when stream completes quickly", async () => {
     const mockProc = {
+      pid: 12345,
       stdout: createMockReadableStream(['{"type":"done"}\n']),
       stderr: "inherit",
       stdin: "inherit",
@@ -363,5 +418,241 @@ describe("run with inactivity timeout", () => {
 
     expect(result.timedOut).toBeFalsy();
     expect(result.exitCode).toBe(0);
+  });
+});
+
+describe("run with logFilePath (file-based output)", () => {
+  let spawnSpy: ReturnType<typeof spyOn>;
+
+  afterEach(() => {
+    spawnSpy?.mockRestore();
+  });
+
+  test("spawns detached process in file mode", async () => {
+    const mockProc = {
+      pid: 88888,
+      exited: Promise.resolve(0),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/test-log.jsonl",
+    });
+
+    const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(spawnArgs.detached).toBe(true);
+  });
+
+  test("uses ignore for stdin and stderr in file mode", async () => {
+    const mockProc = {
+      pid: 88887,
+      exited: Promise.resolve(0),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/test-log.jsonl",
+    });
+
+    const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(spawnArgs.stdin).toBe("ignore");
+    expect(spawnArgs.stderr).toBe("ignore");
+  });
+
+  test("calls unref on spawned process in file mode", async () => {
+    const mockProc = {
+      pid: 88886,
+      exited: Promise.resolve(0),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/test-log.jsonl",
+    });
+
+    expect(mockProc.unref).toHaveBeenCalled();
+  });
+
+  test("spawns with stdout as Bun.file when logFilePath provided", async () => {
+    const mockProc = {
+      pid: 99999,
+      exited: Promise.resolve(0),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    const result = await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/test-log.jsonl",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.pid).toBe(99999);
+
+    const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(spawnArgs.stdout).toBeDefined();
+    expect(spawnArgs.stdout).not.toBe("pipe");
+  });
+
+  test("calls onSpawn with pid in file mode", async () => {
+    const mockProc = {
+      pid: 77777,
+      exited: Promise.resolve(0),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    let spawnedPid: number | undefined;
+    const provider = new ClaudeCodeProvider();
+    await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/test-log.jsonl",
+      onSpawn: (pid) => {
+        spawnedPid = pid;
+      },
+    });
+
+    expect(spawnedPid).toBe(77777);
+  });
+
+  test("passes env vars in file mode", async () => {
+    const mockProc = {
+      pid: 55555,
+      exited: Promise.resolve(0),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/test-log.jsonl",
+      env: { AOP_TASK_ID: "task-42" },
+    });
+
+    const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+    const env = spawnArgs.env as Record<string, string>;
+    expect(env.AOP_TASK_ID).toBe("task-42");
+  });
+
+  test("passes cwd to spawn in file mode", async () => {
+    const mockProc = {
+      pid: 44444,
+      exited: Promise.resolve(0),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/test-log.jsonl",
+      cwd: "/some/work/dir",
+    });
+
+    expect(spawnSpy).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/some/work/dir" }));
+  });
+
+  test("does not set env when no env option in file mode", async () => {
+    const mockProc = {
+      pid: 22222,
+      exited: Promise.resolve(0),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/test-log.jsonl",
+    });
+
+    const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(spawnArgs.env).toBeUndefined();
+  });
+
+  test("returns non-zero exit code in file mode", async () => {
+    const mockProc = {
+      pid: 11111,
+      exited: Promise.resolve(1),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    const result = await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/test-log.jsonl",
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.pid).toBe(11111);
+  });
+
+  test("does not return sessionId in file mode", async () => {
+    const mockProc = {
+      pid: 33333,
+      exited: Promise.resolve(0),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new ClaudeCodeProvider();
+    const result = await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/test-log.jsonl",
+    });
+
+    expect(result.sessionId).toBeUndefined();
   });
 });
