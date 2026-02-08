@@ -40,7 +40,7 @@ describe("abortTask", () => {
     expect(task?.status).toBe("REMOVED");
   });
 
-  test("aborts task with running execution but no agent_pid", async () => {
+  test("aborts task with running execution but no agent_pid and no proc match", async () => {
     await createTestRepo(db, "repo-1", "/test/repo");
     await createTestTask(db, "task-1", "repo-1", "/test/change", "WORKING");
 
@@ -59,10 +59,13 @@ describe("abortTask", () => {
       agent_pid: null,
     });
 
+    const findPidSpy = spyOn(processUtils, "findPidByStepId").mockReturnValue(null);
+
     const result = await abortTask(ctx, "task-1");
 
     expect(result.taskId).toBe("task-1");
     expect(result.agentKilled).toBe(false);
+    expect(findPidSpy).toHaveBeenCalledWith("step-1");
 
     const execution = await ctx.executionRepository.getExecution("exec-1");
     expect(execution?.status).toBe(ExecutionStatus.ABORTED);
@@ -70,6 +73,48 @@ describe("abortTask", () => {
     const step = await ctx.executionRepository.getStepExecution("step-1");
     expect(step?.status).toBe(StepExecutionStatus.FAILURE);
     expect(step?.error).toBe("Aborted");
+
+    findPidSpy.mockRestore();
+  });
+
+  test("finds and kills agent via proc scan when agent_pid is null", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "/test/change", "WORKING");
+
+    await ctx.executionRepository.createExecution({
+      id: "exec-1",
+      task_id: "task-1",
+      status: ExecutionStatus.RUNNING,
+      started_at: new Date().toISOString(),
+    });
+
+    await ctx.executionRepository.createStepExecution({
+      id: "step-1",
+      execution_id: "exec-1",
+      status: StepExecutionStatus.RUNNING,
+      started_at: new Date().toISOString(),
+      agent_pid: null,
+    });
+
+    const fakePid = 99999;
+    const findPidSpy = spyOn(processUtils, "findPidByStepId").mockReturnValue(fakePid);
+    let isAliveCalls = 0;
+    const isAliveSpy = spyOn(processUtils, "isProcessAlive").mockImplementation(() => {
+      isAliveCalls++;
+      return isAliveCalls === 1;
+    });
+    const killSpy = spyOn(process, "kill").mockImplementation(() => true);
+
+    const result = await abortTask(ctx, "task-1");
+
+    expect(result.taskId).toBe("task-1");
+    expect(result.agentKilled).toBe(true);
+    expect(findPidSpy).toHaveBeenCalledWith("step-1");
+    expect(killSpy).toHaveBeenCalledWith(fakePid, "SIGTERM");
+
+    findPidSpy.mockRestore();
+    isAliveSpy.mockRestore();
+    killSpy.mockRestore();
   });
 
   test("aborts task with running agent that terminates gracefully", async () => {

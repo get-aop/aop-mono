@@ -58,7 +58,6 @@ export const createQueueProcessor = (
     if (!serverSync || serverSync.isDegraded()) {
       return null;
     }
-    // Skip if already queued - return queued response to avoid re-requesting
     if (serverSync.isTaskQueued(task.id)) {
       return { status: task.status, queued: true };
     }
@@ -77,18 +76,13 @@ export const createQueueProcessor = (
     }
   };
 
-  const processOnce = async (): Promise<Task | null> => {
-    const limits: ConcurrencyLimits = {
-      globalMax: await getGlobalMax(),
-      getRepoMax,
-    };
+  interface ResolvedStep {
+    step: StepCommand;
+    execution: ExecutionInfo;
+  }
 
-    const task = await taskRepository.getNextExecutable(limits);
-    if (!task) {
-      return null;
-    }
-
-    const log = logger.with({ taskId: task.id, changePath: task.change_path });
+  const resolveStep = async (task: Task): Promise<ResolvedStep | null> => {
+    const log = logger.with({ taskId: task.id });
     const readyResult = await tryMarkTaskReady(task);
 
     if (!readyResult) {
@@ -106,10 +100,38 @@ export const createQueueProcessor = (
       return null;
     }
 
-    log.info("Executing task");
-    executeTask(task, readyResult.step, readyResult.execution);
+    return { step: readyResult.step, execution: readyResult.execution };
+  };
 
-    return task;
+  const processOnce = async (): Promise<Task | null> => {
+    const limits: ConcurrencyLimits = {
+      globalMax: await getGlobalMax(),
+      getRepoMax,
+    };
+
+    const task = await taskRepository.getNextExecutable(limits);
+    if (!task) {
+      return null;
+    }
+
+    // Claim the task immediately to prevent double-dequeue race condition.
+    // Reverted to READY if execution doesn't proceed.
+    await taskRepository.update(task.id, { status: "WORKING" });
+
+    try {
+      const stepInfo = await resolveStep(task);
+      if (!stepInfo) {
+        await taskRepository.update(task.id, { status: "READY" });
+        return null;
+      }
+
+      logger.info("Executing task", { taskId: task.id, changePath: task.change_path });
+      executeTask(task, stepInfo.step, stepInfo.execution);
+      return task;
+    } catch (err) {
+      await taskRepository.update(task.id, { status: "READY" }).catch(() => {});
+      throw err;
+    }
   };
 
   const loop = async () => {

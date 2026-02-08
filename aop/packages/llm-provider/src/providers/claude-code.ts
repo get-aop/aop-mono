@@ -95,7 +95,7 @@ export class ClaudeCodeProvider implements LLMProvider {
     proc.unref();
 
     const pid = proc.pid;
-    options.onSpawn?.(pid);
+    await options.onSpawn?.(pid);
 
     let timedOut = false;
     let watchdog: Watchdog | undefined;

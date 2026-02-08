@@ -157,6 +157,156 @@ describe("QueueProcessor", () => {
     });
   });
 
+  describe("double-dequeue prevention", () => {
+    test("marks task WORKING immediately so second processOnce cannot pick it up", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
+
+      const mockServerSync = {
+        isDegraded: () => false,
+        isTaskQueued: () => false,
+        markTaskReady: mock(async () => ({
+          status: "WORKING" as const,
+          step: {
+            id: "step-1",
+            type: "iterate",
+            promptTemplate: "test",
+            signals: ["TASK_COMPLETE"],
+            attempt: 1,
+          },
+          execution: { id: "exec-1", workflowId: "workflow_simple" },
+        })),
+      };
+
+      const mockExecuteTask = mock(
+        (_task: Task, _stepCommand: StepCommand, _execution: ExecutionInfo) => {},
+      );
+
+      const processor = createQueueProcessor(
+        {
+          taskRepository: ctx.taskRepository,
+          repoRepository: ctx.repoRepository,
+          settingsRepository: ctx.settingsRepository,
+          serverSync: mockServerSync as never,
+          executeTask: mockExecuteTask,
+        },
+        { pollIntervalMs: 100 },
+      );
+
+      const first = await processor.processOnce();
+      expect(first).not.toBeNull();
+      expect(first?.id).toBe("task-1");
+
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.status).toBe("WORKING");
+
+      const second = await processor.processOnce();
+      expect(second).toBeNull();
+      expect(mockExecuteTask).toHaveBeenCalledTimes(1);
+    });
+
+    test("reverts task to READY when server returns queued", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
+
+      const mockServerSync = {
+        isDegraded: () => false,
+        isTaskQueued: () => false,
+        markTaskReady: mock(async () => ({
+          status: "QUEUED" as const,
+          queued: true,
+        })),
+      };
+
+      const mockExecuteTask = mock(() => {});
+
+      const processor = createQueueProcessor(
+        {
+          taskRepository: ctx.taskRepository,
+          repoRepository: ctx.repoRepository,
+          settingsRepository: ctx.settingsRepository,
+          serverSync: mockServerSync as never,
+          executeTask: mockExecuteTask,
+        },
+        { pollIntervalMs: 100 },
+      );
+
+      const result = await processor.processOnce();
+      expect(result).toBeNull();
+
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.status).toBe("READY");
+      expect(mockExecuteTask).not.toHaveBeenCalled();
+    });
+
+    test("reverts task to READY when server connection fails", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
+
+      const mockServerSync = {
+        isDegraded: () => false,
+        isTaskQueued: () => false,
+        markTaskReady: mock(async () => {
+          throw new Error("Connection failed");
+        }),
+      };
+
+      const mockExecuteTask = mock(() => {});
+
+      const processor = createQueueProcessor(
+        {
+          taskRepository: ctx.taskRepository,
+          repoRepository: ctx.repoRepository,
+          settingsRepository: ctx.settingsRepository,
+          serverSync: mockServerSync as never,
+          executeTask: mockExecuteTask,
+        },
+        { pollIntervalMs: 100 },
+      );
+
+      const result = await processor.processOnce();
+      expect(result).toBeNull();
+
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.status).toBe("READY");
+      expect(mockExecuteTask).not.toHaveBeenCalled();
+    });
+
+    test("reverts task to READY when server response is incomplete", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
+
+      const mockServerSync = {
+        isDegraded: () => false,
+        isTaskQueued: () => false,
+        markTaskReady: mock(async () => ({
+          status: "WORKING" as const,
+          execution: { id: "exec-1", workflowId: "workflow_simple" },
+        })),
+      };
+
+      const mockExecuteTask = mock(() => {});
+
+      const processor = createQueueProcessor(
+        {
+          taskRepository: ctx.taskRepository,
+          repoRepository: ctx.repoRepository,
+          settingsRepository: ctx.settingsRepository,
+          serverSync: mockServerSync as never,
+          executeTask: mockExecuteTask,
+        },
+        { pollIntervalMs: 100 },
+      );
+
+      const result = await processor.processOnce();
+      expect(result).toBeNull();
+
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.status).toBe("READY");
+      expect(mockExecuteTask).not.toHaveBeenCalled();
+    });
+  });
+
   describe("processOnce edge cases", () => {
     test("returns null when no executable task exists", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");

@@ -38,8 +38,11 @@ export const abortTask = async (
   const result: AbortResult = { taskId, agentKilled: false };
 
   const stepExecution = await ctx.executionRepository.getLatestStepExecution(taskId);
-  if (stepExecution?.agent_pid && stepExecution.status === StepExecutionStatus.RUNNING) {
-    result.agentKilled = await killAgent(stepExecution.agent_pid, log);
+  if (stepExecution?.status === StepExecutionStatus.RUNNING) {
+    const pid = stepExecution.agent_pid ?? processUtils.findPidByStepId(stepExecution.id);
+    if (pid) {
+      result.agentKilled = await killAgent(pid, log);
+    }
   }
 
   await updateExecutionStatus(ctx, taskId);

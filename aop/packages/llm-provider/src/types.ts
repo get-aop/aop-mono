@@ -10,7 +10,7 @@ export interface RunOptions {
   /** Timeout in milliseconds for inactivity. Process killed if no output for this duration. */
   inactivityTimeoutMs?: number;
   /** Called immediately after the process is spawned with its PID */
-  onSpawn?: (pid: number) => void;
+  onSpawn?: (pid: number) => void | Promise<void>;
   /** Environment variables to merge with process.env when spawning */
   env?: Record<string, string>;
   /** Path to a file where stdout should be redirected instead of piped */
