@@ -361,6 +361,47 @@ describe("WorkflowStateMachine", () => {
     });
   });
 
+  describe("self-loop iteration isolation", () => {
+    test("self-loops do not increment iteration counter", () => {
+      const sm = createWorkflowStateMachine(aopDefault);
+
+      const trace = simulateExecutionServiceFlow(sm, [
+        { status: "success", signal: "CHUNK_DONE" }, // iterate → iterate (self-loop)
+        { status: "success", signal: "CHUNK_DONE" }, // iterate → iterate (self-loop)
+        { status: "success", signal: "CHUNK_DONE" }, // iterate → iterate (self-loop)
+        { status: "success", signal: "ALL_TASKS_DONE" }, // iterate → full-review
+        { status: "success", signal: "REVIEW_FAILED" }, // full-review → should go to fix-issues
+      ]);
+
+      expect(trace).toHaveLength(5);
+
+      // All iterate self-loops should keep iteration at 0
+      expect(trace[0]?.iteration).toBe(0);
+      expect(trace[1]?.iteration).toBe(0);
+      expect(trace[2]?.iteration).toBe(0);
+      expect(trace[3]?.iteration).toBe(0);
+
+      // REVIEW_FAILED should transition to fix-issues, NOT block
+      expect(trace[4]?.iteration).toBe(0);
+      expect(trace[4]?.resultType).toBe("step");
+      expect(trace[4]?.nextStepId).toBe("fix-issues");
+    });
+
+    test("self-loops do not set shouldIncrementIteration", () => {
+      const sm = createWorkflowStateMachine(signalLoop);
+
+      const result = sm.evaluateTransition(
+        "iterate",
+        { status: "success" },
+        { iteration: 0, visitedSteps: ["iterate"] },
+      );
+
+      expect(result.type).toBe("step");
+      expect(result.stepId).toBe("iterate");
+      expect(result.shouldIncrementIteration).toBeFalsy();
+    });
+  });
+
   describe("aop-default full flow simulation", () => {
     test("happy path: iterate → full-review(PASSED) → done", () => {
       const sm = createWorkflowStateMachine(aopDefault);

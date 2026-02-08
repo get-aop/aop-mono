@@ -50,7 +50,10 @@ const resolveTarget = (target: string, steps: Record<string, WorkflowStep>): Tra
 };
 
 const isLoopingBack = (result: TransitionResult, visitedSteps: string[]): boolean =>
-  result.type === "step" && result.stepId !== undefined && visitedSteps.includes(result.stepId);
+  result.type === "step" &&
+  result.stepId !== undefined &&
+  visitedSteps.includes(result.stepId) &&
+  result.stepId !== visitedSteps.at(-1);
 
 const withIterationFlag = (result: TransitionResult, shouldIncrement: boolean): TransitionResult =>
   shouldIncrement ? { ...result, shouldIncrementIteration: true } : result;
