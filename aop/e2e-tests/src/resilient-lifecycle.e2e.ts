@@ -1,36 +1,28 @@
-// Prerequisites: `bun dev` must be running before executing this test
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { aopPaths } from "@aop/infra";
 import {
   API_KEY,
-  cleanupTestRepos,
   copyFixture,
   createTempRepo,
-  DEFAULT_LOCAL_SERVER_URL,
-  type E2EServerContext,
+  createTestContext,
+  destroyTestContext,
   ensureChangesDir,
   getLocalExecutionsByTaskId,
   getLocalStepExecutionsByTaskId,
-  isLocalServerRunning,
   runAopCommand,
-  SERVER_URL,
-  setupE2ETestDir,
-  startE2EServer,
   startLocalServer,
-  stopE2EServer,
   stopLocalServer,
   type TaskInfo,
   type TempRepoResult,
+  type TestContext,
   triggerServerRefresh,
   waitForLocalStepWithPid,
   waitForRepoInStatus,
   waitForTask,
   waitForTasksInRepo,
 } from "./helpers";
-import { checkDevEnvironment } from "./helpers/server";
 
 const E2E_TIMEOUT = 600_000;
 
@@ -167,33 +159,6 @@ const readSSEStream = async (
   return result;
 };
 
-const configureServerConnection = async () => {
-  await runAopCommand(["config:set", "server_url", SERVER_URL]);
-  await runAopCommand(["config:set", "api_key", API_KEY]);
-};
-
-const setupTaskInRepo = async (repoPath: string, serverUrl?: string) => {
-  await ensureChangesDir(repoPath);
-  const { exitCode } = await runAopCommand(["repo:init", repoPath]);
-  expect(exitCode).toBe(0);
-
-  await waitForRepoInStatus(repoPath, { timeout: 10_000 });
-  await copyFixture("resilience-test", repoPath);
-  await triggerServerRefresh(serverUrl);
-
-  const repoTasks = await waitForTasksInRepo(repoPath, 1, {
-    timeout: 30_000,
-    pollInterval: 500,
-  });
-  expect(repoTasks.length).toBe(1);
-  const task = repoTasks[0] as TaskInfo;
-
-  const { exitCode: readyExit } = await runAopCommand(["task:ready", task.id]);
-  expect(readyExit).toBe(0);
-
-  return task;
-};
-
 const isProcessRunning = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
@@ -203,102 +168,76 @@ const isProcessRunning = (pid: number): boolean => {
   }
 };
 
-const restartServerAndVerifyRecovery = async (
-  taskId: string,
-  agentPid: number,
-  setLocalServer: (s: Awaited<ReturnType<typeof startLocalServer>>) => void,
-) => {
-  // Verify the Claude process is still alive (fire-and-forget)
-  expect(isProcessRunning(agentPid)).toBe(true);
-
-  // Restart the server — recovery should reattach to the running agent
-  const newServer = await startLocalServer();
-  setLocalServer(newServer);
-  await configureServerConnection();
-
-  // Allow recovery to complete
-  await Bun.sleep(3000);
-
-  // Task should still be WORKING (agent was reattached) or already DONE
-  const taskAfterRestart = await waitForTask(taskId, ["WORKING", "DONE", "BLOCKED"], {
-    timeout: 30_000,
-    pollInterval: 1000,
-  });
-  expect(taskAfterRestart).not.toBeNull();
-
-  const completedTask = await waitForTask(taskId, ["DONE", "BLOCKED"], {
-    timeout: 300_000,
-    pollInterval: 2000,
-  });
-  expect(completedTask).not.toBeNull();
-  if (!completedTask) throw new Error("Task did not complete after restart");
-  expect(["DONE", "BLOCKED"]).toContain(completedTask.status);
-
-  // Verify execution logs were persisted
-  const steps = getLocalStepExecutionsByTaskId(taskId);
-  expect(steps.length).toBeGreaterThan(0);
-  const finalStep = steps[steps.length - 1];
-  if (!finalStep) throw new Error("No step executions found");
-  expect(["success", "failure"]).toContain(finalStep.status);
-};
-
 // --- Test suite ---
 
 describe("resilient agent lifecycle", () => {
+  let ctx: TestContext;
   let repo: TempRepoResult;
-  let context: E2EServerContext;
-  let wasAlreadyRunning = false;
   let taskId: string;
 
+  const setupTaskInRepo = async (repoPath: string) => {
+    await ensureChangesDir(repoPath);
+    const { exitCode } = await runAopCommand(["repo:init", repoPath], undefined, ctx.env);
+    expect(exitCode).toBe(0);
+
+    await waitForRepoInStatus(repoPath, { timeout: 10_000, env: ctx.env });
+    await copyFixture("resilience-test", repoPath);
+    await triggerServerRefresh(ctx.localServerUrl);
+
+    const repoTasks = await waitForTasksInRepo(repoPath, 1, {
+      timeout: 30_000,
+      pollInterval: 500,
+      env: ctx.env,
+    });
+    expect(repoTasks.length).toBe(1);
+    const task = repoTasks[0] as TaskInfo;
+
+    const { exitCode: readyExit } = await runAopCommand(
+      ["task:ready", task.id],
+      undefined,
+      ctx.env,
+    );
+    expect(readyExit).toBe(0);
+
+    return task;
+  };
+
+  const restartLocalServer = async () => {
+    await stopLocalServer(ctx.localServer);
+    const newServer = await startLocalServer({
+      port: ctx.localServerPort,
+      dbPath: ctx.dbPath,
+      env: {
+        AOP_LOCAL_SERVER_URL: ctx.localServerUrl,
+        ...(ctx.remoteServerUrl
+          ? { AOP_SERVER_URL: ctx.remoteServerUrl, AOP_API_KEY: API_KEY }
+          : {}),
+      },
+    });
+    ctx.localServer = newServer;
+  };
+
   beforeAll(async () => {
-    const envCheck = await checkDevEnvironment();
-    if (!envCheck.ready) {
-      throw new Error(
-        `Dev environment not ready: ${envCheck.reason}\n` +
-          "Run 'bun dev' in a separate terminal before running E2E tests.",
-      );
-    }
-
-    const localRunning = await isLocalServerRunning();
-    if (!localRunning) {
-      throw new Error(
-        "Local server not running.\n" +
-          "Run 'bun dev' in a separate terminal before running E2E tests.",
-      );
-    }
-
-    await setupE2ETestDir();
-    repo = await createTempRepo("resilience");
+    ctx = await createTestContext("resilient-lifecycle");
+    repo = await createTempRepo("resilience", ctx.reposDir);
   });
 
   afterAll(async () => {
-    if (context) {
-      await stopE2EServer(context, wasAlreadyRunning);
-    }
     await repo.cleanup();
-    await cleanupTestRepos();
+    await destroyTestContext(ctx);
   });
 
   test(
     "agent PID is tracked and logs written to file",
     async () => {
-      const serverResult = await startE2EServer();
-      context = serverResult.context;
-      wasAlreadyRunning = serverResult.wasAlreadyRunning;
-      expect(serverResult.success).toBe(true);
-      expect(await isLocalServerRunning()).toBe(true);
-
-      // Always ensure correct server connection (previous runs may have left stale settings)
-      await configureServerConnection();
-
       const task = await setupTaskInRepo(repo.path);
       taskId = task.id;
       expect(task.status).toBe("DRAFT");
 
-      // Wait for agent to start and PID to be recorded
       const stepWithPid = await waitForLocalStepWithPid(taskId, {
         timeout: 60_000,
         pollInterval: 1000,
+        dbPath: ctx.dbPath,
       });
       expect(stepWithPid).not.toBeNull();
       if (!stepWithPid) throw new Error("No step execution with PID found");
@@ -306,7 +245,6 @@ describe("resilient agent lifecycle", () => {
       expect(stepWithPid.agent_pid).toBeGreaterThan(0);
       expect(stepWithPid.status).toBe("running");
 
-      // Verify log file exists on disk (poll briefly as agent may not have written yet)
       const logFile = join(aopPaths.logs(), `${stepWithPid.id}.jsonl`);
       let logFileExists = false;
       for (let i = 0; i < 10 && !logFileExists; i++) {
@@ -315,19 +253,18 @@ describe("resilient agent lifecycle", () => {
       }
       expect(logFileExists).toBe(true);
 
-      const executions = getLocalExecutionsByTaskId(taskId);
+      const executions = getLocalExecutionsByTaskId(taskId, ctx.dbPath);
       expect(executions.length).toBeGreaterThan(0);
 
-      // Wait for task completion (BLOCKED is acceptable — we're testing lifecycle, not agent success)
       const completedTask = await waitForTask(taskId, ["DONE", "BLOCKED"], {
         timeout: 300_000,
         pollInterval: 2000,
+        localServerUrl: ctx.localServerUrl,
       });
       expect(completedTask).not.toBeNull();
       if (!completedTask) throw new Error("Task did not complete");
       expect(["DONE", "BLOCKED"]).toContain(completedTask.status);
 
-      // After completion, log file should be cleaned up (persisted to DB)
       await Bun.sleep(2000);
       expect(existsSync(logFile)).toBe(false);
     },
@@ -337,21 +274,25 @@ describe("resilient agent lifecycle", () => {
   test(
     "SSE streams from log file during execution",
     async () => {
-      const repo2 = await createTempRepo("resilience-sse");
+      const repo2 = await createTempRepo("resilience-sse", ctx.reposDir);
       try {
         const task = await setupTaskInRepo(repo2.path);
 
-        const step = await waitForLocalStepWithPid(task.id, { timeout: 60_000 });
+        const step = await waitForLocalStepWithPid(task.id, {
+          timeout: 60_000,
+          dbPath: ctx.dbPath,
+        });
         expect(step).not.toBeNull();
         if (!step) throw new Error("No step with PID");
 
-        const executions = getLocalExecutionsByTaskId(task.id);
+        const executions = getLocalExecutionsByTaskId(task.id, ctx.dbPath);
         expect(executions.length).toBeGreaterThan(0);
         const execId = executions[0]?.id;
         expect(execId).toBeDefined();
 
-        const localServerUrl = context.localServer?.url ?? DEFAULT_LOCAL_SERVER_URL;
-        const sseResult = await readSSEStream(`${localServerUrl}/api/executions/${execId}/logs`);
+        const sseResult = await readSSEStream(
+          `${ctx.localServerUrl}/api/executions/${execId}/logs`,
+        );
 
         const hasLogData = sseResult.events.some((e) => e.type === "replay" || e.type === "log");
         expect(hasLogData).toBe(true);
@@ -360,7 +301,11 @@ describe("resilient agent lifecycle", () => {
         if (!completeEvent?.status) throw new Error("No complete event in SSE stream");
         expect(["completed", "failed"]).toContain(completeEvent.status);
 
-        await waitForTask(task.id, ["DONE", "BLOCKED"], { timeout: 300_000, pollInterval: 2000 });
+        await waitForTask(task.id, ["DONE", "BLOCKED"], {
+          timeout: 300_000,
+          pollInterval: 2000,
+          localServerUrl: ctx.localServerUrl,
+        });
       } finally {
         await repo2.cleanup();
       }
@@ -371,24 +316,14 @@ describe("resilient agent lifecycle", () => {
   test(
     "server restart recovery — agent survives restart",
     async () => {
-      // Cannot restart an externally managed server
-      if (wasAlreadyRunning) return;
-
-      // Stop the existing server from startE2EServer
-      if (context.localServer) {
-        await stopLocalServer(context.localServer);
-        context.localServer = null;
-      }
-
-      const localServer = await startLocalServer();
-      context.localServer = localServer;
-      await configureServerConnection();
-
-      const repo3 = await createTempRepo("resilience-restart");
+      const repo3 = await createTempRepo("resilience-restart", ctx.reposDir);
       try {
-        const task = await setupTaskInRepo(repo3.path, localServer.url);
+        const task = await setupTaskInRepo(repo3.path);
 
-        const step = await waitForLocalStepWithPid(task.id, { timeout: 60_000 });
+        const step = await waitForLocalStepWithPid(task.id, {
+          timeout: 60_000,
+          dbPath: ctx.dbPath,
+        });
         expect(step).not.toBeNull();
         if (!step) throw new Error("No step with PID");
 
@@ -396,10 +331,32 @@ describe("resilient agent lifecycle", () => {
         expect(agentPid).not.toBeNull();
         expect(agentPid).toBeGreaterThan(0);
 
-        await stopLocalServer(localServer);
-        await restartServerAndVerifyRecovery(task.id, agentPid as number, (s) => {
-          context.localServer = s;
+        // Restart the local server — agent should survive
+        expect(isProcessRunning(agentPid as number)).toBe(true);
+        await restartLocalServer();
+        await Bun.sleep(3000);
+
+        const taskAfterRestart = await waitForTask(task.id, ["WORKING", "DONE", "BLOCKED"], {
+          timeout: 30_000,
+          pollInterval: 1000,
+          localServerUrl: ctx.localServerUrl,
         });
+        expect(taskAfterRestart).not.toBeNull();
+
+        const completedTask = await waitForTask(task.id, ["DONE", "BLOCKED"], {
+          timeout: 300_000,
+          pollInterval: 2000,
+          localServerUrl: ctx.localServerUrl,
+        });
+        expect(completedTask).not.toBeNull();
+        if (!completedTask) throw new Error("Task did not complete after restart");
+        expect(["DONE", "BLOCKED"]).toContain(completedTask.status);
+
+        const steps = getLocalStepExecutionsByTaskId(task.id, ctx.dbPath);
+        expect(steps.length).toBeGreaterThan(0);
+        const finalStep = steps[steps.length - 1];
+        if (!finalStep) throw new Error("No step executions found");
+        expect(["success", "failure"]).toContain(finalStep.status);
       } finally {
         await repo3.cleanup();
       }
@@ -410,52 +367,43 @@ describe("resilient agent lifecycle", () => {
   test(
     "SSE resumes after server restart via Last-Event-ID",
     async () => {
-      if (wasAlreadyRunning) return;
-
-      // Ensure we have a server running
-      if (!context.localServer || !(await isLocalServerRunning(context.localServer.url))) {
-        context.localServer = await startLocalServer();
-        await configureServerConnection();
-      }
-
-      let localServer = context.localServer;
-      const repo4 = await createTempRepo("resilience-sse-resume");
+      const repo4 = await createTempRepo("resilience-sse-resume", ctx.reposDir);
 
       try {
-        const task = await setupTaskInRepo(repo4.path, localServer.url);
+        const task = await setupTaskInRepo(repo4.path);
 
-        const step = await waitForLocalStepWithPid(task.id, { timeout: 60_000 });
+        const step = await waitForLocalStepWithPid(task.id, {
+          timeout: 60_000,
+          dbPath: ctx.dbPath,
+        });
         expect(step).not.toBeNull();
         if (!step) throw new Error("No step with PID");
 
-        const executions = getLocalExecutionsByTaskId(task.id);
+        const executions = getLocalExecutionsByTaskId(task.id, ctx.dbPath);
         expect(executions.length).toBeGreaterThan(0);
         const execId = executions[0]?.id;
         expect(execId).toBeDefined();
 
-        // Read a few initial events then disconnect
-        const firstBatch = await readSSEStream(`${localServer.url}/api/executions/${execId}/logs`, {
-          timeoutMs: 30_000,
-          maxEvents: 3,
-        });
+        const firstBatch = await readSSEStream(
+          `${ctx.localServerUrl}/api/executions/${execId}/logs`,
+          { timeoutMs: 30_000, maxEvents: 3 },
+        );
 
-        // Kill and restart server
-        await stopLocalServer(localServer);
-        localServer = await startLocalServer();
-        context.localServer = localServer;
-        await configureServerConnection();
+        await restartLocalServer();
         await Bun.sleep(3000);
 
-        // Reconnect with Last-Event-ID to resume from where we left off
-        const resumed = await readSSEStream(`${localServer.url}/api/executions/${execId}/logs`, {
+        const resumed = await readSSEStream(`${ctx.localServerUrl}/api/executions/${execId}/logs`, {
           lastEventId: firstBatch.lastEventId,
         });
 
-        // The resumed stream should eventually have a complete event
         const completeEvent = resumed.events.find((e) => e.type === "complete");
         expect(completeEvent).toBeDefined();
 
-        await waitForTask(task.id, ["DONE", "BLOCKED"], { timeout: 300_000, pollInterval: 2000 });
+        await waitForTask(task.id, ["DONE", "BLOCKED"], {
+          timeout: 300_000,
+          pollInterval: 2000,
+          localServerUrl: ctx.localServerUrl,
+        });
       } finally {
         await repo4.cleanup();
       }

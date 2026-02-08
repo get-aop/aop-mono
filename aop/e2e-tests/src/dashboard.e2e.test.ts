@@ -1,36 +1,33 @@
-/**
- * Dashboard E2E Tests
- *
- * Prerequisites: `bun dev` must be running before executing this test
- *
- * Tests the full dashboard workflow using Playwright for browser automation:
- * - Happy path: DRAFT → READY → WORKING → DONE
- * - Unhappy path: BLOCKED tasks, REMOVED tasks, ABORTED tasks
- * - Task detail view with execution history and logs
- */
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { AOP_URLS } from "@aop/common";
 import { type Browser, chromium, type Page } from "playwright";
 import {
-  cleanupTestRepos,
   copyFixture,
   createTempRepo,
-  isLocalServerRunning,
+  createTestContext,
+  DASHBOARD_DIST_PATH,
+  destroyTestContext,
   runAopCommand,
   setTaskStatus,
-  setupE2ETestDir,
   type TempRepoResult,
+  type TestContext,
   triggerServerRefresh,
   waitForTask,
 } from "./helpers";
-import { checkDevEnvironment } from "./helpers/server";
 
 const E2E_TIMEOUT = 300_000;
-const DASHBOARD_URL = AOP_URLS.DASHBOARD;
 const SCREENSHOT_DIR = join(import.meta.dir, "../tmp/screenshots");
+
+const ensureDashboardBuilt = async (): Promise<void> => {
+  if (existsSync(join(DASHBOARD_DIST_PATH, "index.html"))) return;
+  const dashboardDir = join(DASHBOARD_DIST_PATH, "..");
+  const result = await Bun.$`bun run build`.cwd(dashboardDir).quiet();
+  if (result.exitCode !== 0) {
+    throw new Error(`Dashboard build failed: ${result.stderr.toString()}`);
+  }
+};
 
 const waitForElement = async (
   page: Page,
@@ -49,43 +46,34 @@ const waitForElement = async (
 };
 
 describe("dashboard E2E tests", () => {
+  let ctx: TestContext;
   let browser: Browser;
   let page: Page;
   let repo: TempRepoResult;
   let taskId: string;
+  let dashboardUrl: string;
 
   beforeAll(async () => {
-    const envCheck = await checkDevEnvironment();
-    if (!envCheck.ready) {
-      throw new Error(
-        `Dev environment not ready: ${envCheck.reason}\n` +
-          "Run 'bun dev' in a separate terminal before running E2E tests.",
-      );
-    }
-
-    const serverRunning = await isLocalServerRunning();
-    if (!serverRunning) {
-      throw new Error(
-        "Local server not running.\n" +
-          "Run 'bun dev' in a separate terminal before running E2E tests.",
-      );
-    }
-
+    await ensureDashboardBuilt();
     await mkdir(SCREENSHOT_DIR, { recursive: true });
-    await setupE2ETestDir();
+
+    ctx = await createTestContext("dashboard", {
+      localServerEnv: { DASHBOARD_STATIC_PATH: DASHBOARD_DIST_PATH },
+    });
+    dashboardUrl = ctx.localServerUrl;
 
     browser = await chromium.launch({ headless: true });
     page = await browser.newPage();
     page.setDefaultTimeout(30_000);
 
-    repo = await createTempRepo("dashboard-e2e");
+    repo = await createTempRepo("dashboard-e2e", ctx.reposDir);
   });
 
   afterAll(async () => {
     if (page) await page.close();
     if (browser) await browser.close();
     if (repo) await repo.cleanup();
-    await cleanupTestRepos();
+    await destroyTestContext(ctx);
   });
 
   describe("happy path", () => {
@@ -96,17 +84,17 @@ describe("dashboard E2E tests", () => {
         await Bun.$`git add .`.cwd(repo.path).quiet();
         await Bun.$`git commit -m "Add fixture"`.cwd(repo.path).quiet();
 
-        const { exitCode } = await runAopCommand(["repo:init", repo.path]);
+        const { exitCode } = await runAopCommand(["repo:init", repo.path], undefined, ctx.env);
         expect(exitCode).toBe(0);
 
-        await triggerServerRefresh();
+        await triggerServerRefresh(ctx.localServerUrl);
         await Bun.sleep(2000);
 
-        const { exitCode: statusExit, stdout } = await runAopCommand([
-          "status",
-          join(repo.path, "openspec/changes/backlog-test"),
-          "--json",
-        ]);
+        const { exitCode: statusExit, stdout } = await runAopCommand(
+          ["status", join(repo.path, "openspec/changes/backlog-test"), "--json"],
+          undefined,
+          ctx.env,
+        );
         expect(statusExit).toBe(0);
 
         const task = JSON.parse(stdout);
@@ -120,7 +108,7 @@ describe("dashboard E2E tests", () => {
     test(
       "13.1.2 - Verify task is in DRAFT column",
       async () => {
-        await page.goto(DASHBOARD_URL);
+        await page.goto(dashboardUrl);
         const columnVisible = await waitForElement(page, '[data-testid="kanban-column-DRAFT"]');
         expect(columnVisible).toBe(true);
 
@@ -170,9 +158,8 @@ describe("dashboard E2E tests", () => {
     test(
       "13.1.4 - Verify task is in READY or WORKING column (orchestrator picks up quickly)",
       async () => {
-        await page.goto(DASHBOARD_URL);
+        await page.goto(dashboardUrl);
 
-        // Task may be in READY briefly before orchestrator picks it up, or already in WORKING
         const taskInReadyOrWorking = await waitForElement(
           page,
           `[data-testid="kanban-column-READY"] [data-testid="task-card-${taskId}"], [data-testid="kanban-column-WORKING"] [data-testid="task-card-${taskId}"]`,
@@ -212,12 +199,13 @@ describe("dashboard E2E tests", () => {
         const completedTask = await waitForTask(taskId, ["DONE", "BLOCKED"], {
           timeout: 180_000,
           pollInterval: 5000,
+          localServerUrl: ctx.localServerUrl,
         });
 
         expect(completedTask).not.toBeNull();
         expect(completedTask?.status).toBe("DONE");
 
-        await page.goto(DASHBOARD_URL);
+        await page.goto(dashboardUrl);
         const columnVisible = await waitForElement(page, '[data-testid="kanban-column-DONE"]');
         expect(columnVisible).toBe(true);
 
@@ -277,7 +265,7 @@ describe("dashboard E2E tests", () => {
     test(
       "14.7 - Open DONE task and verify execution log is displayed",
       async () => {
-        await page.goto(DASHBOARD_URL);
+        await page.goto(dashboardUrl);
         await page.waitForTimeout(1000);
 
         const taskCard = page.locator(`[data-testid="task-card-${taskId}"]`);
@@ -292,7 +280,6 @@ describe("dashboard E2E tests", () => {
 
         await executionItems.first().click();
 
-        // Wait for persisted logs to load via SSE replay
         await page.waitForTimeout(3000);
 
         const logViewer = page.locator('[data-testid="log-viewer"]');
@@ -313,7 +300,7 @@ describe("dashboard E2E tests", () => {
     let regRepo: TempRepoResult;
 
     beforeAll(async () => {
-      regRepo = await createTempRepo("dashboard-register-e2e");
+      regRepo = await createTempRepo("dashboard-register-e2e", ctx.reposDir);
     });
 
     afterAll(async () => {
@@ -323,15 +310,13 @@ describe("dashboard E2E tests", () => {
     test(
       "Register repository via dashboard dialog",
       async () => {
-        await page.goto(DASHBOARD_URL);
+        await page.goto(dashboardUrl);
         await page.waitForTimeout(1000);
 
-        // Click the Register Repo button
         const registerButton = page.locator('button:has-text("+ Register Repo")');
         await registerButton.waitFor({ state: "visible", timeout: 10_000 });
         await registerButton.click();
 
-        // Verify dialog opens
         const dialog = page.locator("dialog");
         await dialog.waitFor({ state: "visible", timeout: 5_000 });
 
@@ -340,7 +325,6 @@ describe("dashboard E2E tests", () => {
           fullPage: true,
         });
 
-        // Enter the test repo path in the path input
         const pathInput = page.locator('input[placeholder="Enter path..."]');
         await pathInput.fill(regRepo.path);
         await page.locator('button:has-text("Go")').click();
@@ -351,7 +335,6 @@ describe("dashboard E2E tests", () => {
           fullPage: true,
         });
 
-        // Click Select to register the repo
         const selectButton = page.locator('button:has-text("Select")');
         await selectButton.click();
         await page.waitForTimeout(2000);
@@ -361,11 +344,9 @@ describe("dashboard E2E tests", () => {
           fullPage: true,
         });
 
-        // Verify success message appears
         const successMessage = page.locator("text=Repository registered successfully");
         const messageVisible = await successMessage.isVisible().catch(() => false);
 
-        // Also check for "already registered" message in case repo was already registered
         if (!messageVisible) {
           const alreadyRegisteredMessage = page.locator("text=Repository already registered");
           const alreadyVisible = await alreadyRegisteredMessage.isVisible().catch(() => false);
@@ -378,7 +359,7 @@ describe("dashboard E2E tests", () => {
     test(
       "Register non-git directory shows error",
       async () => {
-        await page.goto(DASHBOARD_URL);
+        await page.goto(dashboardUrl);
         await page.waitForTimeout(1000);
 
         const registerButton = page.locator('button:has-text("+ Register Repo")');
@@ -387,7 +368,6 @@ describe("dashboard E2E tests", () => {
         const dialog = page.locator("dialog");
         await dialog.waitFor({ state: "visible", timeout: 5_000 });
 
-        // Enter a non-git path (using /tmp which is not a git repo)
         const pathInput = page.locator('input[placeholder="Enter path..."]');
         await pathInput.fill("/tmp");
         await page.locator('button:has-text("Go")').click();
@@ -401,7 +381,6 @@ describe("dashboard E2E tests", () => {
           fullPage: true,
         });
 
-        // Verify error message appears
         const errorMessage = page.locator("text=Not a git repository");
         const errorVisible = await errorMessage.isVisible().catch(() => false);
         expect(errorVisible).toBe(true);
@@ -415,7 +394,7 @@ describe("dashboard E2E tests", () => {
     let blockedTaskId: string;
 
     beforeAll(async () => {
-      blockedRepo = await createTempRepo("dashboard-blocked-e2e");
+      blockedRepo = await createTempRepo("dashboard-blocked-e2e", ctx.reposDir);
     });
 
     afterAll(async () => {
@@ -425,42 +404,43 @@ describe("dashboard E2E tests", () => {
     test(
       "13.2.1 - Verify task is in BLOCKED banner (create blocked task via API)",
       async () => {
-        // Create a task and directly set it to BLOCKED status via test API
-        // This tests the dashboard UI for BLOCKED state without relying on agent failure
         await copyFixture("blocked-test", blockedRepo.path);
         await Bun.$`git add .`.cwd(blockedRepo.path).quiet();
         await Bun.$`git commit -m "Add blocked fixture"`.cwd(blockedRepo.path).quiet();
 
-        const { exitCode } = await runAopCommand(["repo:init", blockedRepo.path]);
+        const { exitCode } = await runAopCommand(
+          ["repo:init", blockedRepo.path],
+          undefined,
+          ctx.env,
+        );
         expect(exitCode).toBe(0);
 
-        await triggerServerRefresh();
+        await triggerServerRefresh(ctx.localServerUrl);
         await Bun.sleep(2000);
 
-        const { exitCode: statusExit, stdout } = await runAopCommand([
-          "status",
-          join(blockedRepo.path, "openspec/changes/blocked-test"),
-          "--json",
-        ]);
+        const { exitCode: statusExit, stdout } = await runAopCommand(
+          ["status", join(blockedRepo.path, "openspec/changes/blocked-test"), "--json"],
+          undefined,
+          ctx.env,
+        );
         expect(statusExit).toBe(0);
 
         const task = JSON.parse(stdout);
         expect(task.status).toBe("DRAFT");
         blockedTaskId = task.id;
 
-        // Directly set task to BLOCKED status via test-only API endpoint
-        const statusSet = await setTaskStatus(blockedTaskId, "BLOCKED");
+        const statusSet = await setTaskStatus(blockedTaskId, "BLOCKED", ctx.localServerUrl);
         expect(statusSet).toBe(true);
 
-        // Verify task is now BLOCKED
         const blockedTask = await waitForTask(blockedTaskId, ["BLOCKED"], {
           timeout: 10_000,
           pollInterval: 1000,
+          localServerUrl: ctx.localServerUrl,
         });
         expect(blockedTask).not.toBeNull();
         expect(blockedTask?.status).toBe("BLOCKED");
 
-        await page.goto(DASHBOARD_URL);
+        await page.goto(dashboardUrl);
         await page.waitForTimeout(2000);
 
         const blockedBannerVisible = await waitForElement(page, '[data-testid="blocked-banner"]', {
@@ -496,10 +476,11 @@ describe("dashboard E2E tests", () => {
         const removedTask = await waitForTask(blockedTaskId, ["REMOVED"], {
           timeout: 10_000,
           pollInterval: 1000,
+          localServerUrl: ctx.localServerUrl,
         });
         expect(removedTask?.status).toBe("REMOVED");
 
-        await page.goto(DASHBOARD_URL);
+        await page.goto(dashboardUrl);
         await page.waitForTimeout(1000);
 
         const blockedTaskGone = await waitForElement(
@@ -520,39 +501,48 @@ describe("dashboard E2E tests", () => {
     test(
       "13.2.3 - Verify task can be ABORTED while WORKING (force remove)",
       async () => {
-        const abortRepo = await createTempRepo("dashboard-abort-e2e");
+        const abortRepo = await createTempRepo("dashboard-abort-e2e", ctx.reposDir);
 
         try {
           await copyFixture("backlog-test", abortRepo.path);
           await Bun.$`git add .`.cwd(abortRepo.path).quiet();
           await Bun.$`git commit -m "Add fixture for abort test"`.cwd(abortRepo.path).quiet();
 
-          const { exitCode } = await runAopCommand(["repo:init", abortRepo.path]);
+          const { exitCode } = await runAopCommand(
+            ["repo:init", abortRepo.path],
+            undefined,
+            ctx.env,
+          );
           expect(exitCode).toBe(0);
 
-          await triggerServerRefresh();
+          await triggerServerRefresh(ctx.localServerUrl);
           await Bun.sleep(2000);
 
-          const { exitCode: statusExit, stdout } = await runAopCommand([
-            "status",
-            join(abortRepo.path, "openspec/changes/backlog-test"),
-            "--json",
-          ]);
+          const { exitCode: statusExit, stdout } = await runAopCommand(
+            ["status", join(abortRepo.path, "openspec/changes/backlog-test"), "--json"],
+            undefined,
+            ctx.env,
+          );
           expect(statusExit).toBe(0);
 
           const task = JSON.parse(stdout);
           const abortTaskId = task.id;
 
-          const { exitCode: readyExit } = await runAopCommand(["task:ready", abortTaskId]);
+          const { exitCode: readyExit } = await runAopCommand(
+            ["task:ready", abortTaskId],
+            undefined,
+            ctx.env,
+          );
           expect(readyExit).toBe(0);
 
           const workingTask = await waitForTask(abortTaskId, ["WORKING"], {
             timeout: 60_000,
             pollInterval: 1000,
+            localServerUrl: ctx.localServerUrl,
           });
           expect(workingTask).not.toBeNull();
 
-          await page.goto(DASHBOARD_URL);
+          await page.goto(dashboardUrl);
           const taskInWorking = await waitForElement(
             page,
             `[data-testid="kanban-column-WORKING"] [data-testid="task-card-${abortTaskId}"]`,
@@ -583,6 +573,7 @@ describe("dashboard E2E tests", () => {
           const abortedTask = await waitForTask(abortTaskId, ["REMOVED"], {
             timeout: 30_000,
             pollInterval: 1000,
+            localServerUrl: ctx.localServerUrl,
           });
           expect(abortedTask?.status).toBe("REMOVED");
 

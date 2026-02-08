@@ -1,22 +1,15 @@
-// Prerequisites: `bun dev` must be running before executing this test
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
-  cleanupTestRepos,
   copyFixture,
   createTempRepo,
-  createTestAopHome,
-  type E2EServerContext,
+  createTestContext,
+  destroyTestContext,
   ensureChangesDir,
   getFullStatus,
   getRepoStatus,
-  isLocalServerRunning,
   runAopCommand,
-  setupE2ETestDir,
-  startE2EServer,
-  stopE2EServer,
   type TempRepoResult,
-  type TestAopHome,
+  type TestContext,
   triggerServerRefresh,
   waitForTask,
   waitForTasksInRepo,
@@ -25,23 +18,17 @@ import {
 const E2E_TIMEOUT = 600_000;
 
 describe("concurrency limits", () => {
+  let ctx: TestContext;
   let repo: TempRepoResult;
-  let context: E2EServerContext;
-  let wasAlreadyRunning = false;
-  let testHome: TestAopHome | null = null;
 
   beforeAll(async () => {
-    await setupE2ETestDir();
-    repo = await createTempRepo("concurrency");
+    ctx = await createTestContext("concurrency", { remoteServer: false });
+    repo = await createTempRepo("concurrency", ctx.reposDir);
   });
 
   afterAll(async () => {
-    if (context) {
-      await stopE2EServer(context, wasAlreadyRunning);
-    }
-    testHome?.cleanup();
     await repo.cleanup();
-    await cleanupTestRepos();
+    await destroyTestContext(ctx);
   });
 
   test(
@@ -49,51 +36,50 @@ describe("concurrency limits", () => {
     async () => {
       await ensureChangesDir(repo.path);
 
-      const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
+      const { exitCode: initExit } = await runAopCommand(
+        ["repo:init", repo.path],
+        undefined,
+        ctx.env,
+      );
       expect(initExit).toBe(0);
 
-      testHome = createTestAopHome("concurrency");
-      const serverResult = await startE2EServer({ aopHome: testHome.path });
-      const { success, context: serverCtx, wasAlreadyRunning: alreadyRunning } = serverResult;
-      context = serverCtx;
-      wasAlreadyRunning = alreadyRunning;
-      expect(success).toBe(true);
+      const { exitCode: configExit } = await runAopCommand(
+        ["config:set", "max_concurrent_tasks", "1"],
+        undefined,
+        ctx.env,
+      );
+      expect(configExit).toBe(0);
 
-      // Verify local server is running
-      expect(await isLocalServerRunning()).toBe(true);
-
-      // Trigger refresh to ensure watcher picks up the new repo
-      await triggerServerRefresh();
+      await triggerServerRefresh(ctx.localServerUrl);
 
       await copyFixture("concurrency-test-1", repo.path);
       await copyFixture("concurrency-test-2", repo.path);
 
-      // Wait for tasks to be detected (may take up to 30s for ticker poll if server was already running)
       const detectedTasks = await waitForTasksInRepo(repo.path, 2, {
         timeout: 60_000,
         pollInterval: 2000,
+        env: ctx.env,
       });
       expect(detectedTasks.length).toBe(2);
       const draftTasks = detectedTasks.filter((t) => t.status === "DRAFT");
       expect(draftTasks.length).toBe(2);
 
-      let status = await getFullStatus();
+      let status = await getFullStatus(ctx.env);
       if (!status) throw new Error("Status should not be null");
 
       const task1 = draftTasks.find((t) => t.change_path.includes("concurrency-test-1"));
       const task2 = draftTasks.find((t) => t.change_path.includes("concurrency-test-2"));
       if (!task1 || !task2) throw new Error("Tasks should exist");
 
-      await runAopCommand(["task:ready", task1.id]);
-      await runAopCommand(["task:ready", task2.id]);
+      await runAopCommand(["task:ready", task1.id], undefined, ctx.env);
+      await runAopCommand(["task:ready", task2.id], undefined, ctx.env);
 
       await Bun.sleep(3000);
 
-      status = await getFullStatus();
+      status = await getFullStatus(ctx.env);
       if (!status) throw new Error("Status should not be null");
       expect(status.globalCapacity.max).toBeGreaterThanOrEqual(1);
 
-      // Check repo-scoped working tasks (allows parallelization with other e2e tests)
       const repoStatus = getRepoStatus(status, repo.path);
       const workingTasks = repoStatus.tasks.filter((t) => t.status === "WORKING");
       expect(workingTasks.length).toBeLessThanOrEqual(1);
@@ -101,22 +87,23 @@ describe("concurrency limits", () => {
       const completedTask1 = await waitForTask(task1.id, ["DONE", "BLOCKED"], {
         timeout: 300_000,
         pollInterval: 2000,
+        localServerUrl: ctx.localServerUrl,
       });
       expect(completedTask1).not.toBeNull();
 
       const completedTask2 = await waitForTask(task2.id, ["DONE", "BLOCKED"], {
         timeout: 300_000,
         pollInterval: 2000,
+        localServerUrl: ctx.localServerUrl,
       });
       expect(completedTask2).not.toBeNull();
 
-      const finalStatus = await getFullStatus();
+      const finalStatus = await getFullStatus(ctx.env);
       if (!finalStatus) throw new Error("Status should not be null");
       const finalRepoStatus = getRepoStatus(finalStatus, repo.path);
       const doneTasks = finalRepoStatus.tasks.filter((t) => t.status === "DONE");
       expect(doneTasks.length).toBe(2);
 
-      // Check repo-scoped working count (allows parallelization with other e2e tests)
       expect(finalRepoStatus.working).toBe(0);
     },
     E2E_TIMEOUT,

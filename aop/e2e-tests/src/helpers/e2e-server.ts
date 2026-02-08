@@ -21,13 +21,14 @@ export interface E2EServerStartResult {
 export const runAopCommand = async (
   args: string[],
   cwd?: string,
+  env?: Record<string, string>,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
   const proc = Bun.spawn({
     cmd: [process.execPath, AOP_BIN, ...args],
     stdout: "pipe",
     stderr: "pipe",
     cwd,
-    env: getAopEnv(),
+    env: env ?? getAopEnv(),
   });
 
   const exitCode = await proc.exited;
@@ -62,7 +63,6 @@ export const startE2EServer = async (
   // Start local server
   const localServer = await startLocalServer({
     dbPath: options.dbPath,
-    aopHome: options.aopHome,
   });
 
   // Configure server connection if requested

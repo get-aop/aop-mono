@@ -1,64 +1,39 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { AOP_URLS } from "@aop/common";
 import {
-  cleanupTestRepos,
-  createTempRepo,
-  createTestAopHome,
-  getFullStatus,
+  createTestContext,
+  destroyTestContext,
+  findFreePort,
   isLocalServerRunning,
+  LOCAL_SERVER_PORT_RANGE,
   runAopCommand,
-  setupE2ETestDir,
   startLocalServer,
   stopLocalServer,
-  type TempRepoResult,
+  type TestContext,
 } from "./helpers";
 
 const E2E_TIMEOUT = 60_000;
 
 describe("local server lifecycle", () => {
-  let repo: TempRepoResult;
+  let ctx: TestContext;
 
   beforeAll(async () => {
-    await setupE2ETestDir();
-    repo = await createTempRepo("local-server");
+    ctx = await createTestContext("local-server", { remoteServer: false });
   });
 
   afterAll(async () => {
-    await repo.cleanup();
-    await cleanupTestRepos();
+    await destroyTestContext(ctx);
   });
 
   test(
     "server starts and responds to health checks",
     async () => {
-      // Skip if server is already running (e.g., from bun dev)
-      const alreadyRunning = await isLocalServerRunning();
-      if (alreadyRunning) {
-        // Just verify health check works
-        const response = await fetch(`${AOP_URLS.LOCAL_SERVER}/api/health`);
-        expect(response.ok).toBe(true);
-        const health = (await response.json()) as { ok: boolean };
-        expect(health.ok).toBe(true);
-        return;
-      }
+      expect(await isLocalServerRunning(ctx.localServerUrl)).toBe(true);
 
-      const testHome = createTestAopHome("local-server-health");
-      const serverCtx = await startLocalServer({ aopHome: testHome.path });
-
-      try {
-        expect(await isLocalServerRunning()).toBe(true);
-
-        const response = await fetch(`${serverCtx.url}/api/health`);
-        expect(response.ok).toBe(true);
-        const health = (await response.json()) as { ok: boolean; service: string };
-        expect(health.ok).toBe(true);
-        expect(health.service).toBe("aop-local-server");
-      } finally {
-        await stopLocalServer(serverCtx);
-        testHome.cleanup();
-      }
-
-      expect(await isLocalServerRunning()).toBe(false);
+      const response = await fetch(`${ctx.localServerUrl}/api/health`);
+      expect(response.ok).toBe(true);
+      const health = (await response.json()) as { ok: boolean; service: string };
+      expect(health.ok).toBe(true);
+      expect(health.service).toBe("aop");
     },
     E2E_TIMEOUT,
   );
@@ -66,13 +41,10 @@ describe("local server lifecycle", () => {
   test(
     "CLI commands fail gracefully when server not running",
     async () => {
-      // Skip if server is already running
-      const alreadyRunning = await isLocalServerRunning();
-      if (alreadyRunning) {
-        return;
-      }
-
-      const { exitCode, stderr } = await runAopCommand(["status"]);
+      // Use a port that nothing is listening on
+      const deadUrl = "http://localhost:19999";
+      const env = { ...ctx.env, AOP_LOCAL_SERVER_URL: deadUrl };
+      const { exitCode, stderr } = await runAopCommand(["status"], undefined, env);
 
       expect(exitCode).not.toBe(0);
       expect(stderr.toLowerCase()).toMatch(/server|connection|refused/);
@@ -83,30 +55,13 @@ describe("local server lifecycle", () => {
   test(
     "status shows server state correctly",
     async () => {
-      // Skip if server is already running (from bun dev)
-      const alreadyRunning = await isLocalServerRunning();
-      if (alreadyRunning) {
-        const status = await getFullStatus();
-        expect(status).not.toBeNull();
-        expect(status?.ready).toBe(true);
-        return;
-      }
+      const { exitCode, stdout } = await runAopCommand(["status", "--json"], undefined, ctx.env);
 
-      const testHome = createTestAopHome("local-server-status");
-      const serverCtx = await startLocalServer({ aopHome: testHome.path });
-
-      try {
-        const { exitCode, stdout } = await runAopCommand(["status", "--json"]);
-
-        expect(exitCode).toBe(0);
-        const status = JSON.parse(stdout);
-        expect(status.ready).toBe(true);
-        expect(status.globalCapacity).toBeDefined();
-        expect(status.globalCapacity.max).toBeGreaterThan(0);
-      } finally {
-        await stopLocalServer(serverCtx);
-        testHome.cleanup();
-      }
+      expect(exitCode).toBe(0);
+      const status = JSON.parse(stdout);
+      expect(status.ready).toBe(true);
+      expect(status.globalCapacity).toBeDefined();
+      expect(status.globalCapacity.max).toBeGreaterThan(0);
     },
     E2E_TIMEOUT,
   );
@@ -114,24 +69,18 @@ describe("local server lifecycle", () => {
   test(
     "server handles graceful shutdown",
     async () => {
-      // Skip if server is already running
-      const alreadyRunning = await isLocalServerRunning();
-      if (alreadyRunning) {
-        return;
-      }
+      const secondPort = await findFreePort(
+        LOCAL_SERVER_PORT_RANGE.min,
+        LOCAL_SERVER_PORT_RANGE.max,
+      );
+      const secondServer = await startLocalServer({ port: secondPort, dbPath: ctx.dbPath });
+      const secondUrl = secondServer.url;
 
-      const testHome = createTestAopHome("local-server-shutdown");
-      const serverCtx = await startLocalServer({ aopHome: testHome.path });
+      expect(await isLocalServerRunning(secondUrl)).toBe(true);
 
-      // Verify running
-      expect(await isLocalServerRunning()).toBe(true);
+      await stopLocalServer(secondServer);
 
-      // Stop gracefully
-      await stopLocalServer(serverCtx);
-      testHome.cleanup();
-
-      // Verify stopped
-      expect(await isLocalServerRunning()).toBe(false);
+      expect(await isLocalServerRunning(secondUrl)).toBe(false);
     },
     E2E_TIMEOUT,
   );

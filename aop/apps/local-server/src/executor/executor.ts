@@ -92,6 +92,15 @@ const launchStep = async (opts: LaunchStepOptions): Promise<void> => {
     provider,
   } = opts;
 
+  const currentTask = await ctx.taskRepository.get(taskId);
+  if (!currentTask || currentTask.status !== "WORKING") {
+    logger.info("Task no longer WORKING before step launch, skipping", {
+      taskId,
+      status: currentTask?.status,
+    });
+    return;
+  }
+
   const stepId = await createStepRecord(ctx, executionId, stepCommand.type);
   logger.info("Created step record", {
     executionId,
@@ -146,16 +155,10 @@ const spawnAgentWithReaper = (opts: SpawnAgentOptions): Promise<void> => {
   const {
     ctx,
     executorCtx,
-    worktreeInfo,
-    prompt,
     stepId,
-    executionId,
-    stepCommand,
-    executionInfo,
     taskId,
-    repoId,
+    prompt,
     signals = [],
-    serverSync,
     provider = new ClaudeCodeProvider(),
   } = opts;
 
@@ -179,55 +182,95 @@ const spawnAgentWithReaper = (opts: SpawnAgentOptions): Promise<void> => {
       },
       inactivityTimeoutMs: timeoutMs,
     })
-    .then(async (runResult) => {
-      const result = processAgentCompletion(logFile, runResult, signals);
-      logger.info("Agent finished step {stepType}", {
-        stepType: stepCommand.type,
-        exitCode: result.exitCode,
-        status: result.status,
-        signal: result.signal,
-      });
+    .then((runResult) => handleAgentCompletion(opts, logFile, runResult, signals));
+};
 
-      populateLogBuffer(ctx, logFile, executionId);
+const handleAgentCompletion = async (
+  opts: SpawnAgentOptions,
+  logFile: string,
+  runResult: { exitCode: number; sessionId?: string; timedOut?: boolean },
+  signals: string[],
+): Promise<void> => {
+  const {
+    ctx,
+    executorCtx,
+    worktreeInfo,
+    executionId,
+    stepId,
+    stepCommand,
+    executionInfo,
+    taskId,
+    repoId,
+    serverSync,
+    provider,
+  } = opts;
 
-      const completionStatus = result.status === "success" ? "completed" : "failed";
-      ctx.logBuffer.markComplete(executionId, completionStatus);
+  const result = processAgentCompletion(logFile, runResult, signals);
+  logger.info("Agent finished step {stepType}", {
+    stepType: stepCommand.type,
+    exitCode: result.exitCode,
+    status: result.status,
+    signal: result.signal,
+  });
 
-      await persistExecutionLogs(ctx, executionId);
-      cleanupLogFile(logFile);
+  populateLogBuffer(ctx, logFile, executionId);
 
-      const nextStepInfo = await finalizeExecutionAndGetNextStep(
-        ctx,
-        taskId,
-        executionId,
-        stepId,
-        result,
-        serverSync,
-        {
-          serverStepId: stepCommand.id,
-          serverExecutionId: executionInfo.id,
-          attempt: stepCommand.attempt,
-        },
-      );
+  const completionStatus = result.status === "success" ? "completed" : "failed";
+  ctx.logBuffer.markComplete(executionId, completionStatus);
 
-      if (nextStepInfo) {
-        logger.info("Continuing to next step: {stepType}", {
-          stepType: nextStepInfo.step.type,
-        });
-        await launchStep({
-          ctx,
-          executorCtx,
-          worktreeInfo,
-          executionId,
-          stepCommand: nextStepInfo.step,
-          executionInfo: nextStepInfo.execution,
-          taskId,
-          repoId,
-          serverSync,
-          provider,
-        });
-      }
+  await persistExecutionLogs(ctx, executionId);
+  cleanupLogFile(logFile);
+
+  const currentTask = await ctx.taskRepository.get(taskId);
+  if (currentTask && currentTask.status !== "WORKING") {
+    logger.info("Task status changed to {status}, skipping next step", {
+      taskId,
+      status: currentTask.status,
     });
+    await finalizeExecutionRecord(ctx, executionId, result);
+    return;
+  }
+
+  const nextStepInfo = await finalizeExecutionAndGetNextStep(
+    ctx,
+    taskId,
+    executionId,
+    stepId,
+    result,
+    serverSync,
+    {
+      serverStepId: stepCommand.id,
+      serverExecutionId: executionInfo.id,
+      attempt: stepCommand.attempt,
+    },
+  );
+
+  if (!nextStepInfo) return;
+
+  const taskAfterServer = await ctx.taskRepository.get(taskId);
+  if (!taskAfterServer || taskAfterServer.status !== "WORKING") {
+    logger.info("Task status changed during server call, skipping next step", {
+      taskId,
+      status: taskAfterServer?.status,
+    });
+    return;
+  }
+
+  logger.info("Continuing to next step: {stepType}", {
+    stepType: nextStepInfo.step.type,
+  });
+  await launchStep({
+    ctx,
+    executorCtx,
+    worktreeInfo,
+    executionId,
+    stepCommand: nextStepInfo.step,
+    executionInfo: nextStepInfo.execution,
+    taskId,
+    repoId,
+    serverSync,
+    provider,
+  });
 };
 
 export const buildContext = async (

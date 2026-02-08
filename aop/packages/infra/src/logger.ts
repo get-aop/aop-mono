@@ -12,7 +12,6 @@ import {
   reset as logtapeReset,
   type Sink,
 } from "@logtape/logtape";
-import { getPrettyFormatter } from "@logtape/pretty";
 import { getActiveSpanId, getActiveTraceId } from "./tracing.ts";
 
 export type { Logger, LogLevel } from "@logtape/logtape";
@@ -50,6 +49,23 @@ const SERVICE_COLORS: Record<string, string> = {
   cli: "\x1b[34m",
 };
 const RESET = "\x1b[0m";
+const DIM = "\x1b[2m";
+
+const LEVEL_EMOJI: Record<string, string> = {
+  debug: "\u{1f41b}",
+  info: "\u{2728}",
+  warning: "\u{26a0}\u{fe0f}",
+  error: "\u{274c}",
+  fatal: "\u{1f480}",
+};
+
+const LEVEL_COLOR: Record<string, string> = {
+  debug: "\x1b[90m",
+  info: "\x1b[36m",
+  warning: "\x1b[33m",
+  error: "\x1b[31m",
+  fatal: "\x1b[31;1m",
+};
 
 const DEFAULT_OPTIONS = {
   level: "debug" as LogLevel,
@@ -158,43 +174,98 @@ const formatServicePrefix = (service: string, colors: boolean): string => {
 
 const formatTraceAbbrev = (traceId: string): string => `t:${traceId.slice(0, 8)}`;
 
-const insertAfterLevel = (base: string, prefix: string): string => {
-  const levelPatterns = ["fatal", "error", "warning", "info", "debug"];
-  for (const lvl of levelPatterns) {
-    const idx = base.indexOf(lvl);
-    if (idx === -1) continue;
-    const afterLevel = idx + lvl.length;
-    const spacesMatch = base.slice(afterLevel).match(/^(\s+)/);
-    if (!spacesMatch?.[1]) continue;
-    const insertPos = afterLevel + spacesMatch[1].length;
-    return `${base.slice(0, insertPos)}${prefix}  ${base.slice(insertPos)}`;
-  }
-  return `${prefix}  ${base}`;
+const CATEGORY_WIDTH = 20;
+const LEVEL_WIDTH = 7; // "warning".length
+
+const formatTime = (ts: number): string => {
+  const d = new Date(ts);
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${h}:${m}:${s}.${ms}`;
 };
 
-const buildPrefix = (
+const stringifyPart = (v: unknown): string => {
+  if (typeof v === "string") return v;
+  if (v instanceof Error) return v.message;
+  if (typeof v === "object" && v !== null) {
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return String(v);
+    }
+  }
+  return String(v);
+};
+
+const renderMessage = (parts: readonly unknown[]): string => parts.map(stringifyPart).join("");
+
+const inspectValue = (v: unknown): string => {
+  if (v instanceof Error) return v.stack ?? v.message;
+  if (typeof v === "string") return `'${v}'`;
+  if (v === null || v === undefined || typeof v === "number" || typeof v === "boolean")
+    return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+};
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape stripping requires matching control chars
+const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
+
+type AnsiFormatter = (code: string, text: string) => string;
+
+const buildHeaderColumns = (
+  record: LogRecord,
   service: string | undefined,
   traceId: string | undefined,
   colors: boolean,
+  ansi: AnsiFormatter,
 ): string => {
-  const parts: string[] = [];
-  if (service) parts.push(formatServicePrefix(service, colors));
-  if (traceId) parts.push(formatTraceAbbrev(traceId));
-  return parts.join("  ");
+  const time = ansi(DIM, formatTime(record.timestamp));
+  const level = ansi(
+    LEVEL_COLOR[record.level] ?? "",
+    `${LEVEL_EMOJI[record.level] ?? ""} ${record.level.padEnd(LEVEL_WIDTH)}`,
+  );
+  const category = ansi(DIM, record.category.join("\u{00b7}").padEnd(CATEGORY_WIDTH));
+
+  const cols: string[] = [time];
+  if (service) cols.push(formatServicePrefix(service, colors));
+  cols.push(category);
+  if (traceId) cols.push(ansi(DIM, formatTraceAbbrev(traceId)));
+  cols.push(level);
+
+  return cols.join("  ");
+};
+
+const formatProperties = (
+  props: Record<string, unknown>,
+  indentWidth: number,
+  ansi: AnsiFormatter,
+): string => {
+  const entries = Object.entries(props);
+  if (entries.length === 0) return "";
+  const indent = " ".repeat(indentWidth);
+  return entries
+    .map(([key, val]) => `\n${indent}${ansi(DIM, `${key}:`)} ${inspectValue(val)}`)
+    .join("");
 };
 
 const createPrettyFormatter = (colors: boolean) => {
-  const baseFormatter = getPrettyFormatter({ timestamp: "time", properties: true, colors });
+  const ansi: AnsiFormatter = (code, text) => (colors ? `${code}${text}${RESET}` : text);
+
   return (record: LogRecord): string => {
-    const service = record.properties.service as string | undefined;
-    const traceId = record.properties.traceId as string | undefined;
-
+    const { service, traceId } = record.properties as { service?: string; traceId?: string };
     const { service: _s, traceId: _t, spanId: _sp, ...restProps } = record.properties;
-    const base = baseFormatter({ ...record, properties: restProps });
 
-    if (!service && !traceId) return base;
+    const header = buildHeaderColumns(record, service, traceId, colors, ansi);
+    const message = renderMessage(record.message);
+    const props = formatProperties(restProps, stripAnsi(header).length + 1, ansi);
 
-    return insertAfterLevel(base, buildPrefix(service, traceId, colors));
+    return `${header} ${message}${props}\n`;
   };
 };
 

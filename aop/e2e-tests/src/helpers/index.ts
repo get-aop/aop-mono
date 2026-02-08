@@ -1,15 +1,18 @@
 export {
   AOP_BIN,
   API_KEY,
-  createTestAopHome,
+  DASHBOARD_DIST_PATH,
   DEFAULT_LOCAL_SERVER_PORT,
   DEFAULT_LOCAL_SERVER_URL,
   E2E_TEST_BASE_DIR,
+  E2E_TEST_HOME_DIR,
   getAopEnv,
   LOCAL_SERVER_BIN,
+  LOCAL_SERVER_PORT_RANGE,
+  REMOTE_SERVER_BIN,
+  REMOTE_SERVER_PORT_RANGE,
   SERVER_URL,
   TEST_REPO_PREFIX,
-  type TestAopHome,
   WORKTREES_DIR,
 } from "./constants";
 export {
@@ -70,8 +73,19 @@ export {
   getTaskStatus,
   type StatusOutput,
   type TaskInfo,
+  type WaitForRepoOptions,
   type WaitForTaskOptions,
+  type WaitForTasksInRepoOptions,
   waitForRepoInStatus,
   waitForTask,
   waitForTasksInRepo,
 } from "./status";
+export {
+  type CreateTestContextOptions,
+  createTestContext,
+  type DashboardContext,
+  destroyTestContext,
+  findFreePort,
+  type RemoteServerContext,
+  type TestContext,
+} from "./test-context";

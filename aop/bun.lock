@@ -143,7 +143,6 @@
       "dependencies": {
         "@logtape/file": "^2.0.2",
         "@logtape/logtape": "^2.0.2",
-        "@logtape/pretty": "^2.0.2",
         "@opentelemetry/api": "^1.9.0",
         "@opentelemetry/core": "^1.30.0",
         "@opentelemetry/resources": "^1.30.0",
@@ -271,8 +270,6 @@
     "@logtape/file": ["@logtape/file@2.0.2", "", { "peerDependencies": { "@logtape/logtape": "^2.0.2" } }, "sha512-M+xrTu1B+7IGhXqvZlT2mxnY2u1y/6K8Tp16MMwx16rSdz7CKGaXzlq3RLQYrz1GqtduvqGLHB7Hat1XXnb8VQ=="],
 
     "@logtape/logtape": ["@logtape/logtape@2.0.2", "", {}, "sha512-cveUBLbCMFkvkLycP/2vNWvywl47JcJbazHIju94/QNGboZ/jyYAgZIm0ZXezAOx3eIz8OG1EOZ5CuQP3+2FQg=="],
-
-    "@logtape/pretty": ["@logtape/pretty@2.0.2", "", { "peerDependencies": { "@logtape/logtape": "^2.0.2" } }, "sha512-WMKoHuaEZvJgDeciIM/OL+joDDlheuoSpkfJOuKncdim7eV6GfIh0BUxLt0Td4JJsljzt5dAttxaX0kXqE0N9Q=="],
 
     "@nodelib/fs.scandir": ["@nodelib/fs.scandir@2.1.5", "", { "dependencies": { "@nodelib/fs.stat": "2.0.5", "run-parallel": "^1.1.9" } }, "sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g=="],
 

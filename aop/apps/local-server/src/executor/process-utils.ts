@@ -42,3 +42,29 @@ export const findPidByStepId = (stepId: string): number | null => {
   }
   return null;
 };
+
+export const findPidsByTaskId = (taskId: string): number[] => {
+  const result: number[] = [];
+  try {
+    const pids = readdirSync("/proc")
+      .filter((entry) => /^\d+$/.test(entry))
+      .map(Number);
+
+    for (const pid of pids) {
+      try {
+        const environ = readFileSync(`/proc/${pid}/environ`, "utf-8");
+        if (
+          environ.includes(`AOP_TASK_ID=${taskId}\0`) ||
+          environ.endsWith(`AOP_TASK_ID=${taskId}`)
+        ) {
+          result.push(pid);
+        }
+      } catch {
+        // Process may have exited
+      }
+    }
+  } catch {
+    // /proc not available (non-Linux)
+  }
+  return result;
+};

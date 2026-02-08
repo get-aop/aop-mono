@@ -4,6 +4,7 @@ import { aopPaths, getLogger, runWithSpan } from "@aop/infra";
 import type { OrchestratorStatus } from "../app.ts";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
+import { abortTask } from "../executor/abort.ts";
 import { executeTask } from "../executor/executor.ts";
 import { recoverStaleTasks } from "../executor/recovery.ts";
 import { SettingKey } from "../settings/types.ts";
@@ -238,12 +239,17 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
     });
   };
 
-  const waitForExecutingTasks = async (): Promise<void> => {
+  const abortExecutingTasks = async (): Promise<void> => {
     if (executingTasks.size === 0) return;
 
-    logger.info("Waiting for {count} executing tasks to complete", {
-      count: executingTasks.size,
-    });
+    const taskIds = Array.from(executingTasks.keys());
+    logger.info("Aborting {count} executing tasks on shutdown", { count: taskIds.length });
+
+    await Promise.allSettled(
+      taskIds.map((taskId) =>
+        abortTask(ctx, taskId, { targetStatus: "BLOCKED", serverSync: serverSync ?? undefined }),
+      ),
+    );
 
     const promises = Array.from(executingTasks.values()).map((t) => t.promise);
     await Promise.allSettled(promises);
@@ -312,7 +318,7 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
       ticker?.stop();
       watcher?.stop();
 
-      await waitForExecutingTasks();
+      await abortExecutingTasks();
       await waitForPendingRefresh();
       await flushServerSyncQueue();
 

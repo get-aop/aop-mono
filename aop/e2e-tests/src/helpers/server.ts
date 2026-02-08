@@ -1,28 +1,22 @@
-import { AOP_URLS } from "@aop/common";
 import type { Database } from "@aop/server/db";
 import { Kysely } from "kysely";
 import { PostgresJSDialect } from "kysely-postgres-js";
 import postgres from "postgres";
 import { API_KEY, SERVER_URL } from "./constants";
 
-let serverDb: Kysely<Database> | null = null;
-
-const getServerDb = (): Kysely<Database> => {
-  if (!serverDb) {
-    const pg = postgres(AOP_URLS.DATABASE, { max: 5, idle_timeout: 20 });
-    serverDb = new Kysely<Database>({ dialect: new PostgresJSDialect({ postgres: pg }) });
-  }
-  return serverDb;
-};
-
 export interface DevEnvironmentCheck {
   ready: boolean;
   reason?: string;
 }
 
-export const checkDevEnvironment = async (): Promise<DevEnvironmentCheck> => {
+export const checkDevEnvironment = async (
+  serverUrl?: string,
+  apiKey?: string,
+): Promise<DevEnvironmentCheck> => {
+  const url = serverUrl ?? SERVER_URL;
+  const key = apiKey ?? API_KEY;
   try {
-    const healthResponse = await fetch(`${SERVER_URL}/health`, {
+    const healthResponse = await fetch(`${url}/health`, {
       signal: AbortSignal.timeout(5000),
     });
 
@@ -30,11 +24,11 @@ export const checkDevEnvironment = async (): Promise<DevEnvironmentCheck> => {
       return { ready: false, reason: `Server health check failed: ${healthResponse.status}` };
     }
 
-    const authResponse = await fetch(`${SERVER_URL}/auth`, {
+    const authResponse = await fetch(`${url}/auth`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
+        Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({}),
       signal: AbortSignal.timeout(5000),
@@ -60,11 +54,17 @@ export interface ServerTaskStatus {
   };
 }
 
-export const getServerTaskStatus = async (taskId: string): Promise<ServerTaskStatus | null> => {
+export const getServerTaskStatus = async (
+  taskId: string,
+  serverUrl?: string,
+  apiKey?: string,
+): Promise<ServerTaskStatus | null> => {
+  const url = serverUrl ?? SERVER_URL;
+  const key = apiKey ?? API_KEY;
   try {
-    const response = await fetch(`${SERVER_URL}/tasks/${taskId}/status`, {
+    const response = await fetch(`${url}/tasks/${taskId}/status`, {
       headers: {
-        Authorization: `Bearer ${API_KEY}`,
+        Authorization: `Bearer ${key}`,
       },
       signal: AbortSignal.timeout(5000),
     });
@@ -82,6 +82,8 @@ export const getServerTaskStatus = async (taskId: string): Promise<ServerTaskSta
 export interface WaitForServerTaskOptions {
   timeout?: number;
   pollInterval?: number;
+  serverUrl?: string;
+  apiKey?: string;
 }
 
 export const waitForServerTaskStatus = async (
@@ -89,12 +91,12 @@ export const waitForServerTaskStatus = async (
   targetStatus: string | string[],
   options: WaitForServerTaskOptions = {},
 ): Promise<ServerTaskStatus | null> => {
-  const { timeout = 60_000, pollInterval = 2000 } = options;
+  const { timeout = 60_000, pollInterval = 2000, serverUrl, apiKey } = options;
   const statuses = Array.isArray(targetStatus) ? targetStatus : [targetStatus];
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
-    const status = await getServerTaskStatus(taskId);
+    const status = await getServerTaskStatus(taskId, serverUrl, apiKey);
     if (status && statuses.includes(status.status)) {
       return status;
     }
@@ -113,8 +115,10 @@ export interface ServerExecutionStatus {
 
 export const getServerExecutionStatus = async (
   taskId: string,
+  serverUrl?: string,
+  apiKey?: string,
 ): Promise<ServerExecutionStatus | null> => {
-  const taskStatus = await getServerTaskStatus(taskId);
+  const taskStatus = await getServerTaskStatus(taskId, serverUrl, apiKey);
   if (!taskStatus?.execution) {
     return null;
   }
@@ -135,22 +139,31 @@ export interface StepExecutionInfo {
   signal: string | null;
 }
 
-export const getStepExecutionsForTask = async (taskId: string): Promise<StepExecutionInfo[]> => {
-  const db = getServerDb();
+export const getStepExecutionsForTask = async (
+  taskId: string,
+  pgDatabaseUrl?: string,
+): Promise<StepExecutionInfo[]> => {
+  const dbUrl = pgDatabaseUrl ?? (process.env.AOP_DATABASE_URL as string);
+  const pg = postgres(dbUrl, { max: 5, idle_timeout: 20 });
+  const db = new Kysely<Database>({ dialect: new PostgresJSDialect({ postgres: pg }) });
 
-  const rows = await db
-    .selectFrom("step_executions as se")
-    .innerJoin("executions as e", "se.execution_id", "e.id")
-    .select(["se.id", "se.execution_id", "se.step_type", "se.status", "se.signal"])
-    .where("e.task_id", "=", taskId)
-    .orderBy("se.started_at", "asc")
-    .execute();
+  try {
+    const rows = await db
+      .selectFrom("step_executions as se")
+      .innerJoin("executions as e", "se.execution_id", "e.id")
+      .select(["se.id", "se.execution_id", "se.step_type", "se.status", "se.signal"])
+      .where("e.task_id", "=", taskId)
+      .orderBy("se.started_at", "asc")
+      .execute();
 
-  return rows.map((row) => ({
-    id: row.id,
-    execution_id: row.execution_id,
-    step_type: row.step_type,
-    status: row.status,
-    signal: row.signal,
-  }));
+    return rows.map((row) => ({
+      id: row.id,
+      execution_id: row.execution_id,
+      step_type: row.step_type,
+      status: row.status,
+      signal: row.signal,
+    }));
+  } finally {
+    await pg.end();
+  }
 };

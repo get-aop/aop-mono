@@ -1,25 +1,18 @@
-// Prerequisites: `bun dev` must be running before executing this test
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
-  cleanupTestRepos,
   copyFixture,
   createTempRepo,
-  createTestAopHome,
-  type E2EServerContext,
+  createTestContext,
+  destroyTestContext,
   ensureChangesDir,
   findTasksForRepo,
   getFullStatus,
-  isLocalServerRunning,
   runAopCommand,
-  setupE2ETestDir,
-  startE2EServer,
-  stopE2EServer,
   type TaskInfo,
   type TempRepoResult,
-  type TestAopHome,
+  type TestContext,
   triggerServerRefresh,
   waitForRepoInStatus,
   waitForTask,
@@ -29,23 +22,17 @@ import {
 const E2E_TIMEOUT = 600_000;
 
 describe("backlog full flow", () => {
+  let ctx: TestContext;
   let repo: TempRepoResult;
-  let context: E2EServerContext;
-  let wasAlreadyRunning = false;
-  let testHome: TestAopHome | null = null;
 
   beforeAll(async () => {
-    await setupE2ETestDir();
-    repo = await createTempRepo("backlog");
+    ctx = await createTestContext("backlog", { remoteServer: false });
+    repo = await createTempRepo("backlog", ctx.reposDir);
   });
 
   afterAll(async () => {
-    if (context) {
-      await stopE2EServer(context, wasAlreadyRunning);
-    }
-    testHome?.cleanup();
     await repo.cleanup();
-    await cleanupTestRepos();
+    await destroyTestContext(ctx);
   });
 
   test(
@@ -53,50 +40,46 @@ describe("backlog full flow", () => {
     async () => {
       await ensureChangesDir(repo.path);
 
-      const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
+      const { exitCode: initExit } = await runAopCommand(
+        ["repo:init", repo.path],
+        undefined,
+        ctx.env,
+      );
       expect(initExit).toBe(0);
 
-      testHome = createTestAopHome("backlog");
-      const serverResult = await startE2EServer({ aopHome: testHome.path });
-      const { success, context: serverCtx, wasAlreadyRunning: alreadyRunning } = serverResult;
-      context = serverCtx;
-      wasAlreadyRunning = alreadyRunning;
-      expect(success).toBe(true);
-
-      // Verify local server is running
-      expect(await isLocalServerRunning()).toBe(true);
-
-      // Wait for server to process repo:init (adds repo to watcher)
-      const repoSynced = await waitForRepoInStatus(repo.path, { timeout: 5000 });
+      const repoSynced = await waitForRepoInStatus(repo.path, { timeout: 5000, env: ctx.env });
       expect(repoSynced).toBe(true);
 
-      // Trigger refresh to ensure watcher picks up the new repo
-      await triggerServerRefresh();
+      await triggerServerRefresh(ctx.localServerUrl);
 
       await copyFixture("backlog-test", repo.path);
 
-      // Wait for task to be detected (watcher should trigger reconcile)
       const repoTasks = await waitForTasksInRepo(repo.path, 1, {
         timeout: 10_000,
         pollInterval: 500,
+        env: ctx.env,
       });
       expect(repoTasks.length).toBe(1);
       const task = repoTasks[0] as TaskInfo;
       expect(task.status).toBe("DRAFT");
 
-      const { exitCode: readyExit } = await runAopCommand(["task:ready", task.id]);
+      const { exitCode: readyExit } = await runAopCommand(
+        ["task:ready", task.id],
+        undefined,
+        ctx.env,
+      );
       expect(readyExit).toBe(0);
 
-      const afterReadyStatus = await getFullStatus();
+      const afterReadyStatus = await getFullStatus(ctx.env);
       if (!afterReadyStatus) throw new Error("Status should not be null");
       const updatedTasks = findTasksForRepo(afterReadyStatus, repo.path);
       const updatedTask = updatedTasks[0] as TaskInfo;
-      // Task may already be WORKING if queue processor picked it up immediately
       expect(["READY", "WORKING"]).toContain(updatedTask.status);
 
       const completedTask = await waitForTask(task.id, ["DONE", "BLOCKED"], {
         timeout: 300_000,
         pollInterval: 2000,
+        localServerUrl: ctx.localServerUrl,
       });
       expect(completedTask).not.toBeNull();
       if (!completedTask) throw new Error("Completed task should not be null");

@@ -60,6 +60,7 @@ describe("abortTask", () => {
     });
 
     const findPidSpy = spyOn(processUtils, "findPidByStepId").mockReturnValue(null);
+    const findPidsByTaskSpy = spyOn(processUtils, "findPidsByTaskId").mockReturnValue([]);
 
     const result = await abortTask(ctx, "task-1");
 
@@ -75,6 +76,7 @@ describe("abortTask", () => {
     expect(step?.error).toBe("Aborted");
 
     findPidSpy.mockRestore();
+    findPidsByTaskSpy.mockRestore();
   });
 
   test("finds and kills agent via proc scan when agent_pid is null", async () => {
@@ -98,6 +100,7 @@ describe("abortTask", () => {
 
     const fakePid = 99999;
     const findPidSpy = spyOn(processUtils, "findPidByStepId").mockReturnValue(fakePid);
+    const findPidsByTaskSpy = spyOn(processUtils, "findPidsByTaskId").mockReturnValue([]);
     let isAliveCalls = 0;
     const isAliveSpy = spyOn(processUtils, "isProcessAlive").mockImplementation(() => {
       isAliveCalls++;
@@ -110,9 +113,10 @@ describe("abortTask", () => {
     expect(result.taskId).toBe("task-1");
     expect(result.agentKilled).toBe(true);
     expect(findPidSpy).toHaveBeenCalledWith("step-1");
-    expect(killSpy).toHaveBeenCalledWith(fakePid, "SIGTERM");
+    expect(killSpy).toHaveBeenCalledWith(-fakePid, "SIGTERM");
 
     findPidSpy.mockRestore();
+    findPidsByTaskSpy.mockRestore();
     isAliveSpy.mockRestore();
     killSpy.mockRestore();
   });
@@ -137,6 +141,7 @@ describe("abortTask", () => {
       agent_pid: fakePid,
     });
 
+    const findPidsByTaskSpy = spyOn(processUtils, "findPidsByTaskId").mockReturnValue([]);
     let isAliveCalls = 0;
     const isAliveSpy = spyOn(processUtils, "isProcessAlive").mockImplementation(() => {
       isAliveCalls++;
@@ -149,8 +154,9 @@ describe("abortTask", () => {
 
     expect(result.taskId).toBe("task-1");
     expect(result.agentKilled).toBe(true);
-    expect(killSpy).toHaveBeenCalledWith(fakePid, "SIGTERM");
+    expect(killSpy).toHaveBeenCalledWith(-fakePid, "SIGTERM");
 
+    findPidsByTaskSpy.mockRestore();
     isAliveSpy.mockRestore();
     killSpy.mockRestore();
   });
@@ -175,6 +181,7 @@ describe("abortTask", () => {
       agent_pid: fakePid,
     });
 
+    const findPidsByTaskSpy = spyOn(processUtils, "findPidsByTaskId").mockReturnValue([]);
     const isAliveSpy = spyOn(processUtils, "isProcessAlive").mockReturnValue(true);
 
     const signals: string[] = [];
@@ -199,6 +206,7 @@ describe("abortTask", () => {
     expect(signals).toContain("SIGTERM");
     expect(signals).toContain("SIGKILL");
 
+    findPidsByTaskSpy.mockRestore();
     isAliveSpy.mockRestore();
     killSpy.mockRestore();
   });
@@ -223,12 +231,14 @@ describe("abortTask", () => {
       agent_pid: fakePid,
     });
 
+    const findPidsByTaskSpy = spyOn(processUtils, "findPidsByTaskId").mockReturnValue([]);
     const isAliveSpy = spyOn(processUtils, "isProcessAlive").mockReturnValue(true);
 
     let killCount = 0;
     const killSpy = spyOn(process, "kill").mockImplementation(() => {
       killCount++;
-      if (killCount === 2) {
+      // Group SIGKILL fails, then single SIGKILL also fails
+      if (killCount >= 2) {
         throw new Error("SIGKILL failed");
       }
       return true;
@@ -248,6 +258,7 @@ describe("abortTask", () => {
     expect(result.taskId).toBe("task-1");
     expect(result.agentKilled).toBe(true);
 
+    findPidsByTaskSpy.mockRestore();
     isAliveSpy.mockRestore();
     killSpy.mockRestore();
   });
@@ -272,6 +283,7 @@ describe("abortTask", () => {
       agent_pid: fakePid,
     });
 
+    const findPidsByTaskSpy = spyOn(processUtils, "findPidsByTaskId").mockReturnValue([]);
     const isAliveSpy = spyOn(processUtils, "isProcessAlive").mockReturnValue(true);
     const killSpy = spyOn(process, "kill").mockImplementation(() => {
       throw new Error("Permission denied");
@@ -282,6 +294,7 @@ describe("abortTask", () => {
     expect(result.taskId).toBe("task-1");
     expect(result.agentKilled).toBe(false);
 
+    findPidsByTaskSpy.mockRestore();
     isAliveSpy.mockRestore();
     killSpy.mockRestore();
   });
@@ -306,6 +319,7 @@ describe("abortTask", () => {
       agent_pid: fakePid,
     });
 
+    const findPidsByTaskSpy = spyOn(processUtils, "findPidsByTaskId").mockReturnValue([]);
     const isAliveSpy = spyOn(processUtils, "isProcessAlive").mockReturnValue(false);
     const killSpy = spyOn(process, "kill");
 
@@ -315,6 +329,7 @@ describe("abortTask", () => {
     expect(result.agentKilled).toBe(false);
     expect(killSpy).not.toHaveBeenCalled();
 
+    findPidsByTaskSpy.mockRestore();
     isAliveSpy.mockRestore();
     killSpy.mockRestore();
   });

@@ -1,3 +1,0 @@
-[test]
-# E2E tests manage their own setup - don't use the server db preload
-preload = []

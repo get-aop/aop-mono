@@ -22,13 +22,16 @@ export interface LocalExecution {
   completed_at: string | null;
 }
 
-const openDb = (): SQLiteDatabase => {
-  const dbPath = process.env.AOP_DB_PATH ?? aopPaths.db();
-  return new SQLiteDatabase(dbPath, { readonly: true });
+const openDb = (dbPath?: string): SQLiteDatabase => {
+  const path = dbPath ?? process.env.AOP_DB_PATH ?? aopPaths.db();
+  return new SQLiteDatabase(path, { readonly: true });
 };
 
-export const getLocalStepExecutions = (executionId: string): LocalStepExecution[] => {
-  const db = openDb();
+export const getLocalStepExecutions = (
+  executionId: string,
+  dbPath?: string,
+): LocalStepExecution[] => {
+  const db = openDb(dbPath);
   try {
     return db
       .query<LocalStepExecution, [string]>(
@@ -40,8 +43,8 @@ export const getLocalStepExecutions = (executionId: string): LocalStepExecution[
   }
 };
 
-export const getLocalExecution = (executionId: string): LocalExecution | null => {
-  const db = openDb();
+export const getLocalExecution = (executionId: string, dbPath?: string): LocalExecution | null => {
+  const db = openDb(dbPath);
   try {
     return (
       db
@@ -55,8 +58,8 @@ export const getLocalExecution = (executionId: string): LocalExecution | null =>
   }
 };
 
-export const getLocalExecutionsByTaskId = (taskId: string): LocalExecution[] => {
-  const db = openDb();
+export const getLocalExecutionsByTaskId = (taskId: string, dbPath?: string): LocalExecution[] => {
+  const db = openDb(dbPath);
   try {
     return db
       .query<LocalExecution, [string]>(
@@ -68,8 +71,11 @@ export const getLocalExecutionsByTaskId = (taskId: string): LocalExecution[] => 
   }
 };
 
-export const getLocalStepExecutionsByTaskId = (taskId: string): LocalStepExecution[] => {
-  const db = openDb();
+export const getLocalStepExecutionsByTaskId = (
+  taskId: string,
+  dbPath?: string,
+): LocalStepExecution[] => {
+  const db = openDb(dbPath);
   try {
     return db
       .query<LocalStepExecution, [string]>(
@@ -88,17 +94,18 @@ export const getLocalStepExecutionsByTaskId = (taskId: string): LocalStepExecuti
 export interface WaitForLocalStepOptions {
   timeout?: number;
   pollInterval?: number;
+  dbPath?: string;
 }
 
 export const waitForLocalStepWithPid = async (
   taskId: string,
   options: WaitForLocalStepOptions = {},
 ): Promise<LocalStepExecution | null> => {
-  const { timeout = 60_000, pollInterval = 1000 } = options;
+  const { timeout = 60_000, pollInterval = 1000, dbPath } = options;
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
-    const steps = getLocalStepExecutionsByTaskId(taskId);
+    const steps = getLocalStepExecutionsByTaskId(taskId, dbPath);
     const stepWithPid = steps.find((s) => s.agent_pid !== null && s.status === "running");
     if (stepWithPid) return stepWithPid;
     await Bun.sleep(pollInterval);

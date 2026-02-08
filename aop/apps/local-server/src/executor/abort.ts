@@ -35,18 +35,20 @@ export const abortTask = async (
     throw new Error(`Task not found: ${taskId}`);
   }
 
+  // Set status FIRST to prevent reapers from launching new steps
+  await ctx.taskRepository.update(taskId, { status: targetStatus });
+
   const result: AbortResult = { taskId, agentKilled: false };
 
-  const stepExecution = await ctx.executionRepository.getLatestStepExecution(taskId);
-  if (stepExecution?.status === StepExecutionStatus.RUNNING) {
-    const pid = stepExecution.agent_pid ?? processUtils.findPidByStepId(stepExecution.id);
-    if (pid) {
-      result.agentKilled = await killAgent(pid, log);
-    }
-  }
+  // Kill ALL running agents for this task via execution records
+  const killedFromRecords = await killAllRunningAgents(ctx, taskId, log);
+  if (killedFromRecords) result.agentKilled = true;
+
+  // Fallback: scan /proc for any agents matching this task ID
+  const killedFromProc = await killAgentsByTaskId(taskId, log);
+  if (killedFromProc) result.agentKilled = true;
 
   await updateExecutionStatus(ctx, taskId);
-  await ctx.taskRepository.update(taskId, { status: targetStatus });
 
   if (serverSync) {
     try {
@@ -60,31 +62,91 @@ export const abortTask = async (
   return result;
 };
 
+const killAllRunningAgents = async (
+  ctx: LocalServerContext,
+  taskId: string,
+  log: ReturnType<typeof logger.with>,
+): Promise<boolean> => {
+  const executions = await ctx.executionRepository.getExecutionsByTaskId(taskId);
+  const runningExecs = executions.filter((e) => e.status === ExecutionStatus.RUNNING);
+
+  const results = await Promise.all(
+    runningExecs.map((exec) => killRunningStepsForExecution(ctx, exec.id, log)),
+  );
+  return results.some(Boolean);
+};
+
+const killRunningStepsForExecution = async (
+  ctx: LocalServerContext,
+  executionId: string,
+  log: ReturnType<typeof logger.with>,
+): Promise<boolean> => {
+  const steps = await ctx.executionRepository.getStepExecutionsByExecutionId(executionId);
+  let killed = false;
+
+  for (const step of steps) {
+    if (step.status !== StepExecutionStatus.RUNNING) continue;
+
+    const pid = step.agent_pid ?? processUtils.findPidByStepId(step.id);
+    if (pid && (await killAgent(pid, log))) {
+      killed = true;
+    }
+  }
+
+  return killed;
+};
+
+const killAgentsByTaskId = async (
+  taskId: string,
+  log: ReturnType<typeof logger.with>,
+): Promise<boolean> => {
+  const pids = processUtils.findPidsByTaskId(taskId);
+  if (pids.length === 0) return false;
+
+  log.info("Found {count} agent processes via /proc scan", { count: pids.length });
+  let killed = false;
+  for (const pid of pids) {
+    if (await killAgent(pid, log)) killed = true;
+  }
+  return killed;
+};
+
 const killAgent = async (pid: number, log: ReturnType<typeof logger.with>): Promise<boolean> => {
   if (!processUtils.isProcessAlive(pid)) {
-    log.debug("Agent process not alive, skipping kill");
+    log.debug("Agent process not alive, skipping kill", { pid });
     return false;
   }
 
-  log.info("Sending SIGTERM to agent", { pid });
+  // Use process group kill to terminate agent and all its children.
+  // Agents are spawned with detached:true so their PID equals their PGID.
+  log.info("Sending SIGTERM to agent process group", { pid });
   try {
-    process.kill(pid, "SIGTERM");
+    process.kill(-pid, "SIGTERM");
   } catch {
-    log.warn("Failed to send SIGTERM to agent", { pid });
-    return false;
+    // Fall back to single-process kill if group kill fails
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      log.warn("Failed to send SIGTERM to agent", { pid });
+      return false;
+    }
   }
 
   const gracefullyTerminated = await waitForProcessExit(pid, GRACEFUL_SHUTDOWN_MS);
   if (gracefullyTerminated) {
-    log.debug("Agent terminated gracefully");
+    log.debug("Agent terminated gracefully", { pid });
     return true;
   }
 
   log.info("Agent did not terminate gracefully, sending SIGKILL", { pid });
   try {
-    process.kill(pid, "SIGKILL");
+    process.kill(-pid, "SIGKILL");
   } catch {
-    log.warn("Failed to send SIGKILL to agent", { pid });
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      log.warn("Failed to send SIGKILL to agent", { pid });
+    }
   }
 
   return true;

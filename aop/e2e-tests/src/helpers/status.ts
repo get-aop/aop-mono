@@ -16,6 +16,7 @@ export interface TaskInfo {
 export interface WaitForTaskOptions {
   timeout?: number;
   pollInterval?: number;
+  localServerUrl?: string;
 }
 
 export interface StatusOutput {
@@ -31,11 +32,13 @@ export interface StatusOutput {
   }>;
 }
 
-export const getTaskStatus = async (taskId: string): Promise<TaskInfo | null> => {
-  // Use resolve endpoint which returns tasks regardless of status (including REMOVED)
-  // The status command filters out REMOVED tasks, so we use the resolve API directly
+export const getTaskStatus = async (
+  taskId: string,
+  localServerUrl?: string,
+): Promise<TaskInfo | null> => {
+  const baseUrl = localServerUrl ?? DEFAULT_LOCAL_SERVER_URL;
   try {
-    const response = await fetch(`${DEFAULT_LOCAL_SERVER_URL}/api/tasks/resolve/${taskId}`, {
+    const response = await fetch(`${baseUrl}/api/tasks/resolve/${taskId}`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) {
@@ -53,12 +56,12 @@ export const waitForTask = async (
   targetStatus: TaskStatus | TaskStatus[],
   options: WaitForTaskOptions = {},
 ): Promise<TaskInfo | null> => {
-  const { timeout = 300_000, pollInterval = 1000 } = options;
+  const { timeout = 300_000, pollInterval = 1000, localServerUrl } = options;
   const statuses = Array.isArray(targetStatus) ? targetStatus : [targetStatus];
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
-    const task = await getTaskStatus(taskId);
+    const task = await getTaskStatus(taskId, localServerUrl);
     if (task && statuses.includes(task.status)) {
       return task;
     }
@@ -90,14 +93,13 @@ const normalizeTask = (raw: SSETaskRaw): TaskInfo => ({
   updated_at: raw.updatedAt,
 });
 
-export const getFullStatus = async (): Promise<StatusOutput | null> => {
-  const { exitCode, stdout } = await runAopCommand(["status", "--json"]);
+export const getFullStatus = async (env?: Record<string, string>): Promise<StatusOutput | null> => {
+  const { exitCode, stdout } = await runAopCommand(["status", "--json"], undefined, env);
   if (exitCode !== 0) {
     return null;
   }
   try {
     const raw = JSON.parse(stdout);
-    // Normalize SSE camelCase tasks to snake_case TaskInfo
     for (const repo of raw.repos) {
       repo.tasks = repo.tasks.map(normalizeTask);
     }
@@ -130,16 +132,20 @@ export const getRepoStatus = (status: StatusOutput, repoPath: string) => {
   return repo;
 };
 
+export interface WaitForTasksInRepoOptions extends WaitForTaskOptions {
+  env?: Record<string, string>;
+}
+
 export const waitForTasksInRepo = async (
   repoPath: string,
   expectedCount: number,
-  options: WaitForTaskOptions = {},
+  options: WaitForTasksInRepoOptions = {},
 ): Promise<TaskInfo[]> => {
-  const { timeout = 60_000, pollInterval = 2000 } = options;
+  const { timeout = 60_000, pollInterval = 2000, env } = options;
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
-    const status = await getFullStatus();
+    const status = await getFullStatus(env);
     if (status) {
       const tasks = findTasksForRepo(status, repoPath);
       if (tasks.length >= expectedCount) {
@@ -152,15 +158,19 @@ export const waitForTasksInRepo = async (
   return [];
 };
 
+export interface WaitForRepoOptions extends WaitForTaskOptions {
+  env?: Record<string, string>;
+}
+
 export const waitForRepoInStatus = async (
   repoPath: string,
-  options: WaitForTaskOptions = {},
+  options: WaitForRepoOptions = {},
 ): Promise<boolean> => {
-  const { timeout = 5000, pollInterval = 100 } = options;
+  const { timeout = 5000, pollInterval = 100, env } = options;
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
-    const status = await getFullStatus();
+    const status = await getFullStatus(env);
     if (status) {
       const repo = status.repos.find((r) => r.path === repoPath);
       if (repo) {

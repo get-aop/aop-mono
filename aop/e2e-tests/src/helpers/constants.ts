@@ -20,6 +20,24 @@ export const DEFAULT_PID_FILE = join(homedir(), ".aop", "aop.pid");
 export const SERVER_URL = AOP_URLS.SERVER;
 export const API_KEY = "aop_test_key_dev";
 
+export const E2E_TEST_HOME_DIR = join(homedir(), ".aop", "e2e-tests");
+export const LOCAL_SERVER_PORT_RANGE = { min: 25900, max: 25999 };
+export const REMOTE_SERVER_PORT_RANGE = { min: 25800, max: 25899 };
+export const REMOTE_SERVER_BIN = resolve(
+  dirname(import.meta.path),
+  "../../../apps/server/src/main.ts",
+);
+export const DASHBOARD_DIST_PATH = resolve(
+  dirname(import.meta.path),
+  "../../../apps/dashboard/dist",
+);
+export const DASHBOARD_DEV_BIN = resolve(
+  dirname(import.meta.path),
+  "../../../apps/dashboard/dev.ts",
+);
+export const DASHBOARD_DEV_CWD = resolve(dirname(import.meta.path), "../../../apps/dashboard");
+export const DASHBOARD_PORT_RANGE = { min: 25700, max: 25799 };
+
 export const getAopEnv = (): NodeJS.ProcessEnv => ({
   ...process.env,
 });
