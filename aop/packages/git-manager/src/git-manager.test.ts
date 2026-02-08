@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
-import { aopPaths } from "@aop/infra";
+import { aopPaths, useTestAopHome } from "@aop/infra";
 import {
   BranchExistsError,
   BranchNotFoundError,
@@ -18,14 +17,16 @@ const TEST_REPO_ID = "repo_test123";
 
 describe("GitManager", () => {
   let repoPath: string;
+  let cleanupAopHome: () => void;
 
   beforeEach(async () => {
+    cleanupAopHome = useTestAopHome();
     repoPath = await createTestRepo();
   });
 
   afterEach(async () => {
     await cleanupTestRepos();
-    await rm(aopPaths.repoDir(TEST_REPO_ID), { recursive: true, force: true });
+    cleanupAopHome();
   });
 
   describe("init", () => {

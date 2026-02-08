@@ -10,6 +10,7 @@ export interface LocalServerContext {
 export interface StartLocalServerOptions {
   port?: number;
   dbPath?: string;
+  aopHome?: string;
 }
 
 export const startLocalServer = async (
@@ -25,6 +26,10 @@ export const startLocalServer = async (
 
   if (options.dbPath) {
     env.AOP_DB_PATH = options.dbPath;
+  }
+
+  if (options.aopHome) {
+    env.AOP_HOME = options.aopHome;
   }
 
   const proc = Bun.spawn({

@@ -251,8 +251,33 @@ const waitForPostgres = async (maxAttempts = 30): Promise<boolean> => {
   return false;
 };
 
+const checkDockerAvailability = async (): Promise<void> => {
+  try {
+    await Bun.$`docker version`.quiet();
+  } catch {
+    throw new Error(
+      "Docker is not installed or not in PATH. Install Docker Desktop from https://docs.docker.com/get-docker/",
+    );
+  }
+
+  try {
+    await Bun.$`docker info`.quiet();
+  } catch {
+    throw new Error("Docker daemon is not running. Start Docker Desktop and try again.");
+  }
+
+  try {
+    await Bun.$`docker compose version`.quiet();
+  } catch {
+    throw new Error(
+      "Docker Compose is not available. Install Docker Desktop (includes Compose) from https://docs.docker.com/get-docker/",
+    );
+  }
+};
+
 const startPostgres = async (): Promise<void> => {
   log.info("Starting PostgreSQL...");
+  await checkDockerAvailability();
   await Bun.$`docker compose up -d postgres`;
 
   log.info("Waiting for PostgreSQL to be ready...");

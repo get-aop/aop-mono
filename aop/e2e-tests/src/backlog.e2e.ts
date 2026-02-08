@@ -7,6 +7,7 @@ import {
   cleanupTestRepos,
   copyFixture,
   createTempRepo,
+  createTestAopHome,
   type E2EServerContext,
   ensureChangesDir,
   findTasksForRepo,
@@ -18,6 +19,7 @@ import {
   stopE2EServer,
   type TaskInfo,
   type TempRepoResult,
+  type TestAopHome,
   triggerServerRefresh,
   waitForRepoInStatus,
   waitForTask,
@@ -30,6 +32,7 @@ describe("backlog full flow", () => {
   let repo: TempRepoResult;
   let context: E2EServerContext;
   let wasAlreadyRunning = false;
+  let testHome: TestAopHome | null = null;
 
   beforeAll(async () => {
     await setupE2ETestDir();
@@ -40,6 +43,7 @@ describe("backlog full flow", () => {
     if (context) {
       await stopE2EServer(context, wasAlreadyRunning);
     }
+    testHome?.cleanup();
     await repo.cleanup();
     await cleanupTestRepos();
   });
@@ -52,7 +56,8 @@ describe("backlog full flow", () => {
       const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
       expect(initExit).toBe(0);
 
-      const serverResult = await startE2EServer();
+      testHome = createTestAopHome("backlog");
+      const serverResult = await startE2EServer({ aopHome: testHome.path });
       const { success, context: serverCtx, wasAlreadyRunning: alreadyRunning } = serverResult;
       context = serverCtx;
       wasAlreadyRunning = alreadyRunning;

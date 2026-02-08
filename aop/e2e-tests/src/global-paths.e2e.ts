@@ -9,6 +9,7 @@ import {
   cleanupTestRepos,
   copyFixture,
   createTempRepo,
+  createTestAopHome,
   type E2EServerContext,
   ensureChangesDir,
   getFullStatus,
@@ -19,6 +20,7 @@ import {
   stopE2EServer,
   type TaskInfo,
   type TempRepoResult,
+  type TestAopHome,
   triggerServerRefresh,
   waitForRepoInStatus,
   waitForTask,
@@ -32,6 +34,7 @@ describe("global paths architecture", () => {
   let repoId: string;
   let context: E2EServerContext;
   let wasAlreadyRunning = false;
+  let testHome: TestAopHome | null = null;
 
   beforeAll(async () => {
     await setupE2ETestDir();
@@ -42,7 +45,8 @@ describe("global paths architecture", () => {
     const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
     expect(initExit).toBe(0);
 
-    const serverResult = await startE2EServer();
+    testHome = createTestAopHome("global-paths");
+    const serverResult = await startE2EServer({ aopHome: testHome.path });
     context = serverResult.context;
     wasAlreadyRunning = serverResult.wasAlreadyRunning;
     expect(serverResult.success).toBe(true);
@@ -62,6 +66,7 @@ describe("global paths architecture", () => {
     if (context) {
       await stopE2EServer(context, wasAlreadyRunning);
     }
+    testHome?.cleanup();
     await repo.cleanup();
     await cleanupTestRepos();
   });

@@ -1,3 +1,4 @@
+export { useTestAopHome } from "./aop-paths.test-utils.ts";
 export { aopPaths } from "./aop-paths.ts";
 
 export {

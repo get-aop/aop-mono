@@ -1,19 +1,20 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
-import { aopPaths, configureLogging } from "@aop/infra";
+import { configureLogging, useTestAopHome } from "@aop/infra";
 import { DirtyWorkingDirectoryError, NoChangesError, WorktreeNotFoundError } from "./errors.ts";
 import { GitManager } from "./git-manager.ts";
 import { cleanupTestRepos, commitPendingChanges, createTestRepo } from "./test-utils.ts";
 
 const TEST_REPO_ID = "repo_applytest";
+let cleanupAopHome: () => void;
 
 beforeAll(async () => {
+  cleanupAopHome = useTestAopHome();
   await configureLogging({ level: "fatal" });
 });
 
 afterAll(async () => {
   await cleanupTestRepos();
-  await rm(aopPaths.repoDir(TEST_REPO_ID), { recursive: true, force: true });
+  cleanupAopHome();
 });
 
 describe("applyWorktree", () => {

@@ -1,3 +1,4 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { AOP_PORTS, AOP_URLS } from "@aop/common";
@@ -22,3 +23,18 @@ export const API_KEY = "aop_test_key_dev";
 export const getAopEnv = (): NodeJS.ProcessEnv => ({
   ...process.env,
 });
+
+export interface TestAopHome {
+  path: string;
+  cleanup: () => void;
+}
+
+export const createTestAopHome = (testName: string): TestAopHome => {
+  const baseDir = join(homedir(), ".aop", "aop-test-e2e");
+  mkdirSync(baseDir, { recursive: true });
+  const tempDir = mkdtempSync(join(baseDir, `${testName}-`));
+  return {
+    path: tempDir,
+    cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
+  };
+};

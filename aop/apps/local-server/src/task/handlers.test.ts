@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitManager } from "@aop/git-manager";
-import { aopPaths } from "@aop/infra";
+import { aopPaths, useTestAopHome } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
@@ -22,14 +22,17 @@ const TEST_REPO_ID = "repo-1";
 describe("task/handlers", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
+  let cleanupAopHome: () => void;
 
   beforeEach(async () => {
+    cleanupAopHome = useTestAopHome();
     db = await createTestDb();
     ctx = createCommandContext(db);
   });
 
   afterEach(async () => {
     await db.destroy();
+    cleanupAopHome();
   });
 
   describe("getTaskById", () => {
@@ -70,16 +73,12 @@ describe("task/handlers", () => {
 
   describe("markTaskReady", () => {
     const changePath = "changes/feat";
-    const tasksFilePath = join(aopPaths.repoDir(TEST_REPO_ID), changePath, "tasks.md");
 
     const createTasksFile = () => {
-      mkdirSync(join(aopPaths.repoDir(TEST_REPO_ID), changePath), { recursive: true });
-      writeFileSync(tasksFilePath, "# Tasks\n- [ ] Task 1");
+      const dir = join(aopPaths.repoDir(TEST_REPO_ID), changePath);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "tasks.md"), "# Tasks\n- [ ] Task 1");
     };
-
-    afterEach(() => {
-      rmSync(aopPaths.repoDir(TEST_REPO_ID), { recursive: true, force: true });
-    });
 
     test("returns NOT_FOUND when task does not exist", async () => {
       const result = await markTaskReady(ctx, "non-existent");
@@ -425,7 +424,6 @@ describe("task/handlers", () => {
       if (existsSync(testRepoPath)) {
         rmSync(testRepoPath, { recursive: true });
       }
-      rmSync(aopPaths.repoDir(TEST_REPO_ID), { recursive: true, force: true });
     });
 
     test("returns NOT_FOUND when task does not exist", async () => {

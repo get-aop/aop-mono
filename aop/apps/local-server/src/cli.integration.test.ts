@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { aopPaths } from "@aop/infra";
+import { aopPaths, useTestAopHome } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createApp } from "./app.ts";
 import { createCommandContext, type LocalServerContext } from "./context.ts";
@@ -18,8 +18,10 @@ describe("CLI integration tests", () => {
   let ctx: LocalServerContext;
   let server: ReturnType<typeof Bun.serve>;
   let tempDir: string;
+  let cleanupAopHome: () => void;
 
   beforeAll(async () => {
+    cleanupAopHome = useTestAopHome();
     tempDir = await mkdtemp(join(tmpdir(), "aop-cli-test-"));
 
     db = await createTestDb();
@@ -47,6 +49,7 @@ describe("CLI integration tests", () => {
     server.stop();
     await db.destroy();
     await rm(tempDir, { recursive: true, force: true });
+    cleanupAopHome();
   });
 
   describe("status endpoint", () => {

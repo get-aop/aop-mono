@@ -3,6 +3,7 @@ import { AOP_URLS } from "@aop/common";
 import {
   cleanupTestRepos,
   createTempRepo,
+  createTestAopHome,
   getFullStatus,
   isLocalServerRunning,
   runAopCommand,
@@ -41,7 +42,8 @@ describe("local server lifecycle", () => {
         return;
       }
 
-      const serverCtx = await startLocalServer();
+      const testHome = createTestAopHome("local-server-health");
+      const serverCtx = await startLocalServer({ aopHome: testHome.path });
 
       try {
         expect(await isLocalServerRunning()).toBe(true);
@@ -53,6 +55,7 @@ describe("local server lifecycle", () => {
         expect(health.service).toBe("aop-local-server");
       } finally {
         await stopLocalServer(serverCtx);
+        testHome.cleanup();
       }
 
       expect(await isLocalServerRunning()).toBe(false);
@@ -89,7 +92,8 @@ describe("local server lifecycle", () => {
         return;
       }
 
-      const serverCtx = await startLocalServer();
+      const testHome = createTestAopHome("local-server-status");
+      const serverCtx = await startLocalServer({ aopHome: testHome.path });
 
       try {
         const { exitCode, stdout } = await runAopCommand(["status", "--json"]);
@@ -101,6 +105,7 @@ describe("local server lifecycle", () => {
         expect(status.globalCapacity.max).toBeGreaterThan(0);
       } finally {
         await stopLocalServer(serverCtx);
+        testHome.cleanup();
       }
     },
     E2E_TIMEOUT,
@@ -115,13 +120,15 @@ describe("local server lifecycle", () => {
         return;
       }
 
-      const serverCtx = await startLocalServer();
+      const testHome = createTestAopHome("local-server-shutdown");
+      const serverCtx = await startLocalServer({ aopHome: testHome.path });
 
       // Verify running
       expect(await isLocalServerRunning()).toBe(true);
 
       // Stop gracefully
       await stopLocalServer(serverCtx);
+      testHome.cleanup();
 
       // Verify stopped
       expect(await isLocalServerRunning()).toBe(false);

@@ -1,6 +1,7 @@
 export {
   AOP_BIN,
   API_KEY,
+  createTestAopHome,
   DEFAULT_LOCAL_SERVER_PORT,
   DEFAULT_LOCAL_SERVER_URL,
   E2E_TEST_BASE_DIR,
@@ -8,6 +9,7 @@ export {
   LOCAL_SERVER_BIN,
   SERVER_URL,
   TEST_REPO_PREFIX,
+  type TestAopHome,
   WORKTREES_DIR,
 } from "./constants";
 export {

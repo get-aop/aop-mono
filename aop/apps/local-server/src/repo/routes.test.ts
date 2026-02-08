@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { useTestAopHome } from "@aop/infra";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
@@ -13,8 +14,10 @@ describe("repo/routes", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
   let app: Hono;
+  let cleanupAopHome: () => void;
 
   beforeEach(async () => {
+    cleanupAopHome = useTestAopHome();
     db = await createTestDb();
     ctx = createCommandContext(db);
     app = new Hono();
@@ -23,6 +26,7 @@ describe("repo/routes", () => {
 
   afterEach(async () => {
     await db.destroy();
+    cleanupAopHome();
   });
 
   describe("POST /api/repos", () => {

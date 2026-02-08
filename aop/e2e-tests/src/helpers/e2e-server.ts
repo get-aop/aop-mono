@@ -40,6 +40,7 @@ export const runAopCommand = async (
 export interface E2EServerStartOptions {
   configureServer?: boolean;
   dbPath?: string;
+  aopHome?: string;
 }
 
 export const startE2EServer = async (
@@ -59,7 +60,10 @@ export const startE2EServer = async (
   }
 
   // Start local server
-  const localServer = await startLocalServer({ dbPath: options.dbPath });
+  const localServer = await startLocalServer({
+    dbPath: options.dbPath,
+    aopHome: options.aopHome,
+  });
 
   // Configure server connection if requested
   if (configureServer) {

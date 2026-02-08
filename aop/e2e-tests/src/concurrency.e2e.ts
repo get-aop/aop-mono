@@ -5,6 +5,7 @@ import {
   cleanupTestRepos,
   copyFixture,
   createTempRepo,
+  createTestAopHome,
   type E2EServerContext,
   ensureChangesDir,
   getFullStatus,
@@ -15,6 +16,7 @@ import {
   startE2EServer,
   stopE2EServer,
   type TempRepoResult,
+  type TestAopHome,
   triggerServerRefresh,
   waitForTask,
   waitForTasksInRepo,
@@ -26,6 +28,7 @@ describe("concurrency limits", () => {
   let repo: TempRepoResult;
   let context: E2EServerContext;
   let wasAlreadyRunning = false;
+  let testHome: TestAopHome | null = null;
 
   beforeAll(async () => {
     await setupE2ETestDir();
@@ -36,6 +39,7 @@ describe("concurrency limits", () => {
     if (context) {
       await stopE2EServer(context, wasAlreadyRunning);
     }
+    testHome?.cleanup();
     await repo.cleanup();
     await cleanupTestRepos();
   });
@@ -48,7 +52,8 @@ describe("concurrency limits", () => {
       const { exitCode: initExit } = await runAopCommand(["repo:init", repo.path]);
       expect(initExit).toBe(0);
 
-      const serverResult = await startE2EServer();
+      testHome = createTestAopHome("concurrency");
+      const serverResult = await startE2EServer({ aopHome: testHome.path });
       const { success, context: serverCtx, wasAlreadyRunning: alreadyRunning } = serverResult;
       context = serverCtx;
       wasAlreadyRunning = alreadyRunning;

@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { aopPaths } from "@aop/infra";
+import { aopPaths, useTestAopHome } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
@@ -26,14 +26,17 @@ import {
 describe("repo/handlers", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
+  let cleanupAopHome: () => void;
 
   beforeEach(async () => {
+    cleanupAopHome = useTestAopHome();
     db = await createTestDb();
     ctx = createCommandContext(db);
   });
 
   afterEach(async () => {
     await db.destroy();
+    cleanupAopHome();
   });
 
   describe("initRepo", () => {
@@ -122,8 +125,6 @@ describe("repo/handlers", () => {
         expect(existsSync(aopPaths.openspecChanges(repoId))).toBe(true);
         expect(existsSync(aopPaths.worktrees(repoId))).toBe(true);
         expect(existsSync(aopPaths.worktreeMetadata(repoId))).toBe(true);
-
-        rmSync(aopPaths.repoDir(repoId), { recursive: true, force: true });
       }
     });
 
@@ -141,8 +142,6 @@ describe("repo/handlers", () => {
         expect(existsSync(symlinkPath)).toBe(true);
         expect(lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
         expect(readlinkSync(symlinkPath)).toBe(aopPaths.openspec(repoId));
-
-        rmSync(aopPaths.repoDir(repoId), { recursive: true, force: true });
       }
     });
 
@@ -157,8 +156,6 @@ describe("repo/handlers", () => {
         const excludePath = join(testRepoPath, ".git", "info", "exclude");
         const content = readFileSync(excludePath, "utf-8");
         expect(content).toContain("openspec");
-
-        rmSync(aopPaths.repoDir(result.repoId), { recursive: true, force: true });
       }
     });
 
@@ -292,7 +289,6 @@ describe("repo/handlers", () => {
 
     afterEach(() => {
       rmSync(repoPath, { recursive: true, force: true });
-      rmSync(aopPaths.repoDir(repoId), { recursive: true, force: true });
     });
 
     describe("standard mode (no tracked openspec files)", () => {
@@ -405,7 +401,7 @@ describe("repo/handlers", () => {
 
         mkdirSync(join(repoPath, "openspec", "specs"), { recursive: true });
         writeFileSync(join(repoPath, "openspec", "config.yaml"), "version: 1");
-        const add = Bun.spawn(["git", "add", "openspec/"], { cwd: repoPath });
+        const add = Bun.spawn(["git", "add", "--force", "openspec/"], { cwd: repoPath });
         await add.exited;
         const commit = Bun.spawn(["git", "commit", "-m", "add openspec"], { cwd: repoPath });
         await commit.exited;

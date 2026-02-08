@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { aopPaths } from "@aop/infra";
+import { aopPaths, useTestAopHome } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../../context.ts";
 import type { Database, Repo } from "../../db/schema.ts";
@@ -11,6 +11,7 @@ import { reconcileAllRepos, reconcileRepo } from "./reconcile.ts";
 describe("reconcile", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
+  let cleanupAopHome: () => void;
   const repoId = "repo-reconcile-1";
   let repoPath: string;
 
@@ -21,6 +22,7 @@ describe("reconcile", () => {
   };
 
   beforeEach(async () => {
+    cleanupAopHome = useTestAopHome();
     db = await createTestDb();
     ctx = createCommandContext(db);
     repoPath = `/tmp/aop-test-reconcile-repo-${Date.now()}`;
@@ -33,7 +35,7 @@ describe("reconcile", () => {
   afterEach(async () => {
     await db.destroy();
     rmSync(repoPath, { recursive: true, force: true });
-    rmSync(aopPaths.repoDir(repoId), { recursive: true, force: true });
+    cleanupAopHome();
   });
 
   test("creates tasks for changes at global path", async () => {
@@ -110,7 +112,6 @@ describe("reconcile", () => {
 
     afterEach(() => {
       rmSync(repoPath2, { recursive: true, force: true });
-      rmSync(aopPaths.repoDir(repoId2), { recursive: true, force: true });
     });
 
     test("aggregates results across multiple repos", async () => {

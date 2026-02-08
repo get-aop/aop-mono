@@ -1,54 +1,81 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { aopPaths } from "./aop-paths.ts";
 
-const AOP_HOME = join(homedir(), ".aop");
+const DEFAULT_AOP_HOME = join(homedir(), ".aop");
 
 describe("aopPaths", () => {
-  test("home returns ~/.aop", () => {
-    expect(aopPaths.home()).toBe(AOP_HOME);
+  let originalAopHome: string | undefined;
+
+  beforeEach(() => {
+    originalAopHome = process.env.AOP_HOME;
+    delete process.env.AOP_HOME;
   });
 
-  test("db returns ~/.aop/aop.sqlite", () => {
-    expect(aopPaths.db()).toBe(join(AOP_HOME, "aop.sqlite"));
+  afterEach(() => {
+    if (originalAopHome !== undefined) {
+      process.env.AOP_HOME = originalAopHome;
+    } else {
+      delete process.env.AOP_HOME;
+    }
   });
 
-  test("logs returns ~/.aop/logs", () => {
-    expect(aopPaths.logs()).toBe(join(AOP_HOME, "logs"));
+  test("home returns ~/.aop by default", () => {
+    expect(aopPaths.home()).toBe(DEFAULT_AOP_HOME);
   });
 
-  test("repoDir returns ~/.aop/repos/<repoId>", () => {
-    expect(aopPaths.repoDir("repo_abc123")).toBe(join(AOP_HOME, "repos", "repo_abc123"));
+  test("home respects AOP_HOME env var", () => {
+    process.env.AOP_HOME = "/tmp/custom-aop";
+    expect(aopPaths.home()).toBe("/tmp/custom-aop");
   });
 
-  test("openspec returns ~/.aop/repos/<repoId>/openspec", () => {
+  test("db returns <home>/aop.sqlite", () => {
+    expect(aopPaths.db()).toBe(join(DEFAULT_AOP_HOME, "aop.sqlite"));
+  });
+
+  test("logs returns <home>/logs", () => {
+    expect(aopPaths.logs()).toBe(join(DEFAULT_AOP_HOME, "logs"));
+  });
+
+  test("repoDir returns <home>/repos/<repoId>", () => {
+    expect(aopPaths.repoDir("repo_abc123")).toBe(join(DEFAULT_AOP_HOME, "repos", "repo_abc123"));
+  });
+
+  test("openspec returns <home>/repos/<repoId>/openspec", () => {
     expect(aopPaths.openspec("repo_abc123")).toBe(
-      join(AOP_HOME, "repos", "repo_abc123", "openspec"),
+      join(DEFAULT_AOP_HOME, "repos", "repo_abc123", "openspec"),
     );
   });
 
-  test("openspecChanges returns ~/.aop/repos/<repoId>/openspec/changes", () => {
+  test("openspecChanges returns <home>/repos/<repoId>/openspec/changes", () => {
     expect(aopPaths.openspecChanges("repo_abc123")).toBe(
-      join(AOP_HOME, "repos", "repo_abc123", "openspec", "changes"),
+      join(DEFAULT_AOP_HOME, "repos", "repo_abc123", "openspec", "changes"),
     );
   });
 
-  test("worktrees returns ~/.aop/repos/<repoId>/worktrees", () => {
+  test("worktrees returns <home>/repos/<repoId>/worktrees", () => {
     expect(aopPaths.worktrees("repo_abc123")).toBe(
-      join(AOP_HOME, "repos", "repo_abc123", "worktrees"),
+      join(DEFAULT_AOP_HOME, "repos", "repo_abc123", "worktrees"),
     );
   });
 
-  test("worktree returns ~/.aop/repos/<repoId>/worktrees/<taskId>", () => {
+  test("worktree returns <home>/repos/<repoId>/worktrees/<taskId>", () => {
     expect(aopPaths.worktree("repo_abc123", "task_xyz789")).toBe(
-      join(AOP_HOME, "repos", "repo_abc123", "worktrees", "task_xyz789"),
+      join(DEFAULT_AOP_HOME, "repos", "repo_abc123", "worktrees", "task_xyz789"),
     );
   });
 
-  test("worktreeMetadata returns ~/.aop/repos/<repoId>/worktrees/.metadata", () => {
+  test("worktreeMetadata returns <home>/repos/<repoId>/worktrees/.metadata", () => {
     expect(aopPaths.worktreeMetadata("repo_abc123")).toBe(
-      join(AOP_HOME, "repos", "repo_abc123", "worktrees", ".metadata"),
+      join(DEFAULT_AOP_HOME, "repos", "repo_abc123", "worktrees", ".metadata"),
     );
+  });
+
+  test("all paths use AOP_HOME when set", () => {
+    process.env.AOP_HOME = "/tmp/test-aop";
+    expect(aopPaths.repoDir("r1")).toBe("/tmp/test-aop/repos/r1");
+    expect(aopPaths.openspec("r1")).toBe("/tmp/test-aop/repos/r1/openspec");
+    expect(aopPaths.worktrees("r1")).toBe("/tmp/test-aop/repos/r1/worktrees");
   });
 });

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { aopPaths } from "@aop/infra";
+import { aopPaths, useTestAopHome } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database, Task } from "../db/schema.ts";
@@ -41,14 +41,17 @@ const createMockTask = (overrides: Partial<Task> = {}): Task => ({
 describe("executor", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
+  let cleanupAopHome: () => void;
 
   beforeEach(async () => {
+    cleanupAopHome = useTestAopHome();
     db = await createTestDb();
     ctx = createCommandContext(db);
   });
 
   afterEach(async () => {
     await db.destroy();
+    cleanupAopHome();
   });
 
   describe("buildContext", () => {

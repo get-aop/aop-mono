@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { aopPaths } from "@aop/infra";
+import { aopPaths, useTestAopHome } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
@@ -14,8 +14,10 @@ describe("executeTask", () => {
   let ctx: LocalServerContext;
   let testRepoPath: string;
   let testLogsDir: string;
+  let cleanupAopHome: () => void;
 
   beforeEach(async () => {
+    cleanupAopHome = useTestAopHome();
     db = await createTestDb();
     ctx = createCommandContext(db);
     testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
@@ -52,6 +54,7 @@ describe("executeTask", () => {
     if (existsSync(testLogsDir)) {
       rmSync(testLogsDir, { recursive: true });
     }
+    cleanupAopHome();
   });
 
   const createMockProvider = (

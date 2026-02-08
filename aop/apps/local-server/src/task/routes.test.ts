@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitManager } from "@aop/git-manager";
-import { aopPaths } from "@aop/infra";
+import { aopPaths, useTestAopHome } from "@aop/infra";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
 import { createApp } from "../app.ts";
@@ -17,8 +17,10 @@ describe("task/routes", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
   let app: Hono;
+  let cleanupAopHome: () => void;
 
   beforeEach(async () => {
+    cleanupAopHome = useTestAopHome();
     db = await createTestDb();
     ctx = createCommandContext(db);
     app = new Hono();
@@ -27,6 +29,7 @@ describe("task/routes", () => {
 
   afterEach(async () => {
     await db.destroy();
+    cleanupAopHome();
   });
 
   describe("GET /api/repos/:repoId/tasks/:taskId/executions", () => {
@@ -257,10 +260,6 @@ describe("task/routes", () => {
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "tasks.md"), "# Tasks\n- [ ] Task 1");
     };
-
-    afterEach(() => {
-      rmSync(aopPaths.repoDir("repo-1"), { recursive: true, force: true });
-    });
 
     test("returns 404 for non-existent repo", async () => {
       const res = await app.request("/api/repos/non-existent/tasks/task-1/ready", {
@@ -682,7 +681,6 @@ describe("task/routes", () => {
       if (existsSync(testRepoPath)) {
         rmSync(testRepoPath, { recursive: true });
       }
-      rmSync(aopPaths.repoDir("repo-1"), { recursive: true, force: true });
     });
 
     test("returns 404 for WORKTREE_NOT_FOUND", async () => {
@@ -821,8 +819,10 @@ describe("task/routes - resolve endpoint", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
   let app: ReturnType<typeof createApp>;
+  let cleanupAopHome: () => void;
 
   beforeEach(async () => {
+    cleanupAopHome = useTestAopHome();
     db = await createTestDb();
     ctx = createCommandContext(db);
     app = createApp({ ctx, startTimeMs: Date.now() });
@@ -830,6 +830,7 @@ describe("task/routes - resolve endpoint", () => {
 
   afterEach(async () => {
     await db.destroy();
+    cleanupAopHome();
   });
 
   describe("GET /api/tasks/resolve/:identifier", () => {
