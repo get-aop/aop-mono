@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { LocalServerContext } from "../context.ts";
 import { getRepoById } from "../repo/handlers.ts";
+import { handleListFiles, handleReadFile } from "./change-files.ts";
 import { applyTask, blockTask, getTaskById, markTaskReady, removeTask } from "./handlers.ts";
 
 export const createTaskRoutes = (ctx: LocalServerContext) => {
@@ -205,6 +206,9 @@ export const createTaskRoutes = (ctx: LocalServerContext) => {
 
     return c.json({ ok: true, taskId: result.taskId, aborted: result.aborted });
   });
+
+  routes.get("/:taskId/files", (c) => handleListFiles(ctx, c));
+  routes.get("/:taskId/files/*", (c) => handleReadFile(ctx, c));
 
   return routes;
 };

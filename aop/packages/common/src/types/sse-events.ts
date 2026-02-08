@@ -16,6 +16,7 @@ export interface SSETask {
   currentExecutionId?: string;
   executionStartedAt?: string;
   executionCompletedAt?: string;
+  taskProgress?: { completed: number; total: number };
 }
 
 /**
@@ -119,6 +120,7 @@ export interface DashboardTaskStatusChangedEvent {
     currentExecutionId?: string;
     executionStartedAt?: string;
     executionCompletedAt?: string;
+    taskProgress?: { completed: number; total: number };
   };
 }
 

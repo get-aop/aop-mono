@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Task } from "../types";
 import { formatDuration } from "../utils/format";
+import { TaskProgress } from "./TaskProgress";
 
 interface TaskCardProps {
   task: Task;
@@ -69,6 +70,9 @@ export const TaskCard = ({ task, onClick }: TaskCardProps) => {
       <div className="mt-1 flex items-center gap-2">
         <span className="font-mono text-[10px] text-aop-slate-dark">{repoName}</span>
         <TaskDuration task={task} />
+        {task.taskProgress && (
+          <TaskProgress completed={task.taskProgress.completed} total={task.taskProgress.total} />
+        )}
       </div>
       {task.status === "BLOCKED" && task.errorMessage && (
         <span className="mt-2 block font-mono text-[10px] text-aop-blocked line-clamp-2">

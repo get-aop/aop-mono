@@ -196,3 +196,19 @@ export interface CleanupResult {
 export const cleanupWorktrees = async (): Promise<CleanupResult> => {
   return request<CleanupResult>("/settings/cleanup-worktrees", { method: "POST" });
 };
+
+export const fetchChangeFiles = async (repoId: string, taskId: string): Promise<string[]> => {
+  const data = await request<{ files: string[] }>(`/repos/${repoId}/tasks/${taskId}/files`);
+  return data.files;
+};
+
+export const fetchChangeFile = async (
+  repoId: string,
+  taskId: string,
+  path: string,
+): Promise<string> => {
+  const data = await request<{ content: string }>(
+    `/repos/${repoId}/tasks/${taskId}/files/${encodeURIComponent(path)}`,
+  );
+  return data.content;
+};

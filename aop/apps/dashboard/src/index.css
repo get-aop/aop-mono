@@ -121,6 +121,90 @@ html {
   }
 }
 
+/* Streamdown task list overrides — Streamdown renders GFM checklists
+   with its own .contains-task-list / .task-list-item classes, bypassing
+   custom component overrides. Force theme consistency here. */
+.markdown-viewer .contains-task-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.5rem 0;
+}
+
+.markdown-viewer .task-list-item {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--color-aop-slate-light);
+  margin-bottom: 0.25rem;
+  text-align: left;
+}
+
+.markdown-viewer .task-list-item input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  border: 1.5px solid var(--color-aop-slate-dark);
+  border-radius: 3px;
+  background: transparent;
+  cursor: default;
+  position: relative;
+  margin: 0 0.375rem 0 0;
+  vertical-align: middle;
+}
+
+.markdown-viewer .task-list-item input[type="checkbox"]:checked {
+  border-color: var(--color-aop-success);
+  background: var(--color-aop-success);
+}
+
+.markdown-viewer .task-list-item input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 3.5px;
+  width: 4px;
+  height: 7px;
+  border: solid var(--color-aop-cream);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+/* Checkbox component override (when Streamdown uses custom components) */
+.markdown-viewer .aop-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  border: 1.5px solid var(--color-aop-slate-dark);
+  border-radius: 3px;
+  background: transparent;
+  cursor: default;
+  position: relative;
+  margin: 0;
+  margin-right: 0.375rem;
+  vertical-align: middle;
+}
+
+.markdown-viewer .aop-checkbox:checked {
+  border-color: var(--color-aop-success);
+  background: var(--color-aop-success);
+}
+
+.markdown-viewer .aop-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 3.5px;
+  width: 4px;
+  height: 7px;
+  border: solid var(--color-aop-cream);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

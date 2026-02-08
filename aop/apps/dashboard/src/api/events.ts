@@ -95,6 +95,7 @@ export const createTaskEventsConnection = (options: TaskEventsOptions) => {
               currentExecutionId: backendEvent.task.currentExecutionId,
               executionStartedAt: backendEvent.task.executionStartedAt,
               executionCompletedAt: backendEvent.task.executionCompletedAt,
+              taskProgress: backendEvent.task.taskProgress,
             },
           };
         }

@@ -127,3 +127,16 @@ describe("TaskCard duration display", () => {
     globalThis.setInterval = originalSetInterval;
   });
 });
+
+describe("TaskCard progress display", () => {
+  test("shows progress when taskProgress exists", () => {
+    render(<TaskCard task={makeTask({ taskProgress: { completed: 3, total: 17 } })} />);
+    const el = screen.getByTestId("task-progress");
+    expect(el.textContent).toContain("3/17");
+  });
+
+  test("hides progress when taskProgress is absent", () => {
+    render(<TaskCard task={makeTask()} />);
+    expect(screen.queryByTestId("task-progress")).toBeNull();
+  });
+});

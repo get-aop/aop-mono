@@ -54,6 +54,7 @@ export const useTaskEvents = () => {
                   currentExecutionId: event.data.currentExecutionId,
                   executionStartedAt: event.data.executionStartedAt,
                   executionCompletedAt: event.data.executionCompletedAt,
+                  taskProgress: event.data.taskProgress,
                 }
               : task,
           ),

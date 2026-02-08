@@ -1,6 +1,7 @@
 import type { SSERepoWithTasks, SSEServerStatus, SSETask } from "@aop/common";
 import type { LocalServerContext } from "../context.ts";
 import type { Execution, Task } from "../db/schema.ts";
+import { readTaskProgress } from "../task/progress.ts";
 
 export type RepoStatus = SSERepoWithTasks;
 export type ServerStatus = SSEServerStatus;
@@ -20,6 +21,7 @@ export const toSSETask = (
   currentExecutionId: execution?.id,
   executionStartedAt: execution?.started_at ?? undefined,
   executionCompletedAt: execution?.completed_at ?? undefined,
+  taskProgress: readTaskProgress(task.repo_id, task.change_path),
 });
 
 export const getServerStatus = async (ctx: LocalServerContext): Promise<ServerStatus> => {

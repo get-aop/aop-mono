@@ -4,12 +4,15 @@ import { ApplyDialog } from "../components/ApplyDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { type LogLine, LogViewer } from "../components/LogViewer";
 import { MarkReadyDialog } from "../components/MarkReadyDialog";
+import { SpecsTab } from "../components/SpecsTab";
 import { StatusBadge } from "../components/StatusBadge";
 import { StepList } from "../components/StepList";
+import { TaskProgress } from "../components/TaskProgress";
 import { useSSE } from "../hooks/useSSE";
 import { useTaskEvents } from "../hooks/useTaskEvents";
 import type { Execution, Step, Task } from "../types";
 import { formatDuration } from "../utils/format";
+import { type DetailTab, TabSwitcher } from "./TabSwitcher";
 
 interface TaskDetailProps {
   taskId: string;
@@ -37,24 +40,8 @@ interface LogEvent {
   lines?: { stream: string; content: string; timestamp: string }[];
 }
 
-export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => {
-  const { tasks } = useTaskEvents();
-  const task = tasks.find((t) => t.id === taskId);
-
-  const [executions, setExecutions] = useState<Execution[]>([]);
-  const [expandedExecutionId, setExpandedExecutionId] = useState<string | null>(null);
-  const [showRemoveDialog, setShowRemoveDialog] = useState(false);
-  const [showMarkReadyDialog, setShowMarkReadyDialog] = useState(false);
-  const [showApplyDialog, setShowApplyDialog] = useState(false);
-  const [showBlockDialog, setShowBlockDialog] = useState(false);
-  const [isRemoving, setIsRemoving] = useState(false);
-  const [isBlocking, setIsBlocking] = useState(false);
+const useTaskLogs = (activeExecutionId: string | null) => {
   const [logLines, setLogLines] = useState<LogLine[]>([]);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [toastType, setToastType] = useState<"error" | "success">("error");
-
-  const activeExecutionId =
-    task?.status === "WORKING" ? task.currentExecutionId : expandedExecutionId;
 
   const handleLogMessage = useCallback((_eventType: string, data: LogEvent) => {
     if (data.type === "log") {
@@ -73,7 +60,7 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
     }
   }, []);
 
-  const { connected: logsConnected } = useSSE<LogEvent>({
+  const { connected } = useSSE<LogEvent>({
     url: activeExecutionId ? `/api/executions/${activeExecutionId}/logs` : null,
     eventTypes: ["message"],
     onMessage: handleLogMessage,
@@ -83,13 +70,18 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
     if (activeExecutionId) setLogLines([]);
   }, [activeExecutionId]);
 
-  useEffect(() => {
-    if (!task) return;
-    fetch(`/api/repos/${task.repoId}/tasks/${task.id}/executions`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => data && setExecutions(data.executions ?? []))
-      .catch(() => {});
-  }, [task]);
+  return { logLines, connected };
+};
+
+const useDialogs = (task: Task | undefined, onClose: () => void) => {
+  const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  const [showMarkReadyDialog, setShowMarkReadyDialog] = useState(false);
+  const [showApplyDialog, setShowApplyDialog] = useState(false);
+  const [showBlockDialog, setShowBlockDialog] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [isBlocking, setIsBlocking] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<"error" | "success">("error");
 
   const showToast = (message: string, type: "error" | "success" = "error") => {
     setToastType(type);
@@ -103,8 +95,7 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
       await markReady(task.repoId, task.id, workflow, baseBranch || undefined);
       setShowMarkReadyDialog(false);
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Failed to mark task as ready";
-      showToast(message);
+      showToast(err instanceof ApiError ? err.message : "Failed to mark task as ready");
       setShowMarkReadyDialog(false);
     }
   };
@@ -124,8 +115,7 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
         showToast(`Applied ${result.affectedFiles.length} file(s) successfully`, "success");
       }
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Failed to apply changes";
-      showToast(message);
+      showToast(err instanceof ApiError ? err.message : "Failed to apply changes");
     }
     setShowApplyDialog(false);
   };
@@ -148,14 +138,117 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
     try {
       await blockTask(task.repoId, task.id);
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Failed to block task";
-      setToastMessage(message);
-      setTimeout(() => setToastMessage(null), 4000);
+      showToast(err instanceof ApiError ? err.message : "Failed to block task");
     } finally {
       setIsBlocking(false);
       setShowBlockDialog(false);
     }
   };
+
+  return {
+    showRemoveDialog,
+    setShowRemoveDialog,
+    showMarkReadyDialog,
+    setShowMarkReadyDialog,
+    showApplyDialog,
+    setShowApplyDialog,
+    showBlockDialog,
+    setShowBlockDialog,
+    isRemoving,
+    isBlocking,
+    toastMessage,
+    toastType,
+    handleMarkReadyConfirm,
+    handleApplyConfirm,
+    handleRemove,
+    handleBlock,
+  };
+};
+
+const TaskDetailDialogs = ({
+  task,
+  dialogs,
+}: {
+  task: Task;
+  dialogs: ReturnType<typeof useDialogs>;
+}) => {
+  const changeName = task.changePath?.split("/").pop() ?? task.changePath ?? "";
+
+  return (
+    <>
+      <MarkReadyDialog
+        open={dialogs.showMarkReadyDialog}
+        repoId={task.repoId}
+        onConfirm={dialogs.handleMarkReadyConfirm}
+        onCancel={() => dialogs.setShowMarkReadyDialog(false)}
+      />
+
+      <ApplyDialog
+        open={dialogs.showApplyDialog}
+        repoId={task.repoId}
+        defaultBranch={task.baseBranch}
+        onConfirm={dialogs.handleApplyConfirm}
+        onCancel={() => dialogs.setShowApplyDialog(false)}
+      />
+
+      <ConfirmDialog
+        open={dialogs.showRemoveDialog}
+        title="Remove Task"
+        message={`Are you sure you want to remove "${changeName}"?${task.status === "WORKING" ? " This will abort the running execution." : ""}`}
+        confirmLabel={dialogs.isRemoving ? "Removing..." : "Remove"}
+        destructive
+        onConfirm={dialogs.handleRemove}
+        onCancel={() => dialogs.setShowRemoveDialog(false)}
+      />
+
+      <ConfirmDialog
+        open={dialogs.showBlockDialog}
+        title="Block Task"
+        message={`Are you sure you want to block "${changeName}"? This will stop all running agents. You can resume the task later with "Mark Ready".`}
+        confirmLabel={dialogs.isBlocking ? "Blocking..." : "Block"}
+        destructive
+        onConfirm={dialogs.handleBlock}
+        onCancel={() => dialogs.setShowBlockDialog(false)}
+      />
+
+      {dialogs.toastMessage && (
+        <div
+          className={`fixed bottom-4 right-4 rounded-aop-lg px-4 py-3 font-mono text-xs ${
+            dialogs.toastType === "success"
+              ? "bg-aop-success/20 text-aop-success"
+              : "bg-aop-blocked/20 text-aop-blocked"
+          }`}
+        >
+          {dialogs.toastMessage}
+        </div>
+      )}
+    </>
+  );
+};
+
+export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => {
+  const { tasks } = useTaskEvents();
+  const task = tasks.find((t) => t.id === taskId);
+
+  const [executions, setExecutions] = useState<Execution[]>([]);
+  const [expandedExecutionId, setExpandedExecutionId] = useState<string | null>(null);
+
+  const defaultTab: DetailTab = task?.status === "WORKING" ? "logs" : "specs";
+  const [activeTab, setActiveTab] = useState<DetailTab>(defaultTab);
+
+  const activeExecutionId =
+    task?.status === "WORKING" ? task.currentExecutionId : expandedExecutionId;
+
+  const { logLines, connected: logsConnected } = useTaskLogs(activeExecutionId ?? null);
+  const dialogs = useDialogs(task, onClose);
+
+  useEffect(() => {
+    if (!task) return;
+    fetch(`/api/repos/${task.repoId}/tasks/${task.id}/executions`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => data && setExecutions(data.executions ?? []))
+      .catch(() => {});
+  }, [task]);
 
   if (!task) {
     return (
@@ -168,81 +261,44 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
     );
   }
 
-  const changeName = task.changePath?.split("/").pop() ?? task.changePath ?? "";
-
   return (
     <div className="flex h-screen flex-col bg-aop-black" data-testid="task-detail">
       <Header onClose={onClose} onNavigate={onNavigate} />
 
       <main className="flex flex-1 flex-col overflow-hidden px-6 py-3">
-        <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-3 overflow-hidden">
+        <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-3 min-h-0">
           <TaskInfoCard
             task={task}
-            onMarkReady={() => setShowMarkReadyDialog(true)}
-            onApply={() => setShowApplyDialog(true)}
-            onShowBlockDialog={() => setShowBlockDialog(true)}
-            onShowRemoveDialog={() => setShowRemoveDialog(true)}
+            onMarkReady={() => dialogs.setShowMarkReadyDialog(true)}
+            onApply={() => dialogs.setShowApplyDialog(true)}
+            onShowBlockDialog={() => dialogs.setShowBlockDialog(true)}
+            onShowRemoveDialog={() => dialogs.setShowRemoveDialog(true)}
           />
 
-          <ExecutionHistory
-            executions={executions}
-            expandedExecutionId={expandedExecutionId}
-            logLines={logLines}
-            onToggleExecution={(id) => setExpandedExecutionId((prev) => (prev === id ? null : id))}
+          <TabSwitcher
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            isWorking={task.status === "WORKING"}
           />
 
-          {task.status === "WORKING" && task.currentExecutionId && (
-            <LiveLogs logLines={logLines} connected={logsConnected} />
+          {activeTab === "logs" && (
+            <LogsContent
+              task={task}
+              executions={executions}
+              expandedExecutionId={expandedExecutionId}
+              logLines={logLines}
+              logsConnected={logsConnected}
+              onToggleExecution={(id) =>
+                setExpandedExecutionId((prev) => (prev === id ? null : id))
+              }
+            />
           )}
+
+          {activeTab === "specs" && <SpecsTab task={task} />}
         </div>
       </main>
 
-      <MarkReadyDialog
-        open={showMarkReadyDialog}
-        repoId={task.repoId}
-        onConfirm={handleMarkReadyConfirm}
-        onCancel={() => setShowMarkReadyDialog(false)}
-      />
-
-      <ApplyDialog
-        open={showApplyDialog}
-        repoId={task.repoId}
-        defaultBranch={task.baseBranch}
-        onConfirm={handleApplyConfirm}
-        onCancel={() => setShowApplyDialog(false)}
-      />
-
-      <ConfirmDialog
-        open={showRemoveDialog}
-        title="Remove Task"
-        message={`Are you sure you want to remove "${changeName}"?${task.status === "WORKING" ? " This will abort the running execution." : ""}`}
-        confirmLabel={isRemoving ? "Removing..." : "Remove"}
-        destructive
-        onConfirm={handleRemove}
-        onCancel={() => setShowRemoveDialog(false)}
-      />
-
-      <ConfirmDialog
-        open={showBlockDialog}
-        title="Block Task"
-        message={`Are you sure you want to block "${changeName}"? This will stop all running agents. You can resume the task later with "Mark Ready".`}
-        confirmLabel={isBlocking ? "Blocking..." : "Block"}
-        destructive
-        onConfirm={handleBlock}
-        onCancel={() => setShowBlockDialog(false)}
-      />
-
-      {toastMessage && (
-        <div
-          className={`fixed bottom-4 right-4 rounded-aop-lg px-4 py-3 font-mono text-xs ${
-            toastType === "success"
-              ? "bg-aop-success/20 text-aop-success"
-              : "bg-aop-blocked/20 text-aop-blocked"
-          }`}
-        >
-          {toastMessage}
-        </div>
-      )}
+      <TaskDetailDialogs task={task} dialogs={dialogs} />
     </div>
   );
 };
@@ -316,6 +372,9 @@ const TaskInfoCard = ({
         <div className="flex items-center gap-3">
           <h1 className="font-body text-lg text-aop-cream">{changeName}</h1>
           <StatusBadge status={task.status} />
+          {task.taskProgress && (
+            <TaskProgress completed={task.taskProgress.completed} total={task.taskProgress.total} />
+          )}
           <span className="font-mono text-[10px] text-aop-slate-dark">{repoName}</span>
         </div>
 
@@ -502,6 +561,35 @@ interface LiveLogsProps {
   logLines: LogLine[];
   connected: boolean;
 }
+
+const LogsContent = ({
+  task,
+  executions,
+  expandedExecutionId,
+  logLines,
+  logsConnected,
+  onToggleExecution,
+}: {
+  task: Task;
+  executions: Execution[];
+  expandedExecutionId: string | null;
+  logLines: LogLine[];
+  logsConnected: boolean;
+  onToggleExecution: (id: string) => void;
+}) => (
+  <>
+    <ExecutionHistory
+      executions={executions}
+      expandedExecutionId={expandedExecutionId}
+      logLines={logLines}
+      onToggleExecution={onToggleExecution}
+    />
+
+    {task.status === "WORKING" && task.currentExecutionId && (
+      <LiveLogs logLines={logLines} connected={logsConnected} />
+    )}
+  </>
+);
 
 const LiveLogs = ({ logLines, connected }: LiveLogsProps) => (
   <div className="flex flex-1 flex-col overflow-hidden">
