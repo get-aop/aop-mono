@@ -144,6 +144,8 @@ const applyRecoveryAction = async (
   await resetStaleStep(ctx, step);
 };
 
+const TERMINAL_STATUSES = new Set(["BLOCKED", "REMOVED", "DONE"]);
+
 const recoverFromLogFile = async (
   ctx: LocalServerContext,
   step: StepWithTask,
@@ -155,7 +157,6 @@ const recoverFromLogFile = async (
   const stepStatus =
     outcome === "success" ? StepExecutionStatus.SUCCESS : StepExecutionStatus.FAILURE;
   const execStatus = outcome === "success" ? ExecutionStatus.COMPLETED : ExecutionStatus.FAILED;
-  const taskStatus = outcome === "success" ? "DONE" : "BLOCKED";
 
   await ctx.executionRepository.updateStepExecution(step.id, {
     status: stepStatus,
@@ -165,6 +166,18 @@ const recoverFromLogFile = async (
     status: execStatus,
     completed_at: now,
   });
+
+  // Don't override intentionally aborted/completed tasks
+  const task = await ctx.taskRepository.get(step.task_id);
+  if (task && TERMINAL_STATUSES.has(task.status)) {
+    logger.info("Preserving task status {status} during log recovery", {
+      taskId: step.task_id,
+      status: task.status,
+    });
+    return;
+  }
+
+  const taskStatus = outcome === "success" ? "DONE" : "BLOCKED";
   await ctx.taskRepository.update(step.task_id, { status: taskStatus });
 };
 
@@ -178,6 +191,17 @@ const resetStaleStep = async (ctx: LocalServerContext, step: StepWithTask): Prom
     status: ExecutionStatus.CANCELLED,
     completed_at: now,
   });
+
+  // Don't reset intentionally aborted/completed tasks back to READY
+  const task = await ctx.taskRepository.get(step.task_id);
+  if (task && TERMINAL_STATUSES.has(task.status)) {
+    logger.info("Preserving task status {status} during recovery (not resetting to READY)", {
+      taskId: step.task_id,
+      status: task.status,
+    });
+    return;
+  }
+
   await ctx.taskRepository.update(step.task_id, { status: "READY" });
 };
 

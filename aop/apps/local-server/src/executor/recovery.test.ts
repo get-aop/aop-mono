@@ -202,6 +202,68 @@ describe("recoverStaleTasks", () => {
     expect(task?.status).toBe("READY");
   });
 
+  test("preserves BLOCKED status when agent is dead and no log file", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "BLOCKED");
+    await setupRunningStepExecution("task-1", "exec-1", "step-1", 99999);
+
+    const result = await recoverStaleTasks(ctx, {
+      logsDir,
+      isProcessAlive: () => false,
+      isClaudeProcess: () => false,
+    });
+
+    expect(result.reset).toBe(1);
+
+    const task = await ctx.taskRepository.get("task-1");
+    expect(task?.status).toBe("BLOCKED");
+
+    const step = await ctx.executionRepository.getStepExecution("step-1");
+    expect(step?.status).toBe("cancelled");
+  });
+
+  test("preserves REMOVED status when agent is dead and no log file", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "REMOVED");
+    await setupRunningStepExecution("task-1", "exec-1", "step-1", 99999);
+
+    const result = await recoverStaleTasks(ctx, {
+      logsDir,
+      isProcessAlive: () => false,
+      isClaudeProcess: () => false,
+    });
+
+    expect(result.reset).toBe(1);
+
+    const task = await ctx.taskRepository.get("task-1");
+    expect(task?.status).toBe("REMOVED");
+  });
+
+  test("preserves BLOCKED status when recovering from log file", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "BLOCKED");
+    await setupRunningStepExecution("task-1", "exec-1", "step-1", 99999);
+
+    const logFile = join(logsDir, "step-1.jsonl");
+    writeFileSync(logFile, JSON.stringify({ type: "result", subtype: "success", result: "OK" }));
+
+    const result = await recoverStaleTasks(ctx, {
+      logsDir,
+      isProcessAlive: () => false,
+      isClaudeProcess: () => false,
+    });
+
+    expect(result.recovered).toBe(1);
+
+    // Task should stay BLOCKED, not be overridden to DONE
+    const task = await ctx.taskRepository.get("task-1");
+    expect(task?.status).toBe("BLOCKED");
+
+    // Execution records should still be updated
+    const step = await ctx.executionRepository.getStepExecution("step-1");
+    expect(step?.status).toBe("success");
+  });
+
   test("handles multiple stale tasks with mixed states", async () => {
     await createTestRepo(db, "repo-1", "/test/repo");
 

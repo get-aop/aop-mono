@@ -56,10 +56,12 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
     if (!serverUrl || !apiKey) {
       logger.info("No server URL or API key configured, running in degraded mode");
       serverSync = createDegradedServerSync();
+      ctx.serverSync = serverSync;
       return;
     }
 
     serverSync = createServerSync({ serverUrl, apiKey });
+    ctx.serverSync = serverSync;
     await authenticateAndRetryQueued();
     await syncActiveTasksToServer();
   };

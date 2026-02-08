@@ -10,6 +10,7 @@ import {
   createExecutionRepository,
   type ExecutionRepository,
 } from "./executor/execution-repository.ts";
+import type { ServerSync } from "./orchestrator/sync/server-sync.ts";
 import { createRepoRepository, type RepoRepository } from "./repo/repository.ts";
 import { createSessionRepository, type SessionRepository } from "./session/repository.ts";
 import { createSettingsRepository, type SettingsRepository } from "./settings/repository.ts";
@@ -23,6 +24,7 @@ export interface LocalServerContext {
   sessionRepository: SessionRepository;
   taskEventEmitter: TaskEventEmitter;
   logBuffer: LogBuffer;
+  serverSync?: ServerSync;
 }
 
 export interface CreateCommandContextOptions {
