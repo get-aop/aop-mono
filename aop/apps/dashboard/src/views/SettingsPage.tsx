@@ -11,14 +11,15 @@ interface SettingsPageProps {
 interface SettingMeta {
   label: string;
   description: string;
-  type: "number" | "text" | "password" | "toggle";
+  type: "number" | "text" | "password" | "toggle" | "select";
   suffix?: string;
+  options?: { value: string; label: string }[];
 }
 
 const GROUPS: { label: string; keys: string[] }[] = [
   {
     label: "AGENT CONFIGURATION",
-    keys: ["max_concurrent_tasks", "agent_timeout_secs", "fast_mode"],
+    keys: ["max_concurrent_tasks", "agent_timeout_secs", "agent_provider", "fast_mode"],
   },
   {
     label: "POLLING",
@@ -53,6 +54,16 @@ const SETTING_META: Record<string, SettingMeta> = {
     description: "Time before an agent is considered timed out",
     type: "number",
     suffix: "s",
+  },
+  agent_provider: {
+    label: "LLM Provider",
+    description: "Which LLM provider the orchestrator uses for agents",
+    type: "select",
+    options: [
+      { value: "claude-code", label: "Opus 4.6" },
+      { value: "opencode:opencode/kimi-k2.5-free", label: "Kimi 2.5" },
+      { value: "opencode:openai/gpt-5.3-codex", label: "GPT 5.3 Codex" },
+    ],
   },
   fast_mode: {
     label: "Fast Mode",
@@ -285,25 +296,62 @@ const SettingRow = ({ settingKey, value, onChange, isLast }: SettingRowProps) =>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {meta.type === "toggle" ? (
-          <ToggleInput
-            id={inputId}
-            checked={value === "true"}
-            onChange={(checked) => onChange(settingKey, checked ? "true" : "false")}
-          />
-        ) : (
-          <TextInput
-            id={inputId}
-            type={meta.type === "password" ? "password" : "text"}
-            inputMode={meta.type === "number" ? "numeric" : undefined}
-            value={value}
-            onChange={(v) => onChange(settingKey, v)}
-            suffix={meta.suffix}
-            compact={meta.type === "number"}
-          />
-        )}
+        <SettingInput
+          id={inputId}
+          meta={meta}
+          value={value}
+          onChange={(v: string) => onChange(settingKey, v)}
+        />
       </div>
     </div>
+  );
+};
+
+interface SettingInputProps {
+  id: string;
+  meta: SettingMeta;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+const SettingInput = ({ id, meta, value, onChange }: SettingInputProps) => {
+  if (meta.type === "toggle") {
+    return (
+      <ToggleInput
+        id={id}
+        checked={value === "true"}
+        onChange={(checked: boolean) => onChange(checked ? "true" : "false")}
+      />
+    );
+  }
+
+  if (meta.type === "select" && meta.options) {
+    return (
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-aop border border-aop-charcoal bg-aop-dark px-3 py-1.5 font-mono text-xs text-aop-cream focus:border-aop-amber focus:outline-none"
+      >
+        {meta.options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  return (
+    <TextInput
+      id={id}
+      type={meta.type === "password" ? "password" : "text"}
+      inputMode={meta.type === "number" ? "numeric" : undefined}
+      value={value}
+      onChange={onChange}
+      suffix={meta.suffix}
+      compact={meta.type === "number"}
+    />
   );
 };
 
