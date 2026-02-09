@@ -185,7 +185,7 @@ const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    show: false, // Don't show until server is ready
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "..", "..", "src", "preload.ts"),
     },
@@ -201,8 +201,10 @@ const createWindow = () => {
   console.log(`[Electron] Loading index from: ${indexPath}`);
   mainWindow.loadFile(indexPath);
 
+  // Show window immediately when loading page is ready
   mainWindow.once("ready-to-show", () => {
-    // Window is ready but we'll show it after server loads
+    console.log("[Electron] Window ready, showing...");
+    mainWindow?.show();
   });
 
   // Handle window close - hide to tray instead of quitting
