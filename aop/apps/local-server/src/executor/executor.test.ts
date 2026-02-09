@@ -70,6 +70,7 @@ describe("executor", () => {
       expect(result.worktreePath).toBe(aopPaths.worktree("repo-1", "task-1"));
       expect(result.logsDir).toBe(testLogsDir);
       expect(result.timeoutSecs).toBe(1800);
+      expect(result.fastMode).toBe(false);
 
       if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
     });
@@ -98,6 +99,21 @@ describe("executor", () => {
       const result = await buildContext(ctx, task, testLogsDir);
 
       expect(result.timeoutSecs).toBe(600);
+
+      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
+    });
+
+    test("reads fast_mode setting as boolean", async () => {
+      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
+      await ctx.settingsRepository.set("fast_mode", "true");
+
+      const task = await ctx.taskRepository.get("task-1");
+      if (!task) throw new Error("Task should exist");
+      const result = await buildContext(ctx, task, testLogsDir);
+
+      expect(result.fastMode).toBe(true);
 
       if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
     });
@@ -235,6 +251,7 @@ describe("executor", () => {
         worktreePath: aopPaths.worktree("repo-1", "task-wt-1"),
         logsDir: tmpdir(),
         timeoutSecs: 300,
+        fastMode: false,
       };
 
       const result = await createWorktree(executorCtx);
@@ -261,6 +278,7 @@ describe("executor", () => {
         worktreePath: aopPaths.worktree("repo-1", "task-wt-base"),
         logsDir: tmpdir(),
         timeoutSecs: 300,
+        fastMode: false,
       };
 
       const result = await createWorktree(executorCtx);
@@ -281,6 +299,7 @@ describe("executor", () => {
         worktreePath: aopPaths.worktree("repo-1", "task-wt-2"),
         logsDir: tmpdir(),
         timeoutSecs: 300,
+        fastMode: false,
       };
 
       await createWorktree(executorCtx);
@@ -360,6 +379,7 @@ describe("executor", () => {
         worktreePath: "/test/worktree",
         logsDir: tmpdir(),
         timeoutSecs: 300,
+        fastMode: false,
       };
 
       const result = await buildPromptForExecution({
@@ -395,6 +415,7 @@ describe("executor", () => {
         worktreePath: "/test/worktree",
         logsDir: tmpdir(),
         timeoutSecs: 300,
+        fastMode: false,
       };
 
       const result = await buildPromptForExecution({
@@ -429,6 +450,7 @@ describe("executor", () => {
         worktreePath: "/test/worktree",
         logsDir: tmpdir(),
         timeoutSecs: 300,
+        fastMode: false,
       };
 
       const result = await buildPromptForExecution({

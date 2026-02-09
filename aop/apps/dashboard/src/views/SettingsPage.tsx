@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { type CleanupResult, cleanupWorktrees, getSettings, updateSettings } from "../api/client";
 import { Logo } from "../components/Logo";
+import { TextInput } from "../components/TextInput";
+import { ToggleInput } from "../components/ToggleInput";
 
 interface SettingsPageProps {
   onNavigate?: (path: string) => void;
@@ -9,14 +11,14 @@ interface SettingsPageProps {
 interface SettingMeta {
   label: string;
   description: string;
-  type: "number" | "text" | "password";
+  type: "number" | "text" | "password" | "toggle";
   suffix?: string;
 }
 
 const GROUPS: { label: string; keys: string[] }[] = [
   {
     label: "AGENT CONFIGURATION",
-    keys: ["max_concurrent_tasks", "agent_timeout_secs"],
+    keys: ["max_concurrent_tasks", "agent_timeout_secs", "fast_mode"],
   },
   {
     label: "POLLING",
@@ -51,6 +53,11 @@ const SETTING_META: Record<string, SettingMeta> = {
     description: "Time before an agent is considered timed out",
     type: "number",
     suffix: "s",
+  },
+  fast_mode: {
+    label: "Fast Mode",
+    description: "Enable Claude Code fast mode for faster output",
+    type: "toggle",
   },
   server_url: { label: "Server URL", description: "Remote server URL", type: "text" },
   api_key: { label: "API Key", description: "Remote server API key", type: "password" },
@@ -262,7 +269,6 @@ interface SettingRowProps {
 
 const SettingRow = ({ settingKey, value, onChange, isLast }: SettingRowProps) => {
   const meta = SETTING_META[settingKey] ?? { label: settingKey, description: "", type: "text" };
-  const isCompact = meta.type === "number";
   const inputId = `setting-${settingKey}`;
 
   return (
@@ -279,23 +285,23 @@ const SettingRow = ({ settingKey, value, onChange, isLast }: SettingRowProps) =>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <div className="relative">
-          <input
+        {meta.type === "toggle" ? (
+          <ToggleInput
+            id={inputId}
+            checked={value === "true"}
+            onChange={(checked) => onChange(settingKey, checked ? "true" : "false")}
+          />
+        ) : (
+          <TextInput
             id={inputId}
             type={meta.type === "password" ? "password" : "text"}
             inputMode={meta.type === "number" ? "numeric" : undefined}
             value={value}
-            onChange={(e) => onChange(settingKey, e.target.value)}
-            className={`rounded-aop border border-aop-charcoal bg-aop-dark py-1.5 pl-3 font-mono text-xs text-aop-cream outline-none transition-colors focus:border-aop-slate-dark ${
-              isCompact ? "w-24 pr-3 text-right" : "w-52 pr-3"
-            } ${meta.suffix ? "pr-7" : ""}`}
+            onChange={(v) => onChange(settingKey, v)}
+            suffix={meta.suffix}
+            compact={meta.type === "number"}
           />
-          {meta.suffix && (
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] text-aop-slate-dark">
-              {meta.suffix}
-            </span>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

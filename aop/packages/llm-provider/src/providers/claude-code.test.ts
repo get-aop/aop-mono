@@ -71,6 +71,48 @@ describe("buildCommand", () => {
       "test prompt",
     ]);
   });
+
+  test("adds --settings flag when fastMode is true", () => {
+    const provider = new ClaudeCodeProvider();
+    const cmd = provider.buildCommand({
+      prompt: "test prompt",
+      fastMode: true,
+    });
+    expect(cmd).toEqual([
+      "claude",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--dangerously-skip-permissions",
+      "--settings",
+      '{"fastMode":true}',
+      "test prompt",
+    ]);
+  });
+
+  test("does not add --settings flag when fastMode is false", () => {
+    const provider = new ClaudeCodeProvider();
+    const cmd = provider.buildCommand({
+      prompt: "test prompt",
+      fastMode: false,
+    });
+    expect(cmd).toEqual([
+      "claude",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--dangerously-skip-permissions",
+      "test prompt",
+    ]);
+  });
+
+  test("does not add --settings flag when fastMode is undefined", () => {
+    const provider = new ClaudeCodeProvider();
+    const cmd = provider.buildCommand({
+      prompt: "test prompt",
+    });
+    expect(cmd).not.toContain("--settings");
+  });
 });
 
 describe("parseStreamLine", () => {

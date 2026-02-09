@@ -52,6 +52,10 @@ export class ClaudeCodeProvider implements LLMProvider {
       cmd.push("--resume", options.resumeSessionId);
     }
 
+    if (options.fastMode) {
+      cmd.push("--settings", JSON.stringify({ fastMode: true }));
+    }
+
     cmd.push(options.prompt);
     return cmd;
   }

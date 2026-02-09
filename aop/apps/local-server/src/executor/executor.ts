@@ -181,6 +181,7 @@ const spawnAgentWithReaper = (opts: SpawnAgentOptions): Promise<void> => {
         logger.info("Agent spawned with PID {pid}", { pid, stepId });
       },
       inactivityTimeoutMs: timeoutMs,
+      fastMode: executorCtx.fastMode,
     })
     .then((runResult) => handleAgentCompletion(opts, logFile, runResult, signals));
 };
@@ -288,6 +289,8 @@ export const buildContext = async (
     10,
   );
 
+  const fastMode = (await ctx.settingsRepository.get(SettingKey.FAST_MODE)) === "true";
+
   ensureDir(logsDir);
 
   const changePath = join(aopPaths.repoDir(repo.id), task.change_path);
@@ -301,6 +304,7 @@ export const buildContext = async (
     worktreePath,
     logsDir,
     timeoutSecs,
+    fastMode,
   };
 };
 

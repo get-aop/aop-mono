@@ -15,4 +15,5 @@ export interface ExecutorContext {
   worktreePath: string;
   logsDir: string;
   timeoutSecs: number;
+  fastMode: boolean;
 }

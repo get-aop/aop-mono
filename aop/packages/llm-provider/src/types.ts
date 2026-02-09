@@ -15,6 +15,8 @@ export interface RunOptions {
   env?: Record<string, string>;
   /** Path to a file where stdout should be redirected instead of piped */
   logFilePath?: string;
+  /** Enable Claude Code fast mode for faster output */
+  fastMode?: boolean;
 }
 
 export interface RunResult {

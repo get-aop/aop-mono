@@ -9,6 +9,7 @@ export const SettingKey = {
   AGENT_TIMEOUT_SECS: "agent_timeout_secs",
   SERVER_URL: "server_url",
   API_KEY: "api_key",
+  FAST_MODE: "fast_mode",
 } as const;
 
 export type SettingKey = (typeof SettingKey)[keyof typeof SettingKey];
@@ -20,6 +21,7 @@ export const DEFAULT_SETTINGS: Record<SettingKey, string> = {
   [SettingKey.AGENT_TIMEOUT_SECS]: "1800",
   [SettingKey.SERVER_URL]: "",
   [SettingKey.API_KEY]: "",
+  [SettingKey.FAST_MODE]: "false",
 };
 
 export const VALID_KEYS: SettingKey[] = Object.values(SettingKey);
