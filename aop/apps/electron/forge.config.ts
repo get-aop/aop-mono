@@ -8,17 +8,7 @@ import path from "path";
 import { mainConfig } from "./webpack.main.config.js";
 import { rendererConfig } from "./webpack.renderer.config.js";
 
-const copyMainEntry = () => {
-  const webpackDir = path.join(__dirname, ".webpack");
-  const archDir = path.join(webpackDir, process.arch);
-  const sourceFile = path.join(archDir, "main.cjs");
-  const targetFile = path.join(webpackDir, "main.cjs");
-
-  if (fs.existsSync(sourceFile) && !fs.existsSync(targetFile)) {
-    fs.mkdirSync(webpackDir, { recursive: true });
-    fs.copyFileSync(sourceFile, targetFile);
-  }
-};
+// No hooks needed - webpack outputs directly to .webpack/main
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -75,10 +65,7 @@ const config: ForgeConfig = {
       },
     }),
   ],
-  hooks: {
-    packageAfterPrune: copyMainEntry,
-    prePackage: copyMainEntry,
-  },
+  hooks: {},
 };
 
 export default config;

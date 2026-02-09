@@ -22,7 +22,7 @@ export const mainConfig: Configuration = {
   },
   output: {
     path: path.join(__dirname, ".webpack"),
-    filename: "main.cjs",
+    filename: "main",
     library: {
       type: "commonjs2",
     },

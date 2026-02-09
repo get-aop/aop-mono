@@ -11,6 +11,10 @@ import {
 } from "./tray.js";
 import { initAutoUpdater } from "./updater.js";
 
+// Set app name for menu bar and dock
+app.setName("AOP");
+app.setAppUserModelId("com.aop.desktop");
+
 let serverProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
 let serverPort: number | null = null;
