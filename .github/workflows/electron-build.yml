@@ -1,6 +1,13 @@
 name: Build & Release Electron Apps
 
 on:
+  push:
+    branches: [feat/electron-app]
+    paths:
+      - ".github/workflows/electron-build.yml"
+      - "aop/apps/electron/**"
+      - "aop/apps/dashboard/**"
+      - "aop/apps/local-server/**"
   workflow_dispatch:
     inputs:
       branch:
