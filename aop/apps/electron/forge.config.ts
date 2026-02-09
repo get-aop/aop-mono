@@ -25,6 +25,15 @@ const copyExtraResources = async (_config: any, buildResult: any) => {
   }
   
   console.log(`[Forge] Resources directory: ${resourcesDir}`);
+  
+  // Replace the app icon
+  const iconSource = path.join(__dirname, "assets", "icon.icns");
+  const electronIconTarget = path.join(resourcesDir, "electron.icns");
+  if (fs.existsSync(iconSource)) {
+    fs.cpSync(iconSource, electronIconTarget, { force: true });
+    console.log(`[Forge] Replaced icon: ${iconSource} -> ${electronIconTarget}`);
+  }
+  
   const filesToCopy = [
     {
       from: path.join(__dirname, "..", "local-server", "dist", "aop-server"),
