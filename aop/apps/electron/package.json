@@ -2,7 +2,6 @@
   "name": "@aop/electron",
   "productName": "AOP",
   "version": "0.1.0",
-  "type": "module",
   "main": ".webpack/main",
   "scripts": {
     "start": "bun run build:deps && electron-forge start",

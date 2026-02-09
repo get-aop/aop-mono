@@ -1,18 +1,14 @@
 import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerWix } from "@electron-forge/maker-wix";
-import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { WebpackPlugin } from "@electron-forge/plugin-webpack";
 import type { ForgeConfig } from "@electron-forge/shared-types";
-import fs from "fs";
 import path from "path";
 import { mainConfig } from "./webpack.main.config.js";
 import { rendererConfig } from "./webpack.renderer.config.js";
 
-// No hooks needed - webpack outputs directly to .webpack/main
-
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: false,
     extraResources: [
       {
         from: "../local-server/dist/aop-server",
@@ -47,7 +43,6 @@ const config: ForgeConfig = {
     }),
   ],
   plugins: [
-    new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
       mainConfig,
       renderer: {
@@ -65,7 +60,7 @@ const config: ForgeConfig = {
       },
     }),
   ],
-  hooks: {},
+
 };
 
 export default config;
