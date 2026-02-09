@@ -11,8 +11,9 @@ interface SettingsPageProps {
 interface SettingMeta {
   label: string;
   description: string;
-  type: "number" | "text" | "password" | "toggle";
+  type: "number" | "text" | "password" | "toggle" | "select";
   suffix?: string;
+  options?: { value: string; label: string }[];
 }
 
 const GROUPS: { label: string; keys: string[] }[] = [
