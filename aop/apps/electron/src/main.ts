@@ -1,8 +1,15 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
-import { createTray, destroyTray, setMainWindow, getIsQuitting, setIsQuitting, setCheckForUpdatesFn } from './tray.js';
-import { initAutoUpdater } from './updater.js';
+import { type ChildProcess, spawn } from "child_process";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import path from "path";
+import {
+  createTray,
+  destroyTray,
+  getIsQuitting,
+  setCheckForUpdatesFn,
+  setIsQuitting,
+  setMainWindow,
+} from "./tray.js";
+import { initAutoUpdater } from "./updater.js";
 
 let serverProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -10,23 +17,23 @@ let serverPort: number | null = null;
 const FORCE_KILL_TIMEOUT_MS = 10000;
 
 const getServerPath = (): string => {
-  return path.join(process.resourcesPath, 'aop-server');
+  return path.join(process.resourcesPath, "aop-server");
 };
 
 const getDashboardPath = (): string => {
-  return path.join(process.resourcesPath, 'dashboard');
+  return path.join(process.resourcesPath, "dashboard");
 };
 
 const spawnServer = (): Promise<number> => {
   return new Promise((resolve, reject) => {
     const serverPath = getServerPath();
     const dashboardPath = getDashboardPath();
-    
+
     serverProcess = spawn(serverPath, [], {
       env: {
         ...process.env,
-        AOP_ELECTRON_SIDECAR: '1',
-        AOP_DB_PATH: path.join(app.getPath('userData'), 'aop.db'),
+        AOP_ELECTRON_SIDECAR: "1",
+        AOP_DB_PATH: path.join(app.getPath("userData"), "aop.db"),
         DASHBOARD_STATIC_PATH: dashboardPath,
       },
       detached: false,
@@ -34,9 +41,9 @@ const spawnServer = (): Promise<number> => {
 
     let portFound = false;
 
-    serverProcess.stdout?.on('data', (data: Buffer) => {
+    serverProcess.stdout?.on("data", (data: Buffer) => {
       const output = data.toString();
-      
+
       // Look for port announcement
       const portMatch = output.match(/AOP_SERVER_PORT=(\d+)/);
       if (portMatch && !portFound) {
@@ -52,23 +59,23 @@ const spawnServer = (): Promise<number> => {
       }
     });
 
-    serverProcess.stderr?.on('data', (data: Buffer) => {
-      console.error('Server stderr:', data.toString());
+    serverProcess.stderr?.on("data", (data: Buffer) => {
+      console.error("Server stderr:", data.toString());
     });
 
-    serverProcess.on('error', (err) => {
+    serverProcess.on("error", (err) => {
       if (!portFound) {
         reject(err);
       }
     });
 
-    serverProcess.on('exit', (code) => {
+    serverProcess.on("exit", (code) => {
       if (!portFound) {
         reject(new Error(`Server exited with code ${code}`));
       } else {
         // Server crashed after starting
         if (code !== 0 && mainWindow) {
-          mainWindow.webContents.send('server-crashed', code);
+          mainWindow.webContents.send("server-crashed", code);
         }
       }
     });
@@ -76,7 +83,7 @@ const spawnServer = (): Promise<number> => {
     // Timeout if no port received within 30 seconds
     setTimeout(() => {
       if (!portFound) {
-        reject(new Error('Timeout waiting for server port'));
+        reject(new Error("Timeout waiting for server port"));
       }
     }, 30000);
   });
@@ -87,16 +94,16 @@ const stopServer = async (): Promise<void> => {
 
   return new Promise((resolve) => {
     // Try graceful shutdown with SIGTERM
-    serverProcess?.kill('SIGTERM');
+    serverProcess?.kill("SIGTERM");
 
     // Force kill after timeout
     const forceKillTimer = setTimeout(() => {
       if (serverProcess && !serverProcess.killed) {
-        serverProcess.kill('SIGKILL');
+        serverProcess.kill("SIGKILL");
       }
     }, FORCE_KILL_TIMEOUT_MS);
 
-    serverProcess?.on('exit', () => {
+    serverProcess?.on("exit", () => {
       clearTimeout(forceKillTimer);
       serverProcess = null;
       resolve();
@@ -117,29 +124,29 @@ const createWindow = () => {
     height: 800,
     show: false, // Don't show until server is ready
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js')
-    }
+      preload: path.join(__dirname, "preload.js"),
+    },
   });
 
   // Set window reference for tray
   setMainWindow(mainWindow);
 
   // Show loading page first
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, "index.html"));
 
-  mainWindow.once('ready-to-show', () => {
+  mainWindow.once("ready-to-show", () => {
     // Window is ready but we'll show it after server loads
   });
 
   // Handle window close - hide to tray instead of quitting
-  mainWindow.on('close', (event) => {
+  mainWindow.on("close", (event) => {
     if (!getIsQuitting()) {
       event.preventDefault();
       mainWindow?.hide();
     }
   });
 
-  mainWindow.on('closed', () => {
+  mainWindow.on("closed", () => {
     mainWindow = null;
   });
 };
@@ -155,17 +162,17 @@ const restartServer = async () => {
   if (serverProcess) {
     await stopServer();
   }
-  
+
   try {
     const port = await spawnServer();
     loadDashboard(port);
     if (mainWindow) {
-      mainWindow.webContents.send('server-restarted');
+      mainWindow.webContents.send("server-restarted");
     }
   } catch (err) {
-    console.error('Failed to restart server:', err);
+    console.error("Failed to restart server:", err);
     if (mainWindow) {
-      mainWindow.webContents.send('server-error', String(err));
+      mainWindow.webContents.send("server-error", String(err));
     }
   }
 };
@@ -176,7 +183,7 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on("second-instance", () => {
     // Someone tried to run a second instance, focus our window instead
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -201,24 +208,24 @@ if (!gotTheLock) {
       loadDashboard(port);
     } catch (err) {
       const errorMsg = String(err);
-      console.error('Failed to start server:', errorMsg);
-      
+      console.error("Failed to start server:", errorMsg);
+
       // Show native error dialog for critical errors
-      if (errorMsg.includes('No available ports') || errorMsg.includes('Timeout waiting')) {
+      if (errorMsg.includes("No available ports") || errorMsg.includes("Timeout waiting")) {
         dialog.showErrorBox(
-          'AOP Desktop Error',
-          `Failed to start the AOP server.\n\n${errorMsg}\n\nPlease ensure no other applications are using ports 3847-3899 and try again.`
+          "AOP Desktop Error",
+          `Failed to start the AOP server.\n\n${errorMsg}\n\nPlease ensure no other applications are using ports 3847-3899 and try again.`,
         );
         app.quit();
         return;
       }
-      
+
       if (mainWindow) {
-        mainWindow.webContents.send('server-error', errorMsg);
+        mainWindow.webContents.send("server-error", errorMsg);
       }
     }
 
-    app.on('activate', () => {
+    app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
       }
@@ -226,19 +233,19 @@ if (!gotTheLock) {
   });
 }
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
     app.quit();
   }
 });
 
-app.on('before-quit', async (event) => {
+app.on("before-quit", async (event) => {
   // Mark that we're actually quitting (not just closing to tray)
   setIsQuitting(true);
-  
+
   // Destroy tray icon
   destroyTray();
-  
+
   if (serverProcess) {
     event.preventDefault();
     await stopServer();
@@ -247,4 +254,4 @@ app.on('before-quit', async (event) => {
 });
 
 // IPC handlers
-ipcMain.handle('restart-server', restartServer);
+ipcMain.handle("restart-server", restartServer);

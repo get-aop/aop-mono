@@ -18,23 +18,21 @@ const findAvailablePort = async (startPort: number, endPort: number): Promise<nu
       });
       testServer.stop();
       return port;
-    } catch {
-      continue;
-    }
+    } catch {}
   }
   return null;
 };
 
 const main = async () => {
   const sidecarMode = isSidecarMode();
-  
+
   if (sidecarMode) {
     // JSON format has no colors - cleaner output for Electron sidecar
     await configureLogging({ level: "info", format: "json", serviceName: "local-server" });
   } else {
     await configureLogging({ level: "info", format: "pretty", serviceName: "local-server" });
   }
-  
+
   initTracing("local-server");
 
   let port: number;

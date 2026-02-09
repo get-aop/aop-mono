@@ -1,14 +1,14 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer } from "electron";
 
-contextBridge.exposeInMainWorld('electronAPI', {
+contextBridge.exposeInMainWorld("electronAPI", {
   onServerCrashed: (callback: (code: number) => void) => {
-    ipcRenderer.on('server-crashed', (_, code) => callback(code));
+    ipcRenderer.on("server-crashed", (_, code) => callback(code));
   },
   onServerError: (callback: (error: string) => void) => {
-    ipcRenderer.on('server-error', (_, error) => callback(error));
+    ipcRenderer.on("server-error", (_, error) => callback(error));
   },
   onServerRestarted: (callback: () => void) => {
-    ipcRenderer.on('server-restarted', () => callback());
+    ipcRenderer.on("server-restarted", () => callback());
   },
-  restartServer: () => ipcRenderer.invoke('restart-server'),
+  restartServer: () => ipcRenderer.invoke("restart-server"),
 });

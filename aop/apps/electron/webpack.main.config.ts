@@ -1,38 +1,38 @@
-import type { Configuration } from 'webpack';
-import path from 'path';
+import path from "path";
+import type { Configuration } from "webpack";
 
 export const mainConfig: Configuration = {
-  entry: './src/main.ts',
-  target: 'electron-main',
-  mode: 'production',
+  entry: "./src/main.ts",
+  target: "electron-main",
+  mode: "production",
   module: {
     rules: [
       {
         test: /\.ts$/,
         include: /src/,
         use: {
-          loader: 'ts-loader',
+          loader: "ts-loader",
           options: {
-            configFile: path.resolve(__dirname, 'tsconfig.json'),
-            transpileOnly: true
-          }
-        }
-      }
-    ]
+            configFile: path.resolve(__dirname, "tsconfig.json"),
+            transpileOnly: true,
+          },
+        },
+      },
+    ],
   },
   output: {
-    path: path.join(__dirname, '.webpack'),
-    filename: 'main.js'
+    path: path.join(__dirname, ".webpack"),
+    filename: "main.js",
   },
   resolve: {
-    extensions: ['.ts', '.js'],
+    extensions: [".ts", ".js"],
     extensionAlias: {
-      '.js': ['.ts', '.js']
+      ".js": [".ts", ".js"],
     },
-    fullySpecified: false
+    fullySpecified: false,
   },
   node: {
     __dirname: false,
-    __filename: false
-  }
+    __filename: false,
+  },
 };
