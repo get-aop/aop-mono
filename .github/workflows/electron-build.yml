@@ -1,0 +1,95 @@
+name: Build Electron Apps
+
+on:
+  push:
+    branches: [feat/electron-app, main]
+    paths:
+      - "aop/apps/electron/**"
+      - "aop/apps/dashboard/**"
+      - "aop/apps/local-server/**"
+      - "aop/packages/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "aop/apps/electron/**"
+      - "aop/apps/dashboard/**"
+      - "aop/apps/local-server/**"
+      - "aop/packages/**"
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build Electron app
+        working-directory: aop/apps/electron
+        run: bun run make
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            aop/apps/electron/out/make/*.dmg
+            aop/apps/electron/out/*.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y icnsutils graphicsmagick
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build Electron app
+        working-directory: aop/apps/electron
+        run: bun run make
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            aop/apps/electron/out/make/*.AppImage
+            aop/apps/electron/out/make/*.deb
+            aop/apps/electron/out/*.zip
+
+  release:
+    needs: [build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure
+        run: ls -R artifacts
+
+      # Uncomment when ready to auto-release
+      # - name: Create Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     files: artifacts/**/*
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
