@@ -8,7 +8,7 @@ import type {
 } from "@aop/common/protocol";
 import { GitManager, WorktreeExistsError, type WorktreeInfo } from "@aop/git-manager";
 import { aopPaths, generateTypeId, getLogger } from "@aop/infra";
-import { ClaudeCodeProvider, extractAssistantText } from "@aop/llm-provider";
+import { ClaudeCodeProvider, createProvider, extractAssistantText } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { forEachJsonlEntry, parseJsonlEntry } from "../events/log-file-tailer.ts";
@@ -151,7 +151,23 @@ interface SpawnAgentOptions {
   provider?: ClaudeCodeProvider;
 }
 
-const spawnAgentWithReaper = (opts: SpawnAgentOptions): Promise<void> => {
+const getProvider = async (ctx: LocalServerContext, task: Task) => {
+  // Use task's preferred provider if set
+  if (task.preferred_provider) {
+    return createProvider(task.preferred_provider);
+  }
+
+  // Otherwise use global agent_provider setting
+  const providerKey = await ctx.settingsRepository.get(SettingKey.AGENT_PROVIDER);
+  if (providerKey) {
+    return createProvider(providerKey);
+  }
+
+  // Default to Claude Code
+  return new ClaudeCodeProvider();
+};
+
+const spawnAgentWithReaper = async (opts: SpawnAgentOptions): Promise<void> => {
   const {
     ctx,
     executorCtx,
@@ -159,8 +175,12 @@ const spawnAgentWithReaper = (opts: SpawnAgentOptions): Promise<void> => {
     taskId,
     prompt,
     signals = [],
-    provider = new ClaudeCodeProvider(),
+    provider: explicitProvider,
   } = opts;
+
+  // Get provider from task preferences or settings if not explicitly provided
+  const task = await ctx.taskRepository.get(taskId);
+  const provider = explicitProvider ?? (await getProvider(ctx, task!));
 
   const logFile = join(executorCtx.logsDir, `${stepId}.jsonl`);
   const timeoutMs = executorCtx.timeoutSecs * 1000;

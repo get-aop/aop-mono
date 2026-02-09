@@ -19,7 +19,7 @@ export class OpenCodeProvider implements LLMProvider {
     const proc = Bun.spawn({
       cmd: this.buildCommand(options),
       stdout: options.logFilePath ? Bun.file(options.logFilePath) : "ignore",
-      stderr: "ignore",
+      stderr: options.logFilePath ? Bun.file(options.logFilePath) : "ignore",
       stdin: "ignore",
       cwd: options.cwd,
       detached: true,

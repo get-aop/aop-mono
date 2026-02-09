@@ -101,7 +101,7 @@ describe("run", () => {
     const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(spawnArgs.detached).toBe(true);
     expect(spawnArgs.stdin).toBe("ignore");
-    expect(spawnArgs.stderr).toBe("ignore");
+    expect(spawnArgs.stderr).toBeInstanceOf(Bun.file("/tmp/log.txt").constructor);
   });
 
   test("calls unref on spawned process", async () => {

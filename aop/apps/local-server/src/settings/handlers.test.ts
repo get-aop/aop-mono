@@ -67,6 +67,7 @@ describe("settings/handlers", () => {
     test("accepts valid agent_provider values", async () => {
       for (const value of [
         "claude-code",
+        "opencode:opencode/kimi-k2.5",
         "opencode:opencode/kimi-k2.5-free",
         "opencode:openai/gpt-5.3-codex",
       ]) {
