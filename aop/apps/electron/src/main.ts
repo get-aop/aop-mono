@@ -197,7 +197,7 @@ const createWindow = () => {
   // Show loading page first
   const indexPath = app.isPackaged
     ? path.join(__dirname, "renderer", "main_window", "index.html")
-    : path.join(__dirname, "..", "..", "..", "src", "index.html");
+    : path.join(__dirname, "..", "src", "index.html");
   console.log(`[Electron] Loading index from: ${indexPath}`);
   mainWindow.loadFile(indexPath);
 

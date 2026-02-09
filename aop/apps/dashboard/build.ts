@@ -57,14 +57,15 @@ async function buildHTML(jsFile?: string): Promise<void> {
   const html = readFileSync(`${SRC_DIR}/index.html`, "utf-8");
 
   // Replace development script with production bundle
+  // Use regex to match both single and double quotes
   const prodHtml = html
     .replace(
-      '<script type="module" src="/src/main.tsx"></script>',
+      /<script type=["']module["'] src=["']\/src\/main\.tsx["']><\/script>/,
       `<script type="module" src="/${jsFile ?? "main.js"}"></script>`,
     )
     .replace(
-      '<link rel="stylesheet" href="/src/index.css">',
-      '<link rel="stylesheet" href="/index.css">',
+      /<link rel=["']stylesheet["'] href=["']\/src\/index\.css["']\s*\/?>/,
+      '<link rel="stylesheet" href="/index.css" />',
     );
 
   writeFileSync(`${DIST_DIR}/index.html`, prodHtml);
