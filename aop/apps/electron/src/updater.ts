@@ -15,6 +15,7 @@ export const initAutoUpdater = (mainWindow: BrowserWindow) => {
 
     // Skip if in development
     if (process.env.NODE_ENV === "development") {
+      // biome-ignore lint/suspicious/noConsole: debug logging in dev mode
       console.log("Skipping update check in development mode");
       return;
     }
@@ -26,6 +27,7 @@ export const initAutoUpdater = (mainWindow: BrowserWindow) => {
       await autoUpdater.checkForUpdates();
     } catch (err) {
       // Silently fail - no error dialogs for offline/failure
+      // biome-ignore lint/suspicious/noConsole: intentional logging for debugging
       console.log("Update check failed (likely offline):", err);
     } finally {
       updateCheckInProgress = false;
@@ -38,6 +40,7 @@ export const initAutoUpdater = (mainWindow: BrowserWindow) => {
 
   // Event: Update available
   autoUpdater.on("update-available", (info) => {
+    // biome-ignore lint/suspicious/noConsole: user-facing update notification
     console.log("Update available:", info.version);
 
     dialog
@@ -63,6 +66,7 @@ export const initAutoUpdater = (mainWindow: BrowserWindow) => {
 
   // Event: Update downloaded
   autoUpdater.on("update-downloaded", (info) => {
+    // biome-ignore lint/suspicious/noConsole: user-facing update notification
     console.log("Update downloaded:", info.version);
 
     dialog
@@ -83,6 +87,7 @@ export const initAutoUpdater = (mainWindow: BrowserWindow) => {
 
   // Event: Error (handle gracefully - no dialogs)
   autoUpdater.on("error", (err) => {
+    // biome-ignore lint/suspicious/noConsole: silent error logging for debugging
     console.error("Auto-updater error:", err);
     // Don't show error dialog - user might be offline or GitHub unavailable
     // Just log it silently
@@ -90,6 +95,7 @@ export const initAutoUpdater = (mainWindow: BrowserWindow) => {
 
   // Event: No update available
   autoUpdater.on("update-not-available", () => {
+    // biome-ignore lint/suspicious/noConsole: normal operation logging
     console.log("No updates available");
   });
 
@@ -122,6 +128,7 @@ export const initAutoUpdater = (mainWindow: BrowserWindow) => {
           });
         }
       } catch (err) {
+        // biome-ignore lint/suspicious/noConsole: error logging before showing dialog
         console.error("Manual update check failed:", err);
         dialog.showMessageBox(mainWindow, {
           type: "warning",

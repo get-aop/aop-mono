@@ -1,10 +1,10 @@
-import { type ChildProcess, spawn } from "child_process";
+import { type ChildProcess, spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
-import path from "path";
 import {
   createTray,
   destroyTray,
-  getIsQuitting,
   setCheckForUpdatesFn,
   setIsQuitting,
   setMainWindow,
@@ -17,7 +17,7 @@ app.setAppUserModelId("com.aop.desktop");
 
 let serverProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
-let serverPort: number | null = null;
+let _serverPort: number | null = null;
 const FORCE_KILL_TIMEOUT_MS = 10000;
 
 const getServerPath = (): string => {
@@ -57,9 +57,12 @@ const spawnServer = (): Promise<number> => {
   return new Promise((resolve, reject) => {
     const serverPath = getServerPath();
     const dashboardPath = getDashboardPath();
+    // biome-ignore lint/suspicious/noConsole: startup logging
     console.log(`[Electron] Server path: ${serverPath}`);
+    // biome-ignore lint/suspicious/noConsole: startup logging
     console.log(`[Electron] Dashboard path: ${dashboardPath}`);
-    console.log(`[Electron] Server exists: ${require("fs").existsSync(serverPath)}`);
+    // biome-ignore lint/suspicious/noConsole: startup logging
+    console.log(`[Electron] Server exists: ${fs.existsSync(serverPath)}`);
 
     // First, discover the port with a dummy URL
     let discoveryProcess: ChildProcess | null = null;
@@ -92,18 +95,21 @@ const spawnServer = (): Promise<number> => {
         // Start the real server with correct dashboard URL
         const dashboardUrl = `http://127.0.0.1:${discoveredPort}`;
         serverProcess = spawnServerWithEnv(serverPath, dashboardPath, dashboardUrl);
-        serverPort = discoveredPort;
+        _serverPort = discoveredPort;
 
         // Forward events from real server
         serverProcess.stdout?.on("data", (data: Buffer) => {
+          // biome-ignore lint/suspicious/noConsole: server output logging
           console.log("Server:", data.toString());
         });
 
         serverProcess.stderr?.on("data", (data: Buffer) => {
+          // biome-ignore lint/suspicious/noConsole: server error logging
           console.error("Server stderr:", data.toString());
         });
 
         serverProcess.on("error", (err) => {
+          // biome-ignore lint/suspicious/noConsole: server error logging
           console.error("Server error:", err);
           if (mainWindow) {
             mainWindow.webContents.send("server-error", String(err));
@@ -111,6 +117,7 @@ const spawnServer = (): Promise<number> => {
         });
 
         serverProcess.on("exit", (code) => {
+          // biome-ignore lint/suspicious/noConsole: server exit logging
           console.log(`Server exited with code ${code}`);
           if (code !== 0 && mainWindow) {
             mainWindow.webContents.send("server-crashed", code);
@@ -130,6 +137,7 @@ const spawnServer = (): Promise<number> => {
     });
 
     discoveryProcess.stderr?.on("data", (data: Buffer) => {
+      // biome-ignore lint/suspicious/noConsole: discovery error logging
       console.error("Discovery stderr:", data.toString());
     });
 
@@ -203,11 +211,13 @@ const createWindow = () => {
   const indexPath = app.isPackaged
     ? path.join(__dirname, "renderer", "main_window", "index.html")
     : path.join(__dirname, "..", "src", "index.html");
+  // biome-ignore lint/suspicious/noConsole: startup logging
   console.log(`[Electron] Loading index from: ${indexPath}`);
   mainWindow.loadFile(indexPath);
 
   // Show window immediately when loading page is ready
   mainWindow.once("ready-to-show", () => {
+    // biome-ignore lint/suspicious/noConsole: window lifecycle logging
     console.log("[Electron] Window ready, showing...");
     mainWindow?.show();
   });
@@ -243,15 +253,18 @@ const waitForServer = async (port: number, maxRetries = 30): Promise<boolean> =>
 const loadDashboard = async (port: number) => {
   if (!mainWindow) return;
 
+  // biome-ignore lint/suspicious/noConsole: server startup logging
   console.log(`[Electron] Waiting for server on port ${port}...`);
   const isReady = await waitForServer(port);
 
   if (!isReady) {
+    // biome-ignore lint/suspicious/noConsole: server error logging
     console.error(`[Electron] Server on port ${port} failed to respond`);
     mainWindow.webContents.send("server-error", "Server failed to start");
     return;
   }
 
+  // biome-ignore lint/suspicious/noConsole: server startup logging
   console.log(`[Electron] Server ready, loading dashboard...`);
   mainWindow.loadURL(`http://127.0.0.1:${port}`);
   // Keep window title as "AOP Desktop" instead of letting HTML change it
@@ -271,6 +284,7 @@ const restartServer = async () => {
       mainWindow.webContents.send("server-restarted");
     }
   } catch (err) {
+    // biome-ignore lint/suspicious/noConsole: error logging
     console.error("Failed to restart server:", err);
     if (mainWindow) {
       mainWindow.webContents.send("server-error", String(err));
@@ -293,12 +307,15 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
+    // biome-ignore lint/suspicious/noConsole: app lifecycle logging
     console.log("[Electron] App ready, creating window...");
     createWindow();
+    // biome-ignore lint/suspicious/noConsole: app lifecycle logging
     console.log("[Electron] Window created");
 
     // Create tray icon
     createTray();
+    // biome-ignore lint/suspicious/noConsole: app lifecycle logging
     console.log("[Electron] Tray created");
 
     // Initialize auto-updater
@@ -307,13 +324,16 @@ if (!gotTheLock) {
       setCheckForUpdatesFn(() => updater.checkForUpdates());
     }
 
+    // biome-ignore lint/suspicious/noConsole: app lifecycle logging
     console.log("[Electron] Spawning server...");
     try {
       const port = await spawnServer();
+      // biome-ignore lint/suspicious/noConsole: server startup logging
       console.log(`[Electron] Server started on port ${port}, loading dashboard...`);
       loadDashboard(port);
     } catch (err) {
       const errorMsg = String(err);
+      // biome-ignore lint/suspicious/noConsole: error logging
       console.error("Failed to start server:", errorMsg);
 
       // Show native error dialog for critical errors

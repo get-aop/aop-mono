@@ -42,6 +42,7 @@ const main = async () => {
     if (!availablePort) {
       const errorMsg = `No available ports in range ${start}-${end}`;
       if (sidecarMode) {
+        // biome-ignore lint/suspicious/noConsole: required for Electron sidecar protocol
         console.log(`AOP_SERVER_ERROR=${errorMsg}`);
       }
       logger.error(errorMsg);
@@ -56,6 +57,7 @@ const main = async () => {
 
   // Output port via stdout in sidecar mode for Electron discovery
   if (sidecarMode) {
+    // biome-ignore lint/suspicious/noConsole: required for Electron sidecar protocol
     console.log(`AOP_SERVER_PORT=${port}`);
   }
 
@@ -72,6 +74,7 @@ main().catch((err) => {
   const sidecarMode = isSidecarMode();
   const errorMsg = `Failed to start local server: ${String(err)}`;
   if (sidecarMode) {
+    // biome-ignore lint/suspicious/noConsole: required for Electron sidecar protocol
     console.log(`AOP_SERVER_ERROR=${errorMsg}`);
   }
   logger.error(errorMsg);
