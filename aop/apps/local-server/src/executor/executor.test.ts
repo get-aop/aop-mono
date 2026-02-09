@@ -33,6 +33,7 @@ const createMockTask = (overrides: Partial<Task> = {}): Task => ({
   synced_at: null,
   preferred_workflow: null,
   base_branch: null,
+  preferred_provider: null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
   ...overrides,

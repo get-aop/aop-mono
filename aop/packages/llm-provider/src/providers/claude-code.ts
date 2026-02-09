@@ -28,7 +28,7 @@ export const createWatchdog = (
   return { stop: () => clearInterval(intervalId) };
 };
 
-const getFileMtime = (path: string): number => {
+export const getFileMtime = (path: string): number => {
   try {
     return statSync(path).mtimeMs;
   } catch {

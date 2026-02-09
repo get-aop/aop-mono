@@ -177,11 +177,26 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
       serverSync ?? undefined,
     )
       .then(() => {})
-      .catch((err) => {
+      .catch(async (err) => {
         logger.error("Task execution failed: {error}", {
           taskId: task.id,
           error: String(err),
         });
+
+        // Revert task to READY so it can be retried.
+        // Early failures (e.g., worktree creation, branch not found) are
+        // often transient and retryable, unlike step execution failures.
+        try {
+          await ctx.taskRepository.update(task.id, { status: "READY" });
+          logger.info("Task reverted to READY after execution failure", {
+            taskId: task.id,
+          });
+        } catch (updateErr) {
+          logger.error("Failed to revert task status after execution failure: {error}", {
+            taskId: task.id,
+            error: String(updateErr),
+          });
+        }
       })
       .finally(() => {
         executingTasks.delete(task.id);

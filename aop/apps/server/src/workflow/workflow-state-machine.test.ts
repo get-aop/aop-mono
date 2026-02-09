@@ -158,13 +158,21 @@ describe("WorkflowStateMachine", () => {
       expect(result.stepId).toBe("review");
     });
 
-    test("uses __none__ transition when no signal detected", () => {
+    test("uses __none__ transition when no signal detected and step succeeded", () => {
       const sm = createWorkflowStateMachine(signalLoop);
 
       const result = sm.evaluateTransition("iterate", { status: "success" });
 
       expect(result.type).toBe("step");
       expect(result.stepId).toBe("iterate");
+    });
+
+    test("failure skips __none__ and uses failure transition", () => {
+      const sm = createWorkflowStateMachine(signalLoop);
+
+      const result = sm.evaluateTransition("iterate", { status: "failure" });
+
+      expect(result.type).toBe("blocked");
     });
 
     test("falls back to success/failure when no __none__ and no signal", () => {
@@ -403,6 +411,14 @@ describe("WorkflowStateMachine", () => {
   });
 
   describe("aop-default full flow simulation", () => {
+    test("iterate failure blocks instead of looping via __none__", () => {
+      const sm = createWorkflowStateMachine(aopDefault);
+
+      const result = sm.evaluateTransition("iterate", { status: "failure" });
+
+      expect(result.type).toBe("blocked");
+    });
+
     test("happy path: iterate → full-review(PASSED) → done", () => {
       const sm = createWorkflowStateMachine(aopDefault);
 

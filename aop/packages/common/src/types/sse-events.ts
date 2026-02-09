@@ -10,6 +10,7 @@ export interface SSETask {
   changePath: string;
   status: TaskStatus;
   baseBranch: string | null;
+  preferredProvider: string | null;
   createdAt: string;
   updatedAt: string;
   errorMessage?: string;

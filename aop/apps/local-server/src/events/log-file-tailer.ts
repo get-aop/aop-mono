@@ -52,7 +52,33 @@ export const parseJsonlContent = (content: string): LogLine[] => {
   return result;
 };
 
+const parseOpenCodeEntry = (data: Record<string, unknown>): LogLine[] => {
+  const lines: LogLine[] = [];
+  const timestamp = new Date().toISOString();
+  const part = data.part as Record<string, unknown> | undefined;
+  if (!part) return lines;
+
+  if (data.type === "text") {
+    const text = part.text as string | undefined;
+    if (text) lines.push({ stream: "stdout", content: text, timestamp });
+  }
+
+  if (data.type === "tool_use") {
+    const toolName = (part.tool ?? "tool") as string;
+    const state = part.state as Record<string, unknown> | undefined;
+    const input = (state?.input ?? {}) as Record<string, unknown>;
+    const formatted = formatToolInput(toolName, input);
+    lines.push({ stream: "stdout", content: `[${toolName}] ${formatted}`, timestamp });
+  }
+
+  return lines;
+};
+
 export const parseJsonlEntry = (data: Record<string, unknown>): LogLine[] => {
+  // OpenCode format: events have a `part` field with nested content
+  if (data.part) return parseOpenCodeEntry(data);
+
+  // Claude Code format
   const lines: LogLine[] = [];
   const timestamp = new Date().toISOString();
 

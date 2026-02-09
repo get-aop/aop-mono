@@ -89,10 +89,10 @@ const useDialogs = (task: Task | undefined, onClose: () => void) => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleMarkReadyConfirm = async (workflow: string, baseBranch: string) => {
+  const handleMarkReadyConfirm = async (workflow: string, baseBranch: string, provider: string) => {
     if (!task) return;
     try {
-      await markReady(task.repoId, task.id, workflow, baseBranch || undefined);
+      await markReady(task.repoId, task.id, workflow, baseBranch || undefined, provider);
       setShowMarkReadyDialog(false);
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to mark task as ready");
@@ -348,6 +348,34 @@ const BranchBadge = ({ branch }: { branch: string }) => (
   </div>
 );
 
+const ProviderIcon = () => (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 16 16"
+    fill="currentColor"
+    className="shrink-0"
+    role="img"
+    aria-label="Provider"
+  >
+    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Zm0 2a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0v-3.5A.75.75 0 0 0 8 4.5Zm0 7a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" />
+  </svg>
+);
+
+const formatProviderLabel = (provider: string): string => {
+  if (provider === "claude-code") return "Opus 4.6";
+  if (provider === "opencode:opencode/kimi-k2.5-free") return "Kimi 2.5";
+  if (provider === "opencode:openai/gpt-5.3-codex") return "GPT 5.3 Codex";
+  return provider;
+};
+
+const ProviderBadge = ({ provider }: { provider: string }) => (
+  <div className="flex items-center gap-1 rounded-full border border-aop-charcoal bg-aop-dark px-2 py-0.5 text-aop-slate-light">
+    <ProviderIcon />
+    <span className="font-mono text-[10px]">{formatProviderLabel(provider)}</span>
+  </div>
+);
+
 interface TaskInfoCardProps {
   task: Task;
   onMarkReady: () => void;
@@ -355,6 +383,61 @@ interface TaskInfoCardProps {
   onShowBlockDialog: () => void;
   onShowRemoveDialog: () => void;
 }
+
+const TaskActions = ({
+  status,
+  onMarkReady,
+  onApply,
+  onShowBlockDialog,
+  onShowRemoveDialog,
+}: {
+  status: string;
+  onMarkReady: () => void;
+  onApply: () => void;
+  onShowBlockDialog: () => void;
+  onShowRemoveDialog: () => void;
+}) => (
+  <div className="flex items-center gap-2">
+    {(status === "DRAFT" || status === "BLOCKED") && (
+      <button
+        type="button"
+        onClick={onMarkReady}
+        data-testid="mark-ready-button"
+        className="cursor-pointer rounded-aop bg-aop-amber px-3 py-1 font-mono text-[10px] text-aop-black transition-colors hover:bg-aop-amber/90"
+      >
+        Mark Ready
+      </button>
+    )}
+    {(status === "DONE" || status === "BLOCKED") && (
+      <button
+        type="button"
+        onClick={onApply}
+        data-testid="apply-button"
+        className="cursor-pointer rounded-aop bg-aop-amber px-3 py-1 font-mono text-[10px] text-aop-black transition-colors hover:bg-aop-amber/90"
+      >
+        Apply
+      </button>
+    )}
+    {status === "WORKING" && (
+      <button
+        type="button"
+        onClick={onShowBlockDialog}
+        data-testid="block-task-button"
+        className="cursor-pointer rounded-aop border border-aop-blocked/50 px-3 py-1 font-mono text-[10px] text-aop-blocked transition-colors hover:border-aop-blocked hover:bg-aop-blocked/10"
+      >
+        Block
+      </button>
+    )}
+    <button
+      type="button"
+      onClick={onShowRemoveDialog}
+      data-testid="remove-task-button"
+      className="cursor-pointer rounded-aop border border-aop-charcoal px-3 py-1 font-mono text-[10px] text-aop-slate-light transition-colors hover:border-aop-slate-dark hover:text-aop-cream"
+    >
+      Remove
+    </button>
+  </div>
+);
 
 const TaskInfoCard = ({
   task,
@@ -378,46 +461,13 @@ const TaskInfoCard = ({
           <span className="font-mono text-[10px] text-aop-slate-dark">{repoName}</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {(task.status === "DRAFT" || task.status === "BLOCKED") && (
-            <button
-              type="button"
-              onClick={onMarkReady}
-              data-testid="mark-ready-button"
-              className="cursor-pointer rounded-aop bg-aop-amber px-3 py-1 font-mono text-[10px] text-aop-black transition-colors hover:bg-aop-amber/90"
-            >
-              Mark Ready
-            </button>
-          )}
-          {(task.status === "DONE" || task.status === "BLOCKED") && (
-            <button
-              type="button"
-              onClick={onApply}
-              data-testid="apply-button"
-              className="cursor-pointer rounded-aop bg-aop-amber px-3 py-1 font-mono text-[10px] text-aop-black transition-colors hover:bg-aop-amber/90"
-            >
-              Apply
-            </button>
-          )}
-          {task.status === "WORKING" && (
-            <button
-              type="button"
-              onClick={onShowBlockDialog}
-              data-testid="block-task-button"
-              className="cursor-pointer rounded-aop border border-aop-blocked/50 px-3 py-1 font-mono text-[10px] text-aop-blocked transition-colors hover:border-aop-blocked hover:bg-aop-blocked/10"
-            >
-              Block
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onShowRemoveDialog}
-            data-testid="remove-task-button"
-            className="cursor-pointer rounded-aop border border-aop-charcoal px-3 py-1 font-mono text-[10px] text-aop-slate-light transition-colors hover:border-aop-slate-dark hover:text-aop-cream"
-          >
-            Remove
-          </button>
-        </div>
+        <TaskActions
+          status={task.status}
+          onMarkReady={onMarkReady}
+          onApply={onApply}
+          onShowBlockDialog={onShowBlockDialog}
+          onShowRemoveDialog={onShowRemoveDialog}
+        />
       </div>
 
       <div className="mt-2 flex items-center gap-6 border-t border-aop-charcoal pt-2">
@@ -434,6 +484,7 @@ const TaskInfoCard = ({
           </span>
         </div>
         {task.baseBranch && <BranchBadge branch={task.baseBranch} />}
+        {task.preferredProvider && <ProviderBadge provider={task.preferredProvider} />}
       </div>
 
       {task.status === "BLOCKED" && task.errorMessage && (

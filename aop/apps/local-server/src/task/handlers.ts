@@ -43,6 +43,7 @@ export type MarkTaskReadyError =
 export interface MarkTaskReadyOptions {
   workflow?: string;
   baseBranch?: string;
+  provider?: string;
 }
 
 export const markTaskReady = async (
@@ -90,6 +91,7 @@ export const markTaskReady = async (
     ready_at: new Date().toISOString(),
     preferred_workflow: options?.workflow ?? null,
     base_branch: options?.baseBranch ?? null,
+    preferred_provider: options?.provider ?? null,
   });
 
   if (!updated) {

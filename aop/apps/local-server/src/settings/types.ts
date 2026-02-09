@@ -7,6 +7,7 @@ export const SettingKey = {
   WATCHER_POLL_INTERVAL_SECS: "watcher_poll_interval_secs",
   QUEUE_POLL_INTERVAL_SECS: "queue_poll_interval_secs",
   AGENT_TIMEOUT_SECS: "agent_timeout_secs",
+  AGENT_PROVIDER: "agent_provider",
   SERVER_URL: "server_url",
   API_KEY: "api_key",
   FAST_MODE: "fast_mode",
@@ -19,6 +20,7 @@ export const DEFAULT_SETTINGS: Record<SettingKey, string> = {
   [SettingKey.WATCHER_POLL_INTERVAL_SECS]: "30",
   [SettingKey.QUEUE_POLL_INTERVAL_SECS]: "1",
   [SettingKey.AGENT_TIMEOUT_SECS]: "1800",
+  [SettingKey.AGENT_PROVIDER]: "claude-code",
   [SettingKey.SERVER_URL]: "",
   [SettingKey.API_KEY]: "",
   [SettingKey.FAST_MODE]: "false",
@@ -28,4 +30,16 @@ export const VALID_KEYS: SettingKey[] = Object.values(SettingKey);
 
 export const isValidSettingKey = (key: string): key is SettingKey => {
   return VALID_KEYS.includes(key as SettingKey);
+};
+
+export const VALID_PROVIDER_VALUES = [
+  "claude-code",
+  "opencode:opencode/kimi-k2.5-free",
+  "opencode:openai/gpt-5.3-codex",
+] as const;
+
+export type ProviderValue = (typeof VALID_PROVIDER_VALUES)[number];
+
+export const isValidProviderValue = (value: string): value is ProviderValue => {
+  return (VALID_PROVIDER_VALUES as readonly string[]).includes(value);
 };

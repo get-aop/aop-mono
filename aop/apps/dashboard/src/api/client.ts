@@ -83,10 +83,12 @@ export const markReady = async (
   taskId: string,
   workflow?: string,
   baseBranch?: string,
+  provider?: string,
 ): Promise<{ taskId: string }> => {
   const body: Record<string, string> = {};
   if (workflow) body.workflow = workflow;
   if (baseBranch) body.baseBranch = baseBranch;
+  if (provider) body.provider = provider;
   return request<{ ok: boolean; taskId: string }>(`/repos/${repoId}/tasks/${taskId}/ready`, {
     method: "POST",
     body: JSON.stringify(body),

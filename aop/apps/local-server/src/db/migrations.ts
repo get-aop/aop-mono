@@ -11,6 +11,7 @@ export const runMigrations = async (db: Kysely<Database>): Promise<void> => {
   await addTaskSyncColumns(db);
   await addTaskPreferredWorkflow(db);
   await addTaskBaseBranch(db);
+  await addTaskPreferredProvider(db);
   await createExecutionsTable(db);
   await createStepExecutionsTable(db);
   await addStepExecutionSignalColumns(db);
@@ -119,6 +120,15 @@ const addTaskBaseBranch = async (db: Kysely<Database>): Promise<void> => {
 
   if (!columns.includes("base_branch")) {
     await sql`ALTER TABLE tasks ADD COLUMN base_branch TEXT`.execute(db);
+  }
+};
+
+const addTaskPreferredProvider = async (db: Kysely<Database>): Promise<void> => {
+  const tableInfo = await sql<{ name: string }>`PRAGMA table_info(tasks)`.execute(db);
+  const columns = tableInfo.rows.map((row) => row.name);
+
+  if (!columns.includes("preferred_provider")) {
+    await sql`ALTER TABLE tasks ADD COLUMN preferred_provider TEXT`.execute(db);
   }
 };
 

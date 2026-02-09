@@ -81,6 +81,7 @@ describe("logging E2E", () => {
 
     test("console output uses ANSI colors for service prefix", async () => {
       const captured: string[] = [];
+      // biome-ignore lint/suspicious/noConsole: testing console output behavior
       const origInfo = console.info;
       console.info = (...args: unknown[]) => {
         captured.push(args.map(String).join(" "));

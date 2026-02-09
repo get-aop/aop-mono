@@ -28,6 +28,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   changePath: "changes/feat-1",
   status: "DRAFT",
   baseBranch: null,
+  preferredProvider: null,
   createdAt: "2024-01-01T00:00:00.000Z",
   updatedAt: "2024-01-01T00:00:00.000Z",
   ...overrides,

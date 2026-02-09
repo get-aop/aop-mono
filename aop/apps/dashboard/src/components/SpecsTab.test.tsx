@@ -45,6 +45,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   changePath: "openspec/changes/my-change",
   status: "DONE",
   baseBranch: null,
+  preferredProvider: null,
   createdAt: "2024-01-01T00:00:00.000Z",
   updatedAt: "2024-01-01T00:00:00.000Z",
   ...overrides,

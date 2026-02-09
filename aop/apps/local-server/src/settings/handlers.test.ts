@@ -3,7 +3,7 @@ import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo } from "../db/test-utils.ts";
-import { cleanupRemovedWorktrees, setAllSettings } from "./handlers.ts";
+import { cleanupRemovedWorktrees, setAllSettings, setSetting } from "./handlers.ts";
 
 describe("settings/handlers", () => {
   let db: Kysely<Database>;
@@ -52,6 +52,45 @@ describe("settings/handlers", () => {
       expect(result.success).toBe(true);
       if (!result.success) return;
       expect(result.settings).toHaveLength(0);
+    });
+
+    test("rejects invalid agent_provider value", async () => {
+      const result = await setAllSettings(ctx, [
+        { key: "agent_provider", value: "invalid-provider" },
+      ]);
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.code).toBe("INVALID_VALUE");
+    });
+
+    test("accepts valid agent_provider values", async () => {
+      for (const value of [
+        "claude-code",
+        "opencode:opencode/kimi-k2.5-free",
+        "opencode:openai/gpt-5.3-codex",
+      ]) {
+        const result = await setAllSettings(ctx, [{ key: "agent_provider", value }]);
+        expect(result.success).toBe(true);
+      }
+    });
+  });
+
+  describe("setSetting", () => {
+    test("rejects invalid agent_provider value", async () => {
+      const result = await setSetting(ctx, "agent_provider", "bad-value");
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.code).toBe("INVALID_VALUE");
+    });
+
+    test("accepts valid agent_provider value", async () => {
+      const result = await setSetting(ctx, "agent_provider", "opencode:opencode/kimi-k2.5-free");
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.value).toBe("opencode:opencode/kimi-k2.5-free");
     });
   });
 

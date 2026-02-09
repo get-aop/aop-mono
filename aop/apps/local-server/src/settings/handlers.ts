@@ -1,7 +1,14 @@
 import { GitManager } from "@aop/git-manager";
 import { getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
-import { DEFAULT_SETTINGS, isValidSettingKey, type SettingKey, VALID_KEYS } from "./types.ts";
+import {
+  DEFAULT_SETTINGS,
+  isValidProviderValue,
+  isValidSettingKey,
+  SettingKey,
+  VALID_KEYS,
+  VALID_PROVIDER_VALUES,
+} from "./types.ts";
 
 const logger = getLogger("settings");
 
@@ -24,11 +31,9 @@ export type SetSettingResult =
   | { success: true; key: string; value: string }
   | { success: false; error: SetSettingError };
 
-export type SetSettingError = {
-  code: "INVALID_KEY";
-  key: string;
-  validKeys: SettingKey[];
-};
+export type SetSettingError =
+  | { code: "INVALID_KEY"; key: string; validKeys: SettingKey[] }
+  | { code: "INVALID_VALUE"; key: string; value: string; validValues: readonly string[] };
 
 export const getSetting = async (
   ctx: LocalServerContext,
@@ -57,6 +62,13 @@ export const getAllSettings = async (ctx: LocalServerContext): Promise<GetAllSet
   return { success: true, settings };
 };
 
+const validateSettingValue = (key: SettingKey, value: string): SetSettingError | null => {
+  if (key === SettingKey.AGENT_PROVIDER && !isValidProviderValue(value)) {
+    return { code: "INVALID_VALUE", key, value, validValues: VALID_PROVIDER_VALUES };
+  }
+  return null;
+};
+
 export const setSetting = async (
   ctx: LocalServerContext,
   key: string,
@@ -67,6 +79,11 @@ export const setSetting = async (
       success: false,
       error: { code: "INVALID_KEY", key, validKeys: VALID_KEYS },
     };
+  }
+
+  const valueError = validateSettingValue(key, value);
+  if (valueError) {
+    return { success: false, error: valueError };
   }
 
   await ctx.settingsRepository.set(key, value);
@@ -87,6 +104,10 @@ export const setAllSettings = async (
         success: false,
         error: { code: "INVALID_KEY", key: entry.key, validKeys: VALID_KEYS },
       };
+    }
+    const valueError = validateSettingValue(entry.key, entry.value);
+    if (valueError) {
+      return { success: false, error: valueError };
     }
   }
 

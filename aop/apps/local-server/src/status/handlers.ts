@@ -15,6 +15,7 @@ export const toSSETask = (
   changePath: task.change_path,
   status: task.status,
   baseBranch: task.base_branch ?? null,
+  preferredProvider: task.preferred_provider ?? null,
   createdAt: task.created_at,
   updatedAt: task.updated_at,
   errorMessage: undefined,

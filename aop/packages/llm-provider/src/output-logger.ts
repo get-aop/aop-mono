@@ -142,6 +142,12 @@ export const createOutputLogger = (options: OutputLoggerOptions): OutputHandler 
  * Extract text content from an assistant message.
  */
 export const extractAssistantText = (data: Record<string, unknown>): string => {
+  // OpenCode format
+  if (data.type === "text" && data.part) {
+    const part = data.part as Record<string, unknown>;
+    return typeof part.text === "string" ? part.text : "";
+  }
+
   if (data.type !== "assistant") return "";
   const message = data.message;
   if (message && typeof message === "object") {

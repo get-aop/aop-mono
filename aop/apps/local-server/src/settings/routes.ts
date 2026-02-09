@@ -25,6 +25,17 @@ export const createSettingsRoutes = (ctx: LocalServerContext) => {
 
     const result = await setAllSettings(ctx, body.settings);
     if (!result.success) {
+      if (result.error.code === "INVALID_VALUE") {
+        return c.json(
+          {
+            error: "Invalid value",
+            key: result.error.key,
+            value: result.error.value,
+            validValues: result.error.validValues,
+          },
+          400,
+        );
+      }
       return c.json(
         { error: "Invalid key", key: result.error.key, validKeys: result.error.validKeys },
         400,
@@ -60,6 +71,12 @@ export const createSettingsRoutes = (ctx: LocalServerContext) => {
 
     const result = await setSetting(ctx, key, body.value);
     if (!result.success) {
+      if (result.error.code === "INVALID_VALUE") {
+        return c.json(
+          { error: "Invalid value", key, value: body.value, validValues: result.error.validValues },
+          400,
+        );
+      }
       return c.json({ error: "Invalid key", key, validKeys: result.error.validKeys }, 400);
     }
 

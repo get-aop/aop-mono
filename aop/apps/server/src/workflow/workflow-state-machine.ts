@@ -85,10 +85,15 @@ const findMatchingTransition = (
   transitions: Transition[],
   result: StepResult,
 ): Transition | undefined => {
-  // Priority: signal → __none__ → success/failure
+  // Priority: signal → status(failure) → __none__ → status(success/failure)
   if (result.signal) {
     const signalTransition = transitions.find((t) => t.condition === result.signal);
     if (signalTransition) return signalTransition;
+  }
+
+  // Failures skip __none__ — a crashed agent should not be treated as "no signal yet"
+  if (result.status === "failure") {
+    return transitions.find((t) => t.condition === result.status);
   }
 
   if (!result.signal) {

@@ -3,42 +3,47 @@ interface LogoProps {
   size?: "sm" | "md" | "lg";
 }
 
+const svgSizes = {
+  sm: 16,
+  md: 24,
+  lg: 32,
+};
+
 const sizeClasses = {
   sm: {
-    orchestrator: "h-1.5 w-1.5",
-    agent: "h-1 w-1",
-    gap: "gap-0.5",
     wordmark: "text-sm",
   },
   md: {
-    orchestrator: "h-2 w-2",
-    agent: "h-1.5 w-1.5",
-    gap: "gap-0.5",
     wordmark: "text-lg",
   },
   lg: {
-    orchestrator: "h-3 w-3",
-    agent: "h-2 w-2",
-    gap: "gap-1",
     wordmark: "text-xl",
   },
 };
 
 export const Logo = ({ showWordmark = true, size = "md" }: LogoProps) => {
-  const classes = sizeClasses[size];
+  const svgSize = svgSizes[size];
+  const wordmarkClass = sizeClasses[size].wordmark;
 
   return (
     <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1">
-        <div className={`${classes.orchestrator} rounded-full bg-aop-amber`} />
-        <div className={`flex ${classes.gap}`}>
-          <div className={`${classes.agent} rounded-full bg-aop-cream`} />
-          <div className={`${classes.agent} rounded-full bg-aop-cream`} />
-          <div className={`${classes.agent} rounded-full bg-aop-cream`} />
-        </div>
-      </div>
+      <svg
+        width={svgSize}
+        height={svgSize}
+        viewBox="0 0 40 40"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        role="img"
+      >
+        <title>AOP Logo</title>
+        <circle cx="20" cy="20" r="9" stroke="#d97706" strokeWidth="1.5" />
+        <circle cx="20" cy="20" r="3" fill="#d97706" />
+        <circle cx="20" cy="4" r="2" fill="#fafaf9" />
+        <circle cx="33.9" cy="28" r="2" fill="#fafaf9" />
+        <circle cx="6.1" cy="28" r="2" fill="#fafaf9" />
+      </svg>
       {showWordmark && (
-        <span className={`font-display ${classes.wordmark} font-light tracking-wider`}>AOP</span>
+        <span className={`font-display ${wordmarkClass} font-light tracking-wider`}>AOP</span>
       )}
     </div>
   );

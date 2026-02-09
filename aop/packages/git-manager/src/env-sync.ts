@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getLogger } from "@aop/infra";
 import type { GitExecutor } from "./git-executor.ts";
@@ -18,6 +18,26 @@ export const discoverEnvFiles = async (executor: GitExecutor): Promise<string[]>
   return [...files].sort();
 };
 
+/** Handle case where symlink creation failed due to existing file. */
+const handleSymlinkError = (source: string, target: string, path: string): void => {
+  if (!existsSync(target) || lstatSync(target).isSymbolicLink()) {
+    logger.error("Failed to symlink {path}", { path });
+    return;
+  }
+
+  try {
+    if (readFileSync(target, "utf-8") === readFileSync(source, "utf-8")) {
+      rmSync(target);
+      symlinkSync(source, target);
+      logger.debug("Replaced copied file with symlink: {path}", { path });
+    } else {
+      logger.debug("Skipping {path} — worktree has different version", { path });
+    }
+  } catch (err) {
+    logger.warn("Failed to replace {path} with symlink: {error}", { path, error: String(err) });
+  }
+};
+
 export const syncEnvFiles = async (
   executor: GitExecutor,
   repoPath: string,
@@ -28,6 +48,7 @@ export const syncEnvFiles = async (
 
   for (const relativePath of envFiles) {
     const target = join(worktreePath, relativePath);
+
     if (existsSync(target)) {
       logger.debug("Skipping {path} — already exists in worktree", { path: relativePath });
       continue;
@@ -39,8 +60,12 @@ export const syncEnvFiles = async (
     }
 
     const source = join(repoPath, relativePath);
-    symlinkSync(source, target);
-    logger.debug("Symlinked {path} into worktree", { path: relativePath });
+    try {
+      symlinkSync(source, target);
+      logger.debug("Symlinked {path} into worktree", { path: relativePath });
+    } catch {
+      handleSymlinkError(source, target, relativePath);
+    }
   }
 
   logger.info("Synced {count} env files into worktree", { count: envFiles.length });
