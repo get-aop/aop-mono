@@ -1,28 +1,33 @@
+import fs from "node:fs";
+import path from "node:path";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerDMG } from "@electron-forge/maker-dmg";
 import { WebpackPlugin } from "@electron-forge/plugin-webpack";
 import type { ForgeConfig } from "@electron-forge/shared-types";
-import fs from "fs";
-import path from "path";
 import { mainConfig } from "./webpack.main.config.js";
 import { rendererConfig } from "./webpack.renderer.config.js";
 
-// Copy extra resources after packaging (macOS)
+interface BuildResult {
+  outputPaths?: string[];
+}
+
 const copyExtraResourcesMac = async (outputPath: string) => {
   const resourcesDir = path.join(outputPath, "AOP.app", "Contents", "Resources");
 
   if (!fs.existsSync(resourcesDir)) {
+    // biome-ignore lint/suspicious/noConsole: build logging
     console.log(`[Forge] macOS resources not found at ${resourcesDir}`);
     return;
   }
 
+  // biome-ignore lint/suspicious/noConsole: build logging
   console.log(`[Forge] macOS resources: ${resourcesDir}`);
 
-  // Replace the app icon
   const iconSource = path.join(__dirname, "assets", "icon.icns");
   const electronIconTarget = path.join(resourcesDir, "electron.icns");
   if (fs.existsSync(iconSource)) {
     fs.cpSync(iconSource, electronIconTarget, { force: true });
+    // biome-ignore lint/suspicious/noConsole: build logging
     console.log(`[Forge] Replaced icon: ${iconSource} -> ${electronIconTarget}`);
   }
 
@@ -48,23 +53,25 @@ const copyExtraResourcesMac = async (outputPath: string) => {
   for (const { from, to } of filesToCopy) {
     if (fs.existsSync(from)) {
       fs.cpSync(from, to, { recursive: true, force: true });
+      // biome-ignore lint/suspicious/noConsole: build logging
       console.log(`[Forge] Copied ${from} -> ${to}`);
     } else {
+      // biome-ignore lint/suspicious/noConsole: build logging
       console.error(`[Forge] Source not found: ${from}`);
     }
   }
 };
 
-// Copy extra resources for Linux (AppImage/unpacked)
 const copyExtraResourcesLinux = async (outputPath: string) => {
-  // For Linux, resources go directly in the app directory
   const resourcesDir = outputPath;
 
   if (!fs.existsSync(resourcesDir)) {
+    // biome-ignore lint/suspicious/noConsole: build logging
     console.log(`[Forge] Linux output not found at ${resourcesDir}`);
     return;
   }
 
+  // biome-ignore lint/suspicious/noConsole: build logging
   console.log(`[Forge] Linux resources: ${resourcesDir}`);
 
   const filesToCopy = [
@@ -89,22 +96,23 @@ const copyExtraResourcesLinux = async (outputPath: string) => {
   for (const { from, to } of filesToCopy) {
     if (fs.existsSync(from)) {
       fs.cpSync(from, to, { recursive: true, force: true });
+      // biome-ignore lint/suspicious/noConsole: build logging
       console.log(`[Forge] Copied ${from} -> ${to}`);
     } else {
+      // biome-ignore lint/suspicious/noConsole: build logging
       console.error(`[Forge] Source not found: ${from}`);
     }
   }
 };
 
-// Main hook that handles both platforms
-const copyExtraResources = async (_config: any, buildResult: any) => {
+const copyExtraResources = async (_config: ForgeConfig, buildResult: BuildResult) => {
   const outputPath = buildResult?.outputPaths?.[0];
   if (!outputPath) {
+    // biome-ignore lint/suspicious/noConsole: build logging
     console.log("[Forge] No output path found");
     return;
   }
 
-  // Detect platform from output path
   if (outputPath.includes("darwin") || outputPath.includes("AOP.app")) {
     await copyExtraResourcesMac(outputPath);
   } else {
