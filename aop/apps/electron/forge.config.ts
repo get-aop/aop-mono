@@ -1,9 +1,7 @@
-import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerDeb } from "@electron-forge/maker-deb";
-import { MakerWix } from "@electron-forge/maker-wix";
+import { MakerDMG } from "@electron-forge/maker-dmg";
 import { WebpackPlugin } from "@electron-forge/plugin-webpack";
 import type { ForgeConfig } from "@electron-forge/shared-types";
-import { MakerAppImage } from "electron-forge-maker-appimage";
 import fs from "fs";
 import path from "path";
 import { mainConfig } from "./webpack.main.config.js";
@@ -12,14 +10,14 @@ import { rendererConfig } from "./webpack.renderer.config.js";
 // Copy extra resources after packaging (macOS)
 const copyExtraResourcesMac = async (outputPath: string) => {
   const resourcesDir = path.join(outputPath, "AOP.app", "Contents", "Resources");
-  
+
   if (!fs.existsSync(resourcesDir)) {
     console.log(`[Forge] macOS resources not found at ${resourcesDir}`);
     return;
   }
-  
+
   console.log(`[Forge] macOS resources: ${resourcesDir}`);
-  
+
   // Replace the app icon
   const iconSource = path.join(__dirname, "assets", "icon.icns");
   const electronIconTarget = path.join(resourcesDir, "electron.icns");
@@ -27,7 +25,7 @@ const copyExtraResourcesMac = async (outputPath: string) => {
     fs.cpSync(iconSource, electronIconTarget, { force: true });
     console.log(`[Forge] Replaced icon: ${iconSource} -> ${electronIconTarget}`);
   }
-  
+
   const filesToCopy = [
     {
       from: path.join(__dirname, "..", "local-server", "dist", "aop-server"),
@@ -46,7 +44,7 @@ const copyExtraResourcesMac = async (outputPath: string) => {
       to: path.join(resourcesDir, "tray-iconTemplate.png"),
     },
   ];
-  
+
   for (const { from, to } of filesToCopy) {
     if (fs.existsSync(from)) {
       fs.cpSync(from, to, { recursive: true, force: true });
@@ -61,14 +59,14 @@ const copyExtraResourcesMac = async (outputPath: string) => {
 const copyExtraResourcesLinux = async (outputPath: string) => {
   // For Linux, resources go directly in the app directory
   const resourcesDir = outputPath;
-  
+
   if (!fs.existsSync(resourcesDir)) {
     console.log(`[Forge] Linux output not found at ${resourcesDir}`);
     return;
   }
-  
+
   console.log(`[Forge] Linux resources: ${resourcesDir}`);
-  
+
   const filesToCopy = [
     {
       from: path.join(__dirname, "..", "local-server", "dist", "aop-server"),
@@ -87,7 +85,7 @@ const copyExtraResourcesLinux = async (outputPath: string) => {
       to: path.join(resourcesDir, "tray-iconTemplate.png"),
     },
   ];
-  
+
   for (const { from, to } of filesToCopy) {
     if (fs.existsSync(from)) {
       fs.cpSync(from, to, { recursive: true, force: true });
@@ -105,7 +103,7 @@ const copyExtraResources = async (_config: any, buildResult: any) => {
     console.log("[Forge] No output path found");
     return;
   }
-  
+
   // Detect platform from output path
   if (outputPath.includes("darwin") || outputPath.includes("AOP.app")) {
     await copyExtraResourcesMac(outputPath);
@@ -117,6 +115,7 @@ const copyExtraResources = async (_config: any, buildResult: any) => {
 const config: ForgeConfig = {
   packagerConfig: {
     asar: false,
+    executableName: "aop",
     extraResources: [
       {
         from: path.join(__dirname, "..", "local-server", "dist", "aop-server"),
@@ -151,18 +150,9 @@ const config: ForgeConfig = {
         icon: path.join(__dirname, "assets", "icon.png"),
         categories: ["Development", "Utility"],
         description: "AOP Desktop Application - Run agents on your repos",
-        productName: "AOP Desktop",
+        productName: "aop",
+        bin: "aop",
       },
-    }),
-    new MakerWix({
-      name: "AOP Desktop",
-      manufacturer: "AOP",
-      description: "AOP Desktop Application",
-    }),
-    // AppImage - universal Linux executable (works on WSL2 too)
-    new MakerAppImage({
-      name: "AOP Desktop",
-      icon: path.join(__dirname, "assets", "icon.png"),
     }),
   ],
   plugins: [

@@ -1,26 +1,26 @@
-name: Build Electron Apps
+name: Build & Release Electron Apps
 
 on:
-  push:
-    branches: [feat/electron-app, main]
-    paths:
-      - "aop/apps/electron/**"
-      - "aop/apps/dashboard/**"
-      - "aop/apps/local-server/**"
-      - "aop/packages/**"
-  pull_request:
-    branches: [main]
-    paths:
-      - "aop/apps/electron/**"
-      - "aop/apps/dashboard/**"
-      - "aop/apps/local-server/**"
-      - "aop/packages/**"
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build from"
+        required: true
+        default: "main"
+        type: string
+      version:
+        description: "Version tag (e.g., 0.1.0)"
+        required: true
+        default: "0.1.0"
+        type: string
 
 jobs:
   build-macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -38,14 +38,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-artifacts
-          path: |
-            aop/apps/electron/out/make/*.dmg
-            aop/apps/electron/out/*.zip
+          path: aop/apps/electron/out/make/*.dmg
+          retention-days: 1
 
   build-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -68,28 +69,58 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-artifacts
-          path: |
-            aop/apps/electron/out/make/*.AppImage
-            aop/apps/electron/out/make/*.deb
-            aop/apps/electron/out/*.zip
+          path: aop/apps/electron/out/make/deb/**/*.deb
+          retention-days: 1
 
   release:
     needs: [build-macos, build-linux]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     steps:
-      - name: Download all artifacts
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          name: macos-artifacts
+          path: artifacts/macos
 
-      - name: Display structure
-        run: ls -R artifacts
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-artifacts
+          path: artifacts/linux
 
-      # Uncomment when ready to auto-release
-      # - name: Create Release
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     files: artifacts/**/*
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -name "*.dmg" -exec cp {} release-assets/ \;
+          find artifacts -name "*.deb" -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ github.event.inputs.version }}" -m "Release v${{ github.event.inputs.version }}"
+          git push origin "v${{ github.event.inputs.version }}"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: AOP Desktop v${{ github.event.inputs.version }}
+          body: |
+            ## AOP Desktop v${{ github.event.inputs.version }}
+
+            ### Downloads
+            - **macOS**: `AOP Desktop.dmg`
+            - **Linux (Debian/Ubuntu)**: `aop-electron_*.deb`
+          files: release-assets/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
