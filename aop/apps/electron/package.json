@@ -1,0 +1,34 @@
+{
+  "name": "@aop/electron",
+  "version": "0.1.0",
+  "type": "module",
+  "main": ".webpack/main.js",
+  "scripts": {
+    "start": "bun run build:deps && electron-forge start",
+    "package": "bun run build:deps && electron-forge package",
+    "make": "bun run build:deps && electron-forge make",
+    "build": "bun run build:deps && electron-forge make",
+    "build:deps": "bun run build:sidecar && bun run build:dashboard",
+    "build:sidecar": "cd ../local-server && bun run build:sidecar",
+    "build:dashboard": "cd ../dashboard && bun run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.4.0",
+    "@electron-forge/maker-dmg": "^7.4.0",
+    "@electron-forge/maker-wix": "^7.4.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.4.0",
+    "@electron-forge/plugin-webpack": "^7.4.0",
+    "@vercel/webpack-asset-relocator-loader": "^1.7.3",
+    "css-loader": "^7.1.2",
+    "electron": "^30.0.0",
+    "electron-forge-maker-appimage": "^26.7.0",
+    "node-loader": "^2.0.0",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.2.1"
+  }
+}

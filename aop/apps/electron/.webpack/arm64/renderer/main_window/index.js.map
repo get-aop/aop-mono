@@ -1,0 +1,1 @@
+{"version":3,"file":"main_window/index.js","mappings":";;;;;;AAAa;AACb;AACA","sources":["webpack://@aop/electron/./src/renderer.ts"],"sourcesContent":["\"use strict\";\n// Renderer entry point - dashboard is loaded via HTTP\nconsole.log('AOP Desktop renderer loaded');\n"],"names":[],"sourceRoot":""}

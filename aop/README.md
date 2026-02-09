@@ -39,6 +39,51 @@ AOP uses a client-server architecture with a local HTTP server for background ta
 - **[Architecture](docs/ARCHITECTURE.md)** - System design, decisions, and build milestones
 - **[Local Server](apps/local-server/README.md)** - HTTP server, orchestrator, and API reference
 - **[CLI Reference](apps/cli/README.md)** - CLI commands and usage
+- **[Desktop App](apps/electron/README.md)** - Electron desktop application
+
+## Desktop App
+
+AOP provides a self-contained desktop application built with Electron for macOS, Windows, and Linux. The desktop app bundles the local server and dashboard into a single installable package with auto-update support.
+
+### Features
+
+- **Zero-config installation** - Download and run, no Bun or dependencies required
+- **Auto-updates** - Automatic updates via GitHub Releases
+- **System tray** - Runs in background with tray icon
+- **Single instance** - Prevents multiple app instances (SQLite limitation)
+
+### Building from Source
+
+```bash
+# Build the desktop app for current platform
+bun run apps/electron/src/main.ts make
+
+# Or navigate to electron app directory
+cd apps/electron
+bun run make
+```
+
+This will:
+1. Build the Bun server sidecar (`bun build --compile`)
+2. Build the dashboard React app
+3. Package with electron-forge into platform-specific installer (DMG/NSIS/AppImage)
+
+### Development
+
+```bash
+# Start electron app in development mode (with hot reload)
+cd apps/electron
+bun run start
+```
+
+### Distribution
+
+The desktop app is distributed via GitHub Releases:
+- **macOS**: DMG with Apple notarization
+- **Windows**: NSIS installer with code signing
+- **Linux**: AppImage
+
+See [`.github/workflows/release-electron.yml`](.github/workflows/release-electron.yml) for CI/CD configuration.
 
 ## Quick Start
 
