@@ -190,6 +190,7 @@ const createWindow = () => {
     width: 1200,
     height: 800,
     show: false,
+    title: "AOP Desktop",
     webPreferences: {
       preload: path.join(__dirname, "..", "..", "src", "preload.ts"),
     },
@@ -254,6 +255,8 @@ const loadDashboard = async (port: number) => {
 
   console.log(`[Electron] Server ready, loading dashboard...`);
   mainWindow.loadURL(`http://127.0.0.1:${port}`);
+  // Keep window title as "AOP Desktop" instead of letting HTML change it
+  mainWindow.setTitle("AOP Desktop");
   mainWindow.show();
 };
 
