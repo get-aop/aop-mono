@@ -2,7 +2,7 @@
   "name": "@aop/electron",
   "version": "0.1.0",
   "type": "module",
-  "main": ".webpack/main.js",
+  "main": ".webpack/main.cjs",
   "scripts": {
     "start": "bun run build:deps && electron-forge start",
     "package": "bun run build:deps && electron-forge package",

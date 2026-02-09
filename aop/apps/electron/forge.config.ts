@@ -11,8 +11,8 @@ import { rendererConfig } from "./webpack.renderer.config.js";
 const copyMainEntry = () => {
   const webpackDir = path.join(__dirname, ".webpack");
   const archDir = path.join(webpackDir, process.arch);
-  const sourceFile = path.join(archDir, "main.js");
-  const targetFile = path.join(webpackDir, "main");
+  const sourceFile = path.join(archDir, "main.cjs");
+  const targetFile = path.join(webpackDir, "main.cjs");
 
   if (fs.existsSync(sourceFile) && !fs.existsSync(targetFile)) {
     fs.mkdirSync(webpackDir, { recursive: true });

@@ -17,75 +17,138 @@ let serverPort: number | null = null;
 const FORCE_KILL_TIMEOUT_MS = 10000;
 
 const getServerPath = (): string => {
-  return path.join(process.resourcesPath, "aop-server");
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "aop-server");
+  }
+  // In dev mode, server is in sibling directory
+  return path.join(__dirname, "..", "..", "local-server", "dist", "aop-server");
 };
 
 const getDashboardPath = (): string => {
-  return path.join(process.resourcesPath, "dashboard");
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "dashboard");
+  }
+  // In dev mode, dashboard is in sibling directory
+  return path.join(__dirname, "..", "..", "dashboard", "dist");
+};
+
+const spawnServerWithEnv = (
+  serverPath: string,
+  dashboardPath: string,
+  dashboardUrl: string,
+): ChildProcess => {
+  return spawn(serverPath, [], {
+    env: {
+      ...process.env,
+      AOP_ELECTRON_SIDECAR: "1",
+      AOP_DB_PATH: path.join(app.getPath("userData"), "aop.db"),
+      DASHBOARD_STATIC_PATH: dashboardPath,
+      AOP_DASHBOARD_URL: dashboardUrl,
+    },
+    detached: false,
+  });
 };
 
 const spawnServer = (): Promise<number> => {
   return new Promise((resolve, reject) => {
     const serverPath = getServerPath();
     const dashboardPath = getDashboardPath();
+    console.log(`[Electron] Server path: ${serverPath}`);
+    console.log(`[Electron] Dashboard path: ${dashboardPath}`);
+    console.log(`[Electron] Server exists: ${require("fs").existsSync(serverPath)}`);
 
-    serverProcess = spawn(serverPath, [], {
-      env: {
-        ...process.env,
-        AOP_ELECTRON_SIDECAR: "1",
-        AOP_DB_PATH: path.join(app.getPath("userData"), "aop.db"),
-        DASHBOARD_STATIC_PATH: dashboardPath,
-      },
-      detached: false,
-    });
-
+    // First, discover the port with a dummy URL
+    let discoveryProcess: ChildProcess | null = null;
     let portFound = false;
 
-    serverProcess.stdout?.on("data", (data: Buffer) => {
+    discoveryProcess = spawnServerWithEnv(
+      serverPath,
+      dashboardPath,
+      "http://127.0.0.1:3847", // Dummy URL for discovery
+    );
+
+    const cleanupDiscovery = () => {
+      if (discoveryProcess && !discoveryProcess.killed) {
+        discoveryProcess.kill("SIGKILL");
+      }
+    };
+
+    discoveryProcess.stdout?.on("data", (data: Buffer) => {
       const output = data.toString();
 
       // Look for port announcement
       const portMatch = output.match(/AOP_SERVER_PORT=(\d+)/);
       if (portMatch && !portFound) {
         portFound = true;
-        serverPort = parseInt(portMatch[1], 10);
-        resolve(serverPort);
+        const discoveredPort = parseInt(portMatch[1], 10);
+
+        // Kill discovery process and start real one with correct URL
+        cleanupDiscovery();
+
+        // Start the real server with correct dashboard URL
+        const dashboardUrl = `http://127.0.0.1:${discoveredPort}`;
+        serverProcess = spawnServerWithEnv(serverPath, dashboardPath, dashboardUrl);
+        serverPort = discoveredPort;
+
+        // Forward events from real server
+        serverProcess.stdout?.on("data", (data: Buffer) => {
+          console.log("Server:", data.toString());
+        });
+
+        serverProcess.stderr?.on("data", (data: Buffer) => {
+          console.error("Server stderr:", data.toString());
+        });
+
+        serverProcess.on("error", (err) => {
+          console.error("Server error:", err);
+          if (mainWindow) {
+            mainWindow.webContents.send("server-error", String(err));
+          }
+        });
+
+        serverProcess.on("exit", (code) => {
+          console.log(`Server exited with code ${code}`);
+          if (code !== 0 && mainWindow) {
+            mainWindow.webContents.send("server-crashed", code);
+          }
+          serverProcess = null;
+        });
+
+        resolve(discoveredPort);
       }
 
       // Look for errors
       const errorMatch = output.match(/AOP_SERVER_ERROR=(.+)/);
       if (errorMatch && !portFound) {
+        cleanupDiscovery();
         reject(new Error(errorMatch[1]));
       }
     });
 
-    serverProcess.stderr?.on("data", (data: Buffer) => {
-      console.error("Server stderr:", data.toString());
+    discoveryProcess.stderr?.on("data", (data: Buffer) => {
+      console.error("Discovery stderr:", data.toString());
     });
 
-    serverProcess.on("error", (err) => {
+    discoveryProcess.on("error", (err) => {
       if (!portFound) {
+        cleanupDiscovery();
         reject(err);
       }
     });
 
-    serverProcess.on("exit", (code) => {
+    discoveryProcess.on("exit", (code) => {
       if (!portFound) {
-        reject(new Error(`Server exited with code ${code}`));
-      } else {
-        // Server crashed after starting
-        if (code !== 0 && mainWindow) {
-          mainWindow.webContents.send("server-crashed", code);
-        }
+        reject(new Error(`Server discovery exited with code ${code}`));
       }
     });
 
-    // Timeout if no port received within 30 seconds
+    // Timeout if no port received within 10 seconds
     setTimeout(() => {
       if (!portFound) {
-        reject(new Error("Timeout waiting for server port"));
+        cleanupDiscovery();
+        reject(new Error("Timeout waiting for server port discovery"));
       }
-    }, 30000);
+    }, 10000);
   });
 };
 
@@ -124,7 +187,7 @@ const createWindow = () => {
     height: 800,
     show: false, // Don't show until server is ready
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "..", "..", "src", "preload.ts"),
     },
   });
 
@@ -132,7 +195,11 @@ const createWindow = () => {
   setMainWindow(mainWindow);
 
   // Show loading page first
-  mainWindow.loadFile(path.join(__dirname, "index.html"));
+  const indexPath = app.isPackaged
+    ? path.join(__dirname, "renderer", "main_window", "index.html")
+    : path.join(__dirname, "..", "..", "..", "src", "index.html");
+  console.log(`[Electron] Loading index from: ${indexPath}`);
+  mainWindow.loadFile(indexPath);
 
   mainWindow.once("ready-to-show", () => {
     // Window is ready but we'll show it after server loads
@@ -151,11 +218,37 @@ const createWindow = () => {
   });
 };
 
-const loadDashboard = (port: number) => {
-  if (mainWindow) {
-    mainWindow.loadURL(`http://127.0.0.1:${port}`);
-    mainWindow.show();
+const waitForServer = async (port: number, maxRetries = 30): Promise<boolean> => {
+  const url = `http://127.0.0.1:${port}`;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(url);
+      if (response.status === 200) {
+        return true;
+      }
+    } catch {
+      // Server not ready yet
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  return false;
+};
+
+const loadDashboard = async (port: number) => {
+  if (!mainWindow) return;
+
+  console.log(`[Electron] Waiting for server on port ${port}...`);
+  const isReady = await waitForServer(port);
+
+  if (!isReady) {
+    console.error(`[Electron] Server on port ${port} failed to respond`);
+    mainWindow.webContents.send("server-error", "Server failed to start");
+    return;
+  }
+
+  console.log(`[Electron] Server ready, loading dashboard...`);
+  mainWindow.loadURL(`http://127.0.0.1:${port}`);
+  mainWindow.show();
 };
 
 const restartServer = async () => {
@@ -192,10 +285,13 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
+    console.log("[Electron] App ready, creating window...");
     createWindow();
+    console.log("[Electron] Window created");
 
     // Create tray icon
     createTray();
+    console.log("[Electron] Tray created");
 
     // Initialize auto-updater
     if (mainWindow) {
@@ -203,8 +299,10 @@ if (!gotTheLock) {
       setCheckForUpdatesFn(() => updater.checkForUpdates());
     }
 
+    console.log("[Electron] Spawning server...");
     try {
       const port = await spawnServer();
+      console.log(`[Electron] Server started on port ${port}, loading dashboard...`);
       loadDashboard(port);
     } catch (err) {
       const errorMsg = String(err);
