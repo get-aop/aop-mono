@@ -147,7 +147,7 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   makers: [
     new MakerDMG({
-      name: "AOP Desktop",
+      name: "aop-desktop",
       icon: "./assets/icon.icns",
       overwrite: true,
     }),
