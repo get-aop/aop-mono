@@ -54,6 +54,17 @@ const SETTING_META: Record<string, SettingMeta> = {
     type: "number",
     suffix: "s",
   },
+  agent_provider: {
+    label: "LLM Provider",
+    description: "Which LLM provider the orchestrator uses for agents",
+    type: "select",
+    options: [
+      { value: "claude-code", label: "Opus 4.6" },
+      { value: "opencode:opencode/kimi-k2.5", label: "Kimi K2.5" },
+      { value: "opencode:opencode/kimi-k2.5-free", label: "Kimi K2.5 Free" },
+      { value: "opencode:openai/gpt-5.3-codex", label: "GPT 5.3 Codex" },
+    ],
+  },
   fast_mode: {
     label: "Fast Mode",
     description: "Enable Claude Code fast mode for faster output",
