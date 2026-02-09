@@ -212,12 +212,11 @@ const createWindow = () => {
     mainWindow?.show();
   });
 
-  // Handle window close - hide to tray instead of quitting
-  mainWindow.on("close", (event) => {
-    if (!getIsQuitting()) {
-      event.preventDefault();
-      mainWindow?.hide();
-    }
+  // Handle window close - quit app when window is closed
+  mainWindow.on("close", () => {
+    // Quit the app when main window is closed
+    setIsQuitting(true);
+    app.quit();
   });
 
   mainWindow.on("closed", () => {
