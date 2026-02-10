@@ -367,6 +367,7 @@ const formatProviderLabel = (provider: string): string => {
   if (provider === "opencode:opencode/kimi-k2.5") return "Kimi K2.5";
   if (provider === "opencode:opencode/kimi-k2.5-free") return "Kimi K2.5 Free";
   if (provider === "opencode:openai/gpt-5.3-codex") return "GPT 5.3 Codex";
+  if (provider === "cursor-cli:composer-1.5") return "Composer 1.5";
   return provider;
 };
 

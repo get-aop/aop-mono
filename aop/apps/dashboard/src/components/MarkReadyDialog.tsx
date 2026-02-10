@@ -16,6 +16,7 @@ const PROVIDER_OPTIONS = [
   { value: "opencode:opencode/kimi-k2.5", label: "Kimi K2.5" },
   { value: "opencode:opencode/kimi-k2.5-free", label: "Kimi K2.5 Free" },
   { value: "opencode:openai/gpt-5.3-codex", label: "GPT 5.3 Codex" },
+  { value: "cursor-cli:composer-1.5", label: "Composer 1.5" },
 ] as const;
 
 const DEFAULT_PROVIDER = PROVIDER_OPTIONS[0].value;

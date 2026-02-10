@@ -70,6 +70,7 @@ describe("settings/handlers", () => {
         "opencode:opencode/kimi-k2.5",
         "opencode:opencode/kimi-k2.5-free",
         "opencode:openai/gpt-5.3-codex",
+        "cursor-cli:composer-1.5",
       ]) {
         const result = await setAllSettings(ctx, [{ key: "agent_provider", value }]);
         expect(result.success).toBe(true);
@@ -87,11 +88,11 @@ describe("settings/handlers", () => {
     });
 
     test("accepts valid agent_provider value", async () => {
-      const result = await setSetting(ctx, "agent_provider", "opencode:opencode/kimi-k2.5-free");
+      const result = await setSetting(ctx, "agent_provider", "cursor-cli:composer-1.5");
 
       expect(result.success).toBe(true);
       if (!result.success) return;
-      expect(result.value).toBe("opencode:opencode/kimi-k2.5-free");
+      expect(result.value).toBe("cursor-cli:composer-1.5");
     });
   });
 

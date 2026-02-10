@@ -52,6 +52,80 @@ describe("log-file-tailer", () => {
       expect(result.lines[0]?.stream).toBe("stdout");
     });
 
+    it("parses Cursor assistant stream-json messages", () => {
+      const logFile = writeJsonl("test.jsonl", [
+        {
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Cursor says hello" }],
+          },
+        },
+      ]);
+
+      const result = readLogLines(logFile);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0]?.content).toBe("Cursor says hello");
+      expect(result.lines[0]?.stream).toBe("stdout");
+    });
+
+    it("parses Cursor tool_call started events", () => {
+      const logFile = writeJsonl("test.jsonl", [
+        {
+          type: "tool_call",
+          subtype: "started",
+          tool_call: {
+            readToolCall: { args: { path: "/foo/bar.ts" } },
+          },
+        },
+      ]);
+
+      const result = readLogLines(logFile);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0]?.content).toBe("[Read] /foo/bar.ts");
+      expect(result.lines[0]?.stream).toBe("stdout");
+    });
+
+    it("parses Cursor tool_call completed events", () => {
+      const logFile = writeJsonl("test.jsonl", [
+        {
+          type: "tool_call",
+          subtype: "completed",
+          tool_call: {
+            readToolCall: {
+              args: { path: "/foo/bar.ts" },
+              result: { success: { content: "file contents" } },
+            },
+          },
+        },
+      ]);
+
+      const result = readLogLines(logFile);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0]?.content).toBe("[Read] completed");
+      expect(result.lines[0]?.stream).toBe("stdout");
+    });
+
+    it("parses Cursor function tool_call arguments", () => {
+      const logFile = writeJsonl("test.jsonl", [
+        {
+          type: "tool_call",
+          subtype: "started",
+          tool_call: {
+            function: {
+              name: "Bash",
+              arguments: JSON.stringify({ command: "ls -la" }),
+            },
+          },
+        },
+      ]);
+
+      const result = readLogLines(logFile);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0]?.content).toBe("[Bash] ls -la");
+      expect(result.lines[0]?.stream).toBe("stdout");
+    });
+
     it("parses error results", () => {
       const logFile = writeJsonl("test.jsonl", [
         { type: "result", subtype: "error", result: "Something went wrong" },

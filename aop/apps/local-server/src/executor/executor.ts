@@ -8,7 +8,12 @@ import type {
 } from "@aop/common/protocol";
 import { GitManager, WorktreeExistsError, type WorktreeInfo } from "@aop/git-manager";
 import { aopPaths, generateTypeId, getLogger } from "@aop/infra";
-import { ClaudeCodeProvider, createProvider, extractAssistantText } from "@aop/llm-provider";
+import {
+  ClaudeCodeProvider,
+  createProvider,
+  extractAssistantText,
+  type LLMProvider,
+} from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { forEachJsonlEntry, parseJsonlEntry } from "../events/log-file-tailer.ts";
@@ -27,7 +32,7 @@ export interface ExecuteTaskOptions {
   stepCommand: StepCommand;
   executionInfo: ExecutionInfo;
   serverSync?: ServerSync;
-  provider?: ClaudeCodeProvider;
+  provider?: LLMProvider;
 }
 
 export const executeTask = async (
@@ -36,7 +41,7 @@ export const executeTask = async (
   stepCommand: StepCommand,
   executionInfo: ExecutionInfo,
   serverSync?: ServerSync,
-  provider?: ClaudeCodeProvider,
+  provider?: LLMProvider,
 ): Promise<void> => {
   const log = logger.with({ taskId: task.id, changePath: task.change_path });
   log.info("Starting task execution");
@@ -75,7 +80,7 @@ interface LaunchStepOptions {
   taskId: string;
   repoId: string;
   serverSync?: ServerSync;
-  provider?: ClaudeCodeProvider;
+  provider?: LLMProvider;
 }
 
 const launchStep = async (opts: LaunchStepOptions): Promise<void> => {
@@ -148,7 +153,7 @@ interface SpawnAgentOptions {
   repoId: string;
   signals?: string[];
   serverSync?: ServerSync;
-  provider?: ClaudeCodeProvider;
+  provider?: LLMProvider;
 }
 
 const getProvider = async (ctx: LocalServerContext, task: Task) => {

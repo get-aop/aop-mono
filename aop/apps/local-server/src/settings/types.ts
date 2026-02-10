@@ -37,6 +37,7 @@ export const VALID_PROVIDER_VALUES = [
   "opencode:opencode/kimi-k2.5",
   "opencode:opencode/kimi-k2.5-free",
   "opencode:openai/gpt-5.3-codex",
+  "cursor-cli:composer-1.5",
 ] as const;
 
 export type ProviderValue = (typeof VALID_PROVIDER_VALUES)[number];

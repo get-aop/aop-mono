@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import type { ExecutionInfo, StepCommand, TaskStatus } from "@aop/common/protocol";
 import { aopPaths, getLogger, runWithSpan } from "@aop/infra";
+import { createProvider, type LLMProvider } from "@aop/llm-provider";
 import type { OrchestratorStatus } from "../app.ts";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
@@ -164,18 +165,34 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
     await queueProcessor.start();
   };
 
+  const resolveProviderForTask = async (task: Task): Promise<LLMProvider> => {
+    const providerKey =
+      task.preferred_provider ?? (await ctx.settingsRepository.get(SettingKey.AGENT_PROVIDER));
+
+    try {
+      return createProvider(providerKey);
+    } catch (err) {
+      logger.warn(
+        "Invalid provider '{provider}' for task {taskId}, falling back to claude-code: {error}",
+        {
+          taskId: task.id,
+          provider: providerKey,
+          error: String(err),
+        },
+      );
+      return createProvider("claude-code");
+    }
+  };
+
   const executeTaskAsync = (
     task: Task,
     stepCommand: StepCommand,
     execution: ExecutionInfo,
   ): void => {
-    const promise: Promise<void> = executeTask(
-      ctx,
-      task,
-      stepCommand,
-      execution,
-      serverSync ?? undefined,
-    )
+    const promise: Promise<void> = resolveProviderForTask(task)
+      .then((provider) =>
+        executeTask(ctx, task, stepCommand, execution, serverSync ?? undefined, provider),
+      )
       .then(() => {})
       .catch(async (err) => {
         logger.error("Task execution failed: {error}", {

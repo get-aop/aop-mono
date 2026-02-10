@@ -23,7 +23,7 @@ interface AgentProcess {
 const isLinux = process.platform === "linux";
 const isMacOS = process.platform === "darwin";
 
-const AGENT_PATTERNS = ["claude", "opencode"];
+const AGENT_PATTERNS = ["claude", "opencode", "agent"];
 const AOP_ENV_PATTERN = /AOP_(TASK|STEP)_ID=/;
 
 const listAgents = (): AgentProcess[] => {
@@ -135,10 +135,10 @@ const listAgentsMacOS = (): AgentProcess[] => {
   const agents: AgentProcess[] = [];
 
   try {
-    // Get all processes with claude/opencode in command line
+    // Get all processes with claude/opencode/agent in command line
     // -o pid,etime,command gives us: PID ELAPSED_TIME COMMAND
     const psOutput = execSync(
-      "ps -eo pid,etime,command | grep -iE '(claude|opencode)' | grep -v grep",
+      "ps -eo pid,etime,command | grep -iE '(claude|opencode|agent)' | grep -v grep",
       { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 },
     );
 
