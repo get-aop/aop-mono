@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createTemplateLoader } from "../../../../server/src/prompts/template-loader.ts";
 import {
   createTemplateContext,
   resolveTemplate,
@@ -25,6 +26,42 @@ describe("createTemplateContext", () => {
     expect(context.step.type).toBe("implement");
     expect(context.step.executionId).toBe("exec-456");
     expect(context.step.iteration).toBe(2);
+  });
+});
+
+describe("createTemplateContext", () => {
+  test("includes signals when provided", () => {
+    const signals = [
+      { name: "CHUNK_DONE", description: "completed a chunk" },
+      { name: "TASK_COMPLETE", description: "all tasks done" },
+    ];
+
+    const context = createTemplateContext({
+      worktreePath: "/path",
+      worktreeBranch: "branch",
+      taskId: "task-1",
+      changePath: "changes/feat",
+      stepType: "implement",
+      executionId: "exec-1",
+      iteration: 0,
+      signals,
+    });
+
+    expect(context.signals).toEqual(signals);
+  });
+
+  test("signals is undefined when not provided", () => {
+    const context = createTemplateContext({
+      worktreePath: "/path",
+      worktreeBranch: "branch",
+      taskId: "task-1",
+      changePath: "changes/feat",
+      stepType: "implement",
+      executionId: "exec-1",
+      iteration: 0,
+    });
+
+    expect(context.signals).toBeUndefined();
   });
 });
 
@@ -90,6 +127,59 @@ describe("resolveTemplate", () => {
     expect(result).toBe("plain text without placeholders");
   });
 
+  test("resolves signals with each block", () => {
+    const contextWithSignals = createTemplateContext({
+      worktreePath: "/repo/.worktrees/task-1",
+      worktreeBranch: "aop/task-1",
+      taskId: "task-1",
+      changePath: "changes/feature",
+      stepType: "implement",
+      executionId: "exec-1",
+      iteration: 0,
+      signals: [
+        { name: "CHUNK_DONE", description: "completed a chunk" },
+        { name: "TASK_COMPLETE", description: "all tasks done" },
+      ],
+    });
+    const template =
+      "{{#each signals}}\n- `<aop>{{this.name}}</aop>` — {{this.description}}\n{{/each}}";
+    const result = resolveTemplate(template, contextWithSignals);
+
+    expect(result).toContain("- `<aop>CHUNK_DONE</aop>` — completed a chunk");
+    expect(result).toContain("- `<aop>TASK_COMPLETE</aop>` — all tasks done");
+  });
+
+  test("resolves empty signals with if block", () => {
+    const template = "{{#if signals}}Signals section{{/if}}";
+    const result = resolveTemplate(template, baseContext);
+
+    expect(result).toBe("");
+  });
+
+  test("resolves input placeholder when provided", () => {
+    const contextWithInput = createTemplateContext({
+      worktreePath: "/repo/.worktrees/task-1",
+      worktreeBranch: "aop/task-1",
+      taskId: "task-1",
+      changePath: "changes/feature",
+      stepType: "implement",
+      executionId: "exec-1",
+      iteration: 0,
+      input: "Approved. Proceed with the plan.",
+    });
+    const template = "{{#if input}}User said: {{input}}{{/if}}";
+    const result = resolveTemplate(template, contextWithInput);
+
+    expect(result).toBe("User said: Approved. Proceed with the plan.");
+  });
+
+  test("omits input section when input not provided", () => {
+    const template = "{{#if input}}User said: {{input}}{{/if}}";
+    const result = resolveTemplate(template, baseContext);
+
+    expect(result).toBe("");
+  });
+
   test("throws TemplateResolutionError on invalid syntax", () => {
     const template = "{{#if broken";
 
@@ -123,10 +213,20 @@ describe("validateTemplate", () => {
       {{step.type}}
       {{step.executionId}}
       {{step.iteration}}
+      {{input}}
+      {{this.name}}
+      {{this.description}}
     `;
     const result = validateTemplate(template);
 
     expect(result).toEqual([]);
+  });
+
+  test("rejects humanInput as unknown placeholder", () => {
+    const template = "{{humanInput}}";
+    const result = validateTemplate(template);
+
+    expect(result).toContain("humanInput");
   });
 
   test("returns empty array for template without placeholders", () => {
@@ -143,5 +243,168 @@ describe("TemplateResolutionError", () => {
 
     expect(error.name).toBe("TemplateResolutionError");
     expect(error.message).toBe("test error");
+  });
+});
+
+describe("end-to-end template resolution", () => {
+  const loader = createTemplateLoader();
+
+  test("resolves run-tests template with signals to exact expected output", async () => {
+    const template = await loader.load("run-tests.md.hbs");
+    const context = createTemplateContext({
+      worktreePath: "/repo/.worktrees/task-42",
+      worktreeBranch: "aop/task-42",
+      taskId: "task-42",
+      changePath: "changes/add-auth",
+      stepType: "run-tests",
+      executionId: "step-99",
+      iteration: 1,
+      signals: [
+        { name: "TESTS_PASS", description: "all tests pass" },
+        { name: "TESTS_FAIL", description: "one or more tests failed" },
+      ],
+    });
+
+    const result = resolveTemplate(template, context);
+
+    const expected = `You are running tests for an implementation in a software project.
+
+## Task Details
+
+- **Change Path**: changes/add-auth
+- Read ALL the files in the change path to gather the context for the task.
+
+## Worktree Information
+
+You are working on the following git worktree:
+- **Path**: /repo/.worktrees/task-42
+- **Branch**: aop/task-42
+
+
+## Instructions
+
+Run tests for the implementation at /repo/.worktrees/task-42.
+
+1. Identify the test command for this project
+2. Run the relevant tests
+3. Analyze any failures and report results clearly
+
+Do NOT fix failing tests — only report the results. Fixes happen in a separate step.
+
+## Signals (REQUIRED)
+
+When done, output ONE of:
+- \`<aop>TESTS_PASS</aop>\` — all tests pass
+- \`<aop>TESTS_FAIL</aop>\` — one or more tests failed
+
+DO NOT FINISH THE SESSION WITHOUT SIGNALING.
+`;
+
+    expect(result).toBe(expected);
+  });
+
+  test("resolves run-tests template without signals omits signals section", async () => {
+    const template = await loader.load("run-tests.md.hbs");
+    const context = createTemplateContext({
+      worktreePath: "/repo/.worktrees/task-7",
+      worktreeBranch: "aop/task-7",
+      taskId: "task-7",
+      changePath: "changes/refactor",
+      stepType: "run-tests",
+      executionId: "step-50",
+      iteration: 0,
+    });
+
+    const result = resolveTemplate(template, context);
+
+    const expected = `You are running tests for an implementation in a software project.
+
+## Task Details
+
+- **Change Path**: changes/refactor
+- Read ALL the files in the change path to gather the context for the task.
+
+## Worktree Information
+
+You are working on the following git worktree:
+- **Path**: /repo/.worktrees/task-7
+- **Branch**: aop/task-7
+
+
+## Instructions
+
+Run tests for the implementation at /repo/.worktrees/task-7.
+
+1. Identify the test command for this project
+2. Run the relevant tests
+3. Analyze any failures and report results clearly
+
+Do NOT fix failing tests — only report the results. Fixes happen in a separate step.
+
+`;
+
+    expect(result).toBe(expected);
+  });
+
+  test("resolves run-tests template with input section", async () => {
+    const template = await loader.load("run-tests.md.hbs");
+    const context = createTemplateContext({
+      worktreePath: "/repo/.worktrees/task-10",
+      worktreeBranch: "aop/task-10",
+      taskId: "task-10",
+      changePath: "changes/bugfix",
+      stepType: "run-tests",
+      executionId: "step-20",
+      iteration: 0,
+      signals: [{ name: "TESTS_PASS", description: "all tests pass" }],
+    });
+    const contextWithInput = { ...context, input: "Focus on auth module tests only" };
+
+    const result = resolveTemplate(template, contextWithInput);
+
+    const expected = `You are running tests for an implementation in a software project.
+
+## Task Details
+
+- **Change Path**: changes/bugfix
+- Read ALL the files in the change path to gather the context for the task.
+
+## Worktree Information
+
+You are working on the following git worktree:
+- **Path**: /repo/.worktrees/task-10
+- **Branch**: aop/task-10
+
+
+## Resumed with User Input
+
+This step was previously paused and the user has responded:
+
+> Focus on auth module tests only
+
+Determine the user's intent from their input:
+- **Approved/accepted** your previous output → signal accordingly and do NOT redo work
+- **Requested changes** or gave feedback → address their feedback, then re-signal accordingly
+- **Answered a question** you asked → use their answer to proceed with the task
+
+## Instructions
+
+Run tests for the implementation at /repo/.worktrees/task-10.
+
+1. Identify the test command for this project
+2. Run the relevant tests
+3. Analyze any failures and report results clearly
+
+Do NOT fix failing tests — only report the results. Fixes happen in a separate step.
+
+## Signals (REQUIRED)
+
+When done, output ONE of:
+- \`<aop>TESTS_PASS</aop>\` — all tests pass
+
+DO NOT FINISH THE SESSION WITHOUT SIGNALING.
+`;
+
+    expect(result).toBe(expected);
   });
 });

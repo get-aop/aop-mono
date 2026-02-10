@@ -62,6 +62,7 @@
       "name": "@aop/electron",
       "version": "0.1.0",
       "dependencies": {
+        "@aop/dashboard": "workspace:*",
         "electron-updater": "^6.2.1",
       },
       "devDependencies": {

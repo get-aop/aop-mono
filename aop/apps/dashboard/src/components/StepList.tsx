@@ -1,10 +1,8 @@
 import type { Step, StepStatus } from "../types";
 import type { LogLine } from "./LogViewer";
-import { LogViewer } from "./LogViewer";
 
 interface StepListProps {
   steps: Step[];
-  logLines?: LogLine[];
   selectedStepId?: string | null;
   onStepClick?: (stepId: string) => void;
 }
@@ -21,7 +19,7 @@ export const filterLogsByStep = (logLines: LogLine[], step: Step): LogLine[] => 
   });
 };
 
-export const StepList = ({ steps, logLines, selectedStepId, onStepClick }: StepListProps) => {
+export const StepList = ({ steps, selectedStepId, onStepClick }: StepListProps) => {
   if (steps.length === 0) {
     return (
       <div className="py-2 px-3 font-mono text-[10px] text-aop-slate-dark">No steps recorded</div>
@@ -36,7 +34,6 @@ export const StepList = ({ steps, logLines, selectedStepId, onStepClick }: StepL
           step={step}
           isLast={index === steps.length - 1}
           isSelected={selectedStepId === step.id}
-          logLines={logLines}
           onStepClick={onStepClick}
         />
       ))}
@@ -48,11 +45,10 @@ interface StepRowProps {
   step: Step;
   isLast: boolean;
   isSelected: boolean;
-  logLines?: LogLine[];
   onStepClick?: (stepId: string) => void;
 }
 
-const StepRow = ({ step, isLast, isSelected, logLines, onStepClick }: StepRowProps) => {
+const StepRow = ({ step, isLast, isSelected, onStepClick }: StepRowProps) => {
   const config = statusConfig[step.status];
   const content = (
     <StepRowContent
@@ -65,10 +61,7 @@ const StepRow = ({ step, isLast, isSelected, logLines, onStepClick }: StepRowPro
   );
 
   return (
-    <div
-      data-testid={`step-item-${step.id}`}
-      className={`flex flex-col ${isSelected ? "flex-1 overflow-hidden" : ""}`}
-    >
+    <div data-testid={`step-item-${step.id}`}>
       {onStepClick ? (
         <button
           type="button"
@@ -79,15 +72,6 @@ const StepRow = ({ step, isLast, isSelected, logLines, onStepClick }: StepRowPro
         </button>
       ) : (
         <div className="flex items-center gap-2">{content}</div>
-      )}
-
-      {isSelected && logLines && (
-        <div
-          className="mt-0.5 flex-1 min-h-0 rounded-aop border border-aop-charcoal bg-aop-black"
-          data-testid={`step-logs-${step.id}`}
-        >
-          <LogViewer lines={filterLogsByStep(logLines, step)} />
-        </div>
       )}
     </div>
   );
@@ -111,10 +95,10 @@ const StepRowContent = ({ step, config, isLast, isSelected, isClickable }: StepR
     </div>
 
     <span
-      className={`rounded px-1.5 py-0.5 font-mono text-[10px] capitalize ${config.bgColor} ${config.color}`}
+      className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${config.bgColor} ${config.color}`}
       data-testid="step-type-badge"
     >
-      {formatStepType(step.stepType)}
+      {formatStepLabel(step)}
     </span>
 
     <span className={`font-mono text-[10px] ${config.color}`}>{config.label}</span>
@@ -152,9 +136,10 @@ const formatDuration = (startedAt: string, endedAt?: string): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
-const formatStepType = (stepType: string | null): string => {
-  if (!stepType) return "unknown";
-  return stepType.replace(/-/g, " ").replace(/_/g, " ");
+const formatStepLabel = (step: Step): string => {
+  const raw = step.stepId || step.stepType;
+  if (!raw) return "unknown";
+  return raw.replace(/-/g, " ").replace(/_/g, " ");
 };
 
 const statusConfig: Record<StepStatus, { color: string; bgColor: string; label: string }> = {

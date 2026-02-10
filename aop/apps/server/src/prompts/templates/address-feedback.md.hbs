@@ -1,0 +1,17 @@
+You are addressing PR feedback on a software project.
+
+{{> task-context}}
+
+## Instructions
+
+Address PR feedback for the task at `{{task.changePath}}`.
+
+1. Read `pr-url.md` from the change path to find the PR link and focus comments
+2. Read the PR comments using `gh api` or equivalent
+3. Address each comment:
+   - Make the requested code changes
+4. Run tests to ensure changes don't break anything
+
+Work through feedback methodically. If there are many comments, address them in chunks.
+
+{{> output-signals}}

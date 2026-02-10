@@ -1,19 +1,22 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { ExecutionInfo, StepCommand } from "@aop/common/protocol";
 import { getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
-import type { StepExecution } from "../db/schema.ts";
+import type { Task } from "../db/schema.ts";
 import { forEachJsonlEntry } from "../events/log-file-tailer.ts";
+import type { ServerSync, StepCompletePayload } from "../orchestrator/sync/server-sync.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import { cleanupLogFile, persistExecutionLogs, populateLogBuffer } from "./executor.ts";
 import {
   isClaudeProcess as defaultIsClaudeProcess,
   isProcessAlive as defaultIsProcessAlive,
 } from "./process-utils.ts";
+import type { StepWithTask } from "./types.ts";
 
 const logger = getLogger("aop", "executor", "recovery");
 
-const PID_POLL_INTERVAL_MS = 2000;
+export type { StepWithTask };
 
 export interface RecoveryResult {
   recovered: number;
@@ -25,9 +28,10 @@ export interface RecoveryDeps {
   logsDir: string;
   isProcessAlive?: (pid: number) => boolean;
   isClaudeProcess?: (pid: number) => boolean;
+  reattachToRunningAgent?: (step: StepWithTask) => void;
+  serverSync?: ServerSync;
+  executeTask?: (task: Task, step: StepCommand, execution: ExecutionInfo) => void;
 }
-
-type StepWithTask = StepExecution & { task_id: string };
 
 export const recoverStaleTasks = async (
   ctx: LocalServerContext,
@@ -48,51 +52,11 @@ export const recoverStaleTasks = async (
 
   for (const step of runningSteps) {
     const action = classifyStep(step, logsDir, isProcessAlive, isClaudeProcess);
-    await applyRecoveryAction(ctx, step, action, { logsDir, isProcessAlive });
+    await applyRecoveryAction(ctx, step, action, deps);
     result[action.type]++;
   }
 
   return result;
-};
-
-export const reattachToAgent = (
-  ctx: LocalServerContext,
-  step: StepWithTask,
-  deps: { logsDir: string; isProcessAlive: (pid: number) => boolean },
-): NodeJS.Timeout => {
-  const pid = step.agent_pid as number;
-  const log = logger.with({ stepId: step.id, taskId: step.task_id, pid });
-
-  const intervalId = setInterval(async () => {
-    if (deps.isProcessAlive(pid)) return;
-
-    clearInterval(intervalId);
-    log.info("Reattached agent PID died, finalizing");
-    await finalizeReattachedAgent(ctx, step, deps.logsDir);
-  }, PID_POLL_INTERVAL_MS);
-
-  return intervalId;
-};
-
-const finalizeReattachedAgent = async (
-  ctx: LocalServerContext,
-  step: StepWithTask,
-  logsDir: string,
-): Promise<void> => {
-  const logFile = join(logsDir, `${step.id}.jsonl`);
-
-  if (existsSync(logFile)) {
-    await recoverFromLogFile(ctx, step, logFile);
-    populateLogBuffer(ctx, logFile, step.execution_id);
-    ctx.logBuffer.markComplete(
-      step.execution_id,
-      (await ctx.taskRepository.get(step.task_id))?.status === "DONE" ? "completed" : "failed",
-    );
-    await persistExecutionLogs(ctx, step.execution_id);
-    cleanupLogFile(logFile);
-  } else {
-    await resetStaleStep(ctx, step);
-  }
 };
 
 type RecoveryAction =
@@ -124,19 +88,19 @@ const applyRecoveryAction = async (
   ctx: LocalServerContext,
   step: StepWithTask,
   action: RecoveryAction,
-  deps: { logsDir: string; isProcessAlive: (pid: number) => boolean },
+  deps: RecoveryDeps,
 ): Promise<void> => {
   const log = logger.with({ stepId: step.id, taskId: step.task_id, pid: step.agent_pid });
 
   if (action.type === "reattached") {
-    log.info("Agent still alive, starting PID poller");
-    reattachToAgent(ctx, step, deps);
+    log.info("Agent still alive, reattaching to executor pipeline");
+    deps.reattachToRunningAgent?.(step);
     return;
   }
 
   if (action.type === "recovered") {
     log.info("Recovering dead agent from log file");
-    await recoverFromLogFile(ctx, step, action.logFile);
+    await recoverFromLogFile(ctx, step, action.logFile, deps);
     return;
   }
 
@@ -146,11 +110,37 @@ const applyRecoveryAction = async (
 
 const TERMINAL_STATUSES = new Set(["BLOCKED", "REMOVED", "DONE"]);
 
+const MAX_RETRY_DELAY_MS = 30_000;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const completeStepOnServerWithRetry = async (
+  serverSync: ServerSync,
+  stepId: string,
+  payload: StepCompletePayload,
+): Promise<Awaited<ReturnType<ServerSync["completeStep"]>>> => {
+  let delay = 1000;
+  for (;;) {
+    try {
+      return await serverSync.completeStep(stepId, payload);
+    } catch (err) {
+      logger.warn("Server unavailable during recovery, retrying in {delay}ms: {error}", {
+        stepId,
+        delay,
+        error: String(err),
+      });
+      await sleep(delay);
+      delay = Math.min(delay * 2, MAX_RETRY_DELAY_MS);
+    }
+  }
+};
+
 const recoverFromLogFile = async (
   ctx: LocalServerContext,
   step: StepWithTask,
   logFile: string,
-): Promise<void> => {
+  deps: RecoveryDeps,
+): Promise<"success" | "failure"> => {
   const outcome = determineOutcomeFromLog(logFile);
   const now = new Date().toISOString();
 
@@ -167,18 +157,75 @@ const recoverFromLogFile = async (
     completed_at: now,
   });
 
-  // Don't override intentionally aborted/completed tasks
+  populateLogBuffer(ctx, logFile, step.execution_id);
+  ctx.logBuffer.markComplete(step.execution_id, outcome === "success" ? "completed" : "failed");
+  await persistExecutionLogs(ctx, step.execution_id);
+  cleanupLogFile(logFile);
+
   const task = await ctx.taskRepository.get(step.task_id);
   if (task && TERMINAL_STATUSES.has(task.status)) {
     logger.info("Preserving task status {status} during log recovery", {
       taskId: step.task_id,
       status: task.status,
     });
+    return outcome;
+  }
+
+  if (step.remote_execution_id) {
+    await handleServerCompletion(ctx, step, task, outcome, deps);
+  } else if (outcome === "failure") {
+    await ctx.taskRepository.update(step.task_id, { status: "BLOCKED" });
+  }
+  // success without remote_execution_id: task stays WORKING (unchanged)
+
+  return outcome;
+};
+
+const handleServerCompletion = async (
+  ctx: LocalServerContext,
+  step: StepWithTask,
+  task: Task | null,
+  outcome: "success" | "failure",
+  deps: RecoveryDeps,
+): Promise<void> => {
+  const { serverSync, executeTask } = deps;
+
+  if (!serverSync) {
+    logger.warn("No serverSync available for recovery, setting task BLOCKED", {
+      taskId: step.task_id,
+    });
+    await ctx.taskRepository.update(step.task_id, { status: "BLOCKED" });
     return;
   }
 
-  const taskStatus = outcome === "success" ? "DONE" : "BLOCKED";
-  await ctx.taskRepository.update(step.task_id, { status: taskStatus });
+  const remoteExecutionId = step.remote_execution_id;
+  if (!remoteExecutionId) return;
+
+  const payload: StepCompletePayload = {
+    executionId: remoteExecutionId,
+    attempt: step.attempt ?? 1,
+    status: outcome === "success" ? "success" : "failure",
+    durationMs: 0,
+  };
+
+  const response = await completeStepOnServerWithRetry(serverSync, step.id, payload);
+
+  if (response.step && response.execution && response.taskStatus === "WORKING") {
+    logger.info("Recovery: launching next step {stepType}", {
+      taskId: step.task_id,
+      stepType: response.step.type,
+    });
+    if (task && executeTask) {
+      executeTask(task, response.step, response.execution);
+    }
+    return;
+  }
+
+  logger.info("Recovery: server returned terminal status {status}", {
+    taskId: step.task_id,
+    status: response.taskStatus,
+  });
+  await ctx.taskRepository.update(step.task_id, { status: response.taskStatus });
 };
 
 const resetStaleStep = async (ctx: LocalServerContext, step: StepWithTask): Promise<void> => {
@@ -192,7 +239,6 @@ const resetStaleStep = async (ctx: LocalServerContext, step: StepWithTask): Prom
     completed_at: now,
   });
 
-  // Don't reset intentionally aborted/completed tasks back to READY
   const task = await ctx.taskRepository.get(step.task_id);
   if (task && TERMINAL_STATUSES.has(task.status)) {
     logger.info("Preserving task status {status} during recovery (not resetting to READY)", {

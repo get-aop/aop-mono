@@ -1,0 +1,87 @@
+version: 1
+name: frontend-ui-fix
+initialStep: codebase_research
+steps:
+  codebase_research:
+    id: codebase_research
+    type: research
+    promptTemplate: codebase-research.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: RESEARCH_COMPLETE
+        description: codebase exploration is done, findings are written
+    transitions:
+      - condition: RESEARCH_COMPLETE
+        target: implement_frontend
+      - condition: __none__
+        target: implement_frontend
+      - condition: failure
+        target: __blocked__
+
+  implement_frontend:
+    id: implement_frontend
+    type: implement
+    promptTemplate: implement-frontend.md.hbs
+    maxAttempts: 15
+    signals:
+      - name: TASK_COMPLETE
+        description: all tasks in tasks.md are complete
+      - name: CHUNK_DONE
+        description: completed a chunk, more tasks remain in tasks.md
+    transitions:
+      - condition: TASK_COMPLETE
+        target: visual_verify
+      - condition: CHUNK_DONE
+        target: implement_frontend
+      - condition: __none__
+        target: implement_frontend
+      - condition: failure
+        target: __blocked__
+
+  visual_verify:
+    id: visual_verify
+    type: review
+    promptTemplate: visual-verify.md.hbs
+    maxAttempts: 5
+    signals:
+      - name: LOOKS_GOOD
+        description: visual implementation matches expectations
+      - name: NEEDS_CHANGES
+        description: identified visual issues that need fixing
+      - name: REQUIRES_INPUT
+        description: need human judgment on the visual result. Also output `INPUT_REASON:` and `INPUT_TYPE:` tags explaining what you need
+    transitions:
+      - condition: LOOKS_GOOD
+        target: code_review
+      - condition: NEEDS_CHANGES
+        target: implement_frontend
+        maxIterations: 3
+        onMaxIterations: __blocked__
+      - condition: REQUIRES_INPUT
+        target: __paused__
+      - condition: failure
+        target: __blocked__
+
+  code_review:
+    id: code_review
+    type: review
+    promptTemplate: code-review-step.md.hbs
+    maxAttempts: 2
+    signals:
+      - name: REVIEW_PASSED
+        description: code is clean and ready
+      - name: REVIEW_FAILED
+        description: found issues that need the implementer to address
+    transitions:
+      - condition: REVIEW_PASSED
+        target: __done__
+      - condition: REVIEW_FAILED
+        target: implement_frontend
+        maxIterations: 2
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+terminalStates:
+  - __done__
+  - __blocked__
+  - __paused__

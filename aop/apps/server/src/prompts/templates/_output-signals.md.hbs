@@ -1,0 +1,10 @@
+{{#if signals}}
+## Signals (REQUIRED)
+
+When done, output ONE of:
+{{#each signals}}
+- `<aop>{{this.name}}</aop>` — {{this.description}}
+{{/each}}
+
+DO NOT FINISH THE SESSION WITHOUT SIGNALING.
+{{/if}}

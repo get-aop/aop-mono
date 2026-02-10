@@ -99,7 +99,7 @@ describe("executeTask", () => {
     expect(mockProvider.run).toHaveBeenCalled();
 
     const updatedTask = await ctx.taskRepository.get("task-exec-1");
-    expect(updatedTask?.status).toBe("DONE");
+    expect(updatedTask?.status).toBe("BLOCKED");
     expect(updatedTask?.worktree_path).toBe(aopPaths.worktree("repo-1", "task-exec-1"));
 
     const executions = await db

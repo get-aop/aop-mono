@@ -6,6 +6,7 @@ export interface ExecutionRepository {
   update: (id: string, update: ExecutionUpdate) => Promise<Execution | null>;
   findActiveByTask: (taskId: string) => Promise<Execution | null>;
   findById: (id: string) => Promise<Execution | null>;
+  findLatestByTask: (taskId: string) => Promise<Execution | null>;
   cancelActiveByTask: (taskId: string) => Promise<Execution | null>;
 }
 
@@ -39,6 +40,17 @@ export const createExecutionRepository = (db: Kysely<Database>): ExecutionReposi
       .selectFrom("executions")
       .selectAll()
       .where("id", "=", id)
+      .executeTakeFirst();
+    return execution ?? null;
+  },
+
+  findLatestByTask: async (taskId: string): Promise<Execution | null> => {
+    const execution = await db
+      .selectFrom("executions")
+      .selectAll()
+      .where("task_id", "=", taskId)
+      .orderBy("started_at", "desc")
+      .limit(1)
       .executeTakeFirst();
     return execution ?? null;
   },

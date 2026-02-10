@@ -52,6 +52,9 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Build Electron app
+        run: bun run --filter @aop/electron build
+
       - name: Prepare environment
         run: cp .env.example .env
 

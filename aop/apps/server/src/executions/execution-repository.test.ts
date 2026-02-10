@@ -178,6 +178,60 @@ describe("ExecutionRepository", () => {
     });
   });
 
+  describe("findLatestByTask", () => {
+    test("returns most recent execution by started_at", async () => {
+      await setupTestData();
+
+      await executionRepository.create({
+        id: "exec-old",
+        client_id: clientId,
+        task_id: taskId,
+        workflow_id: workflowId,
+        status: "completed",
+      });
+
+      await new Promise((r) => setTimeout(r, 10));
+
+      await executionRepository.create({
+        id: "exec-new",
+        client_id: clientId,
+        task_id: taskId,
+        workflow_id: workflowId,
+        status: "running",
+      });
+
+      const latest = await executionRepository.findLatestByTask(taskId);
+
+      expect(latest).not.toBeNull();
+      expect(latest?.id).toBe("exec-new");
+    });
+
+    test("returns null for task with no executions", async () => {
+      await setupTestData();
+
+      const latest = await executionRepository.findLatestByTask(taskId);
+
+      expect(latest).toBeNull();
+    });
+
+    test("returns completed execution when no running ones exist", async () => {
+      await setupTestData();
+
+      await executionRepository.create({
+        id: "exec-done",
+        client_id: clientId,
+        task_id: taskId,
+        workflow_id: workflowId,
+        status: "completed",
+      });
+
+      const latest = await executionRepository.findLatestByTask(taskId);
+
+      expect(latest).not.toBeNull();
+      expect(latest?.id).toBe("exec-done");
+    });
+  });
+
   describe("cancelActiveByTask", () => {
     test("cancels running execution and returns it", async () => {
       await setupTestData();

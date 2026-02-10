@@ -4,6 +4,7 @@ import type { Kysely } from "kysely";
 import type { Client, Database } from "../../db/schema.ts";
 import {
   cleanupTestDb,
+  createPausedWorkflow,
   createSimpleWorkflow,
   createTestClient,
   createTestDb,
@@ -91,6 +92,99 @@ describe("POST /steps/:stepId/complete", () => {
     const { apiKey } = await setupWorkflow();
 
     const res = await app.request("/steps/step-fake/complete", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ bad: "data" }),
+    });
+    const body = (await res.json()) as { error: string };
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Invalid request");
+  });
+});
+
+describe("POST /steps/:stepId/resume", () => {
+  let db: Kysely<Database>;
+  let app: Hono;
+  let executionService: ExecutionService;
+
+  beforeAll(async () => {
+    db = await createTestDb();
+    executionService = createExecutionService(db);
+
+    mock.module("../server.ts", () => ({
+      getAppContext: (): Partial<AppContext> => ({ db, executionService }),
+    }));
+
+    app = new Hono();
+    app.use("/steps/*", authMiddleware);
+    app.route("/", steps);
+  });
+
+  afterEach(async () => {
+    await cleanupTestDb(db);
+  });
+
+  afterAll(async () => {
+    await db.destroy();
+  });
+
+  const setupPausedWorkflow = async () => {
+    const { id, apiKey } = await createTestClient(db, { id: "c-1", apiKey: "test-key" });
+    await createPausedWorkflow(db);
+
+    const repoRepo = createRepoRepository(db);
+    await repoRepo.upsert({ id: "repo-1", client_id: id, synced_at: new Date() });
+
+    const client = await db
+      .selectFrom("clients")
+      .selectAll()
+      .where("id", "=", id)
+      .executeTakeFirstOrThrow();
+
+    const startResult = await executionService.startWorkflow(
+      client,
+      "task-1",
+      "repo-1",
+      "paused-test",
+    );
+
+    await executionService.processStepResult(client, {
+      stepId: startResult.step?.id ?? "",
+      executionId: startResult.execution?.id ?? "",
+      attempt: 1,
+      status: "success",
+      signal: "REQUIRES_INPUT",
+      durationMs: 1000,
+    });
+
+    return { client, apiKey, stepId: startResult.step?.id ?? "" };
+  };
+
+  test("resumes a paused step successfully", async () => {
+    const { apiKey, stepId } = await setupPausedWorkflow();
+
+    const res = await app.request(`/steps/${stepId}/resume`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ input: "Approved. Proceed with the plan." }),
+    });
+    const body = (await res.json()) as { taskStatus: string };
+
+    expect(res.status).toBe(200);
+    expect(body.taskStatus).toBe("WORKING");
+  });
+
+  test("returns 400 for missing input field", async () => {
+    const { apiKey } = await setupPausedWorkflow();
+
+    const res = await app.request("/steps/step-fake/resume", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,

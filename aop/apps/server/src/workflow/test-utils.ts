@@ -1,6 +1,10 @@
 import { join } from "node:path";
 import type { WorkflowDefinition } from "./types.ts";
-import type { TransitionResult, WorkflowStateMachine } from "./workflow-state-machine.ts";
+import type {
+  StepTransitionResult,
+  TransitionResult,
+  WorkflowStateMachine,
+} from "./workflow-state-machine.ts";
 import { createWorkflowStateMachine } from "./workflow-state-machine.ts";
 import { parseWorkflowYaml } from "./yaml-parser.ts";
 
@@ -66,12 +70,12 @@ export const evaluateStep = (
     stepId: state.currentStepId,
     signal: step.signal,
     resolvedCurrentStepId,
-    nextStepId: result.stepId,
+    nextStepId: result.type === "step" ? result.stepId : undefined,
     resultType: result.type,
     iteration: state.iteration,
   };
 
-  if (result.type !== "step" || !result.stepId) return { entry, nextState: null };
+  if (result.type !== "step") return { entry, nextState: null };
 
   return {
     entry,
@@ -81,6 +85,12 @@ export const evaluateStep = (
       iteration: result.shouldIncrementIteration ? state.iteration + 1 : state.iteration,
     },
   };
+};
+
+/** Narrows a TransitionResult to StepTransitionResult or throws. */
+export const asStepResult = (result: TransitionResult): StepTransitionResult => {
+  if (result.type !== "step") throw new Error(`Expected step result, got ${result.type}`);
+  return result;
 };
 
 /**

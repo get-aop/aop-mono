@@ -2,19 +2,7 @@ You are reviewing code changes in a software project.
 
 You MUST follow ALL the instructions and emit the REQUIRED SIGNALS at the bottom.
 
-## Worktree Information
-
-- **Path**: {{worktree.path}}
-- **Branch**: {{worktree.branch}}
-
-## Task Details
-
-- **Change Path**: {{task.changePath}}
-
-## Execution Context
-
-- **Step Type**: {{step.type}}
-- **Iteration**: {{step.iteration}}
+{{> task-context}}
 
 ## Instructions
 
@@ -164,20 +152,4 @@ Only report findings with confidence ≥80. When uncertain, read more context be
 - If no issues found ≥80 confidence, report "No significant issues found"
 - For large changes, prioritize security and correctness over style
 
-### Signals (REQUIRED)
-
-If all checks pass and no issues found:
-```
-<aop>REVIEW_PASSED</aop>
-```
-
-If issues are found that need fixing:
-```
-<aop>REVIEW_FAILED</aop>
-```
-
-Include the review report path in your response.
-
-**Important**: Do not signal until the review report is created. If blocked, describe the issue clearly. 
-
-DO NOT FINISH THE SESSION WITHOUT SIGNALING.
+{{> output-signals}}

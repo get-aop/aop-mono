@@ -1,5 +1,6 @@
 import {
   TERMINAL_BLOCKED,
+  TERMINAL_PAUSED,
   TERMINAL_SUCCESS,
   type Transition,
   TransitionCondition,
@@ -17,12 +18,19 @@ export interface IterationContext {
   visitedSteps: string[];
 }
 
-export interface TransitionResult {
-  type: "step" | "done" | "blocked";
-  stepId?: string;
-  step?: WorkflowStep;
+export interface TerminalTransitionResult {
+  type: "done" | "paused" | "blocked";
   shouldIncrementIteration?: boolean;
 }
+
+export interface StepTransitionResult {
+  type: "step";
+  stepId: string;
+  step: WorkflowStep;
+  shouldIncrementIteration?: boolean;
+}
+
+export type TransitionResult = TerminalTransitionResult | StepTransitionResult;
 
 export interface WorkflowStateMachine {
   getInitialStep: () => WorkflowStep;
@@ -41,6 +49,9 @@ const resolveTarget = (target: string, steps: Record<string, WorkflowStep>): Tra
   if (target === TERMINAL_BLOCKED) {
     return { type: "blocked" };
   }
+  if (target === TERMINAL_PAUSED) {
+    return { type: "paused" };
+  }
 
   const nextStep = steps[target];
   if (!nextStep) {
@@ -50,10 +61,7 @@ const resolveTarget = (target: string, steps: Record<string, WorkflowStep>): Tra
 };
 
 const isLoopingBack = (result: TransitionResult, visitedSteps: string[]): boolean =>
-  result.type === "step" &&
-  result.stepId !== undefined &&
-  visitedSteps.includes(result.stepId) &&
-  result.stepId !== visitedSteps.at(-1);
+  result.type === "step" && visitedSteps.includes(result.stepId);
 
 const withIterationFlag = (result: TransitionResult, shouldIncrement: boolean): TransitionResult =>
   shouldIncrement ? { ...result, shouldIncrementIteration: true } : result;
@@ -85,15 +93,15 @@ const findMatchingTransition = (
   transitions: Transition[],
   result: StepResult,
 ): Transition | undefined => {
-  // Priority: signal → status(failure) → __none__ → status(success/failure)
+  // Priority: status(failure) → signal → __none__ → status(success/failure)
+  // Failure takes priority over signal — a failed agent's signal is unreliable
+  if (result.status === "failure") {
+    return transitions.find((t) => t.condition === result.status);
+  }
+
   if (result.signal) {
     const signalTransition = transitions.find((t) => t.condition === result.signal);
     if (signalTransition) return signalTransition;
-  }
-
-  // Failures skip __none__ — a crashed agent should not be treated as "no signal yet"
-  if (result.status === "failure") {
-    return transitions.find((t) => t.condition === result.status);
   }
 
   if (!result.signal) {

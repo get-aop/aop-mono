@@ -1,0 +1,64 @@
+version: 1
+name: deep-research
+initialStep: codebase_research
+steps:
+  codebase_research:
+    id: codebase_research
+    type: research
+    promptTemplate: codebase-research.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: RESEARCH_COMPLETE
+        description: codebase exploration is done, findings are written
+    transitions:
+      - condition: RESEARCH_COMPLETE
+        target: plan_research
+      - condition: __none__
+        target: codebase_research
+      - condition: failure
+        target: __blocked__
+
+  plan_research:
+    id: plan_research
+    type: iterate
+    promptTemplate: plan-research.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: PLAN_READY
+        description: plan written, needs human approval
+      - name: PLAN_APPROVED
+        description: human approved, proceed
+      - name: REQUIRES_INPUT
+        description: need clarification
+    transitions:
+      - condition: PLAN_READY
+        target: __paused__
+      - condition: PLAN_APPROVED
+        target: research
+      - condition: REQUIRES_INPUT
+        target: __paused__
+      - condition: __none__
+        target: plan_research
+      - condition: failure
+        target: __blocked__
+
+  research:
+    id: research
+    type: research
+    promptTemplate: research.md.hbs
+    maxAttempts: 8
+    signals:
+      - name: RESEARCH_COMPLETE
+        description: research is done, findings are written
+    transitions:
+      - condition: RESEARCH_COMPLETE
+        target: __done__
+      - condition: __none__
+        target: research
+      - condition: failure
+        target: __blocked__
+
+terminalStates:
+  - __done__
+  - __blocked__
+  - __paused__

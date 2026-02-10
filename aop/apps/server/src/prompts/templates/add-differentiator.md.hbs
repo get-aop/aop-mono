@@ -1,0 +1,95 @@
+You are adding a unique interactive product differentiator to an existing landing page.
+
+{{> task-context}}
+
+# Add Product Differentiator
+
+Review the built landing page, then design and implement a custom interactive widget that is unique to this product — something competitors do not have. This is the "plus" element that makes visitors remember the page.
+
+<EXTREMELY-IMPORTANT>
+This is NOT a standard section. Do NOT build a generic feature grid, FAQ accordion, or pricing table. Build something custom, interactive, and memorable that showcases the product's unique value.
+</EXTREMELY-IMPORTANT>
+
+## Process
+
+```dot
+digraph differentiator {
+    rankdir=TB;
+    read [label="Read built LP source\nand context files" shape=box];
+    analyze [label="Identify the product's\nunique value" shape=box];
+    concept [label="Design widget concept\n(interactive, custom)" shape=box];
+    build [label="Build the widget\nand integrate" shape=box];
+    verify [label="Verify visually\nwith webapp-testing" shape=box];
+    done [label="Signal\nTASK_COMPLETE" shape=box];
+
+    read -> analyze;
+    analyze -> concept;
+    concept -> build;
+    build -> verify;
+    verify -> done;
+}
+```
+
+### 1. Read Context
+
+Read from `{{task.changePath}}`:
+- `market-analysis.md` — what competitors do (to differentiate FROM)
+- `design-brief.md` — visual tokens to match
+- `copy.md` — differentiator section copy
+- `tasks.md` — the differentiator task description
+
+Read the built landing page source code in `{{worktree.path}}`.
+
+### 2. Identify the Unique Value
+
+What ONE thing does this product do that competitors don't? The widget should make this tangible and interactive. Examples of strong differentiators:
+
+- **Interactive demo**: A live, embedded mini-version of the product (calculator, configurator, playground)
+- **Before/after slider**: Visual comparison showing the product's impact
+- **Real-time visualization**: Live data, animated metrics, or dynamic chart showing product value
+- **Interactive comparison**: Drag-and-drop or toggle comparison with competitor approaches
+- **Personalized preview**: User inputs their context and sees a customized result
+
+### 3. Design the Widget Concept
+
+Use the `frontend-design` skill to design something distinctive:
+- Must be **interactive** — the user engages with it, not just reads it
+- Must be **unique** — competitors' pages don't have this
+- Must **demonstrate value** — not just decorate, but prove the product's worth
+- Must match the design tokens from `design-brief.md`
+- Must work on mobile and desktop
+
+### 4. Build and Integrate
+
+Implement the widget as a React component within the existing Next.js page:
+- Follow patterns already established in the LP codebase
+- Use design tokens (CSS custom properties) from the existing global styles
+- Ensure it's performant — lazy load if heavy, optimize animations
+- Use the `vercel-react-best-practices` skill for React performance patterns
+
+### 5. Verify Visually
+
+Use the `webapp-testing` skill to:
+- Take screenshots showing the widget on desktop and mobile
+- Verify animations/interactions work
+- Check it integrates visually with surrounding sections
+
+## Self-Check
+
+Before signaling:
+- Widget is interactive (not just static content)
+- Widget demonstrates product value (not just decoration)
+- Widget matches the design system (colors, typography, spacing)
+- Widget works on mobile
+- Code compiles without errors
+- No TODO comments left
+
+## Guardrails
+
+- **Must be custom** — Generic UI patterns (accordion, carousel, tabs) are NOT differentiators. Build something specific to THIS product.
+- **Must be interactive** — Static images or text sections do not count. The user must be able to engage.
+- **Match the design system** — Use the existing CSS custom properties, fonts, and colors. Do NOT introduce a visual style that clashes.
+- **Performance matters** — The widget must not tank Lighthouse scores. Lazy load heavy assets, optimize animations, minimize bundle impact.
+- **One widget** — Focus on ONE strong differentiator, not multiple weak ones.
+
+{{> output-signals}}

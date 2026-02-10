@@ -11,6 +11,6 @@ export {
   type StepExecutionUpdate,
 } from "./execution-types.ts";
 export { executeTask } from "./executor.ts";
-export { isClaudeProcess, isProcessAlive } from "./process-utils.ts";
+export { isAgentRunning, isClaudeProcess, isProcessAlive, isZombie } from "./process-utils.ts";
 export { type RecoveryResult, recoverStaleTasks } from "./recovery.ts";
 export type { ExecuteResult, ExecutorContext } from "./types.ts";

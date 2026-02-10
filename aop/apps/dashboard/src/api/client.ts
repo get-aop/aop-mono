@@ -1,5 +1,5 @@
 import type { SSEServerStatus, SSETask } from "@aop/common";
-import type { Metrics, Task } from "../types";
+import type { Execution, Metrics, Task } from "../types";
 
 const API_BASE = "/api";
 
@@ -84,15 +84,24 @@ export const markReady = async (
   workflow?: string,
   baseBranch?: string,
   provider?: string,
+  retryFromStep?: string,
 ): Promise<{ taskId: string }> => {
   const body: Record<string, string> = {};
   if (workflow) body.workflow = workflow;
   if (baseBranch) body.baseBranch = baseBranch;
   if (provider) body.provider = provider;
+  if (retryFromStep) body.retryFromStep = retryFromStep;
   return request<{ ok: boolean; taskId: string }>(`/repos/${repoId}/tasks/${taskId}/ready`, {
     method: "POST",
     body: JSON.stringify(body),
   });
+};
+
+export const fetchExecutions = async (repoId: string, taskId: string): Promise<Execution[]> => {
+  const data = await request<{ executions: Execution[] }>(
+    `/repos/${repoId}/tasks/${taskId}/executions`,
+  );
+  return data.executions;
 };
 
 export const removeTask = async (
@@ -170,6 +179,35 @@ export const applyTask = async (
   return request<ApplyTaskResponse>(`/repos/${repoId}/tasks/${taskId}/apply`, {
     method: "POST",
     body: JSON.stringify(body),
+  });
+};
+
+export interface PauseContextResponse {
+  pauseContext: string | null;
+  signal: string | null;
+}
+
+export const getPauseContext = async (
+  repoId: string,
+  taskId: string,
+): Promise<PauseContextResponse> => {
+  return request<PauseContextResponse>(`/repos/${repoId}/tasks/${taskId}/pause-context`);
+};
+
+export interface ResumeTaskResponse {
+  ok: boolean;
+  taskId: string;
+  message: string;
+}
+
+export const resumeTask = async (
+  repoId: string,
+  taskId: string,
+  input: string,
+): Promise<ResumeTaskResponse> => {
+  return request<ResumeTaskResponse>(`/repos/${repoId}/tasks/${taskId}/resume`, {
+    method: "POST",
+    body: JSON.stringify({ input }),
   });
 };
 

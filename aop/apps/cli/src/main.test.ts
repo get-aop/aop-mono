@@ -210,7 +210,7 @@ describe("registerCommands", () => {
     expect(optionNames).toContain("force");
   });
 
-  test("task:ready command has --workflow and --base-branch options", () => {
+  test("task:ready command has --workflow, --base-branch, and --resume options", () => {
     const cli = cac("test-aop");
     registerCommands(cli);
 
@@ -219,6 +219,7 @@ describe("registerCommands", () => {
     const optionNames = cmd?.options.map((opt) => opt.name);
     expect(optionNames).toContain("workflow");
     expect(optionNames).toContain("baseBranch");
+    expect(optionNames).toContain("resume");
   });
 
   test("task:remove command has --force option", () => {
@@ -262,7 +263,11 @@ describe("registerCommands", () => {
     getCommandAction("status")("task-1", { json: true });
     getCommandAction("repo:init")("/repo");
     getCommandAction("repo:remove")("/repo", { force: true });
-    getCommandAction("task:ready")("task-123", { workflow: "default", baseBranch: "main" });
+    getCommandAction("task:ready")("task-123", {
+      workflow: "default",
+      baseBranch: "main",
+      resume: "design_brief",
+    });
     getCommandAction("task:remove")("task-123", { force: false });
     getCommandAction("apply")("task-123");
     await getCommandAction("create-task")("build feature", { debug: true, raw: true });
@@ -276,6 +281,7 @@ describe("registerCommands", () => {
     expect(handlers.taskReadyCommand).toHaveBeenCalledWith("task-123", {
       workflow: "default",
       baseBranch: "main",
+      retryFromStep: "design_brief",
     });
     expect(handlers.taskRemoveCommand).toHaveBeenCalledWith("task-123", { force: false });
     expect(handlers.applyCommand).toHaveBeenCalledWith("task-123");

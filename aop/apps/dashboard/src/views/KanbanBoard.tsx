@@ -1,15 +1,16 @@
 import type { TaskStatus } from "@aop/common";
-import { useMemo, useState } from "react";
-import { ApiError, registerRepo, removeTask } from "../api/client";
+import { useEffect, useMemo, useState } from "react";
+import { ApiError, fetchExecutions, markReady, registerRepo } from "../api/client";
 import { BlockedBanner } from "../components/BlockedBanner";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { DirectoryBrowserDialog } from "../components/DirectoryBrowserDialog";
 import { KanbanColumn } from "../components/KanbanColumn";
 import { Logo } from "../components/Logo";
+import { PausedBanner } from "../components/PausedBanner";
 import { RepoFilter } from "../components/RepoFilter";
 import { useConnectionStatus } from "../hooks/useConnectionStatus";
 import { useTaskEvents } from "../hooks/useTaskEvents";
-import type { Task } from "../types";
+import type { Step, Task } from "../types";
 
 const KANBAN_COLUMNS: TaskStatus[] = ["DRAFT", "READY", "WORKING", "DONE"];
 
@@ -81,7 +82,9 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
     const grouped: Record<TaskStatus, Task[]> = {
       DRAFT: [],
       READY: [],
+      RESUMING: [],
       WORKING: [],
+      PAUSED: [],
       DONE: [],
       BLOCKED: [],
       REMOVED: [],
@@ -94,12 +97,33 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
     return grouped;
   }, [filteredTasks]);
 
-  const handleRetry = (task: Task) => {
-    fetch(`/api/repos/${task.repoId}/tasks/${task.id}/ready`, { method: "POST" });
-  };
+  const [stepsMap, setStepsMap] = useState<Record<string, Step[]>>({});
 
-  const handleRemove = (task: Task) => {
-    removeTask(task.repoId, task.id);
+  const blockedTasks = tasksByStatus.BLOCKED;
+  useEffect(() => {
+    const loadSteps = async () => {
+      const entries: [string, Step[]][] = await Promise.all(
+        blockedTasks.map(async (task) => {
+          const executions = await fetchExecutions(task.repoId, task.id);
+          const latest = executions[0];
+          return [task.id, latest?.steps ?? []] as [string, Step[]];
+        }),
+      );
+      setStepsMap(Object.fromEntries(entries));
+    };
+    if (blockedTasks.length > 0) loadSteps();
+    else setStepsMap({});
+  }, [blockedTasks]);
+
+  const handleRetry = (task: Task, stepId?: string) => {
+    markReady(
+      task.repoId,
+      task.id,
+      task.preferredWorkflow ?? undefined,
+      task.baseBranch ?? undefined,
+      task.preferredProvider ?? undefined,
+      stepId,
+    );
   };
 
   const handleRegisterSelect = async (path: string) => {
@@ -201,10 +225,16 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
               ))}
             </div>
 
+            <PausedBanner
+              tasks={tasksByStatus.PAUSED}
+              onResume={onTaskClick}
+              onTaskClick={onTaskClick}
+            />
+
             <BlockedBanner
               tasks={tasksByStatus.BLOCKED}
+              stepsMap={stepsMap}
               onRetry={handleRetry}
-              onRemove={handleRemove}
               onTaskClick={onTaskClick}
             />
           </>

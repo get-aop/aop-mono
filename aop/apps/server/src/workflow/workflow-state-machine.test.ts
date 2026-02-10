@@ -1,6 +1,11 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { loadFixture, loadOfficialWorkflow, simulateExecutionServiceFlow } from "./test-utils.ts";
-import type { WorkflowDefinition } from "./types.ts";
+import {
+  asStepResult,
+  loadFixture,
+  loadOfficialWorkflow,
+  simulateExecutionServiceFlow,
+} from "./test-utils.ts";
+import { isTerminalState, TERMINAL_PAUSED, type WorkflowDefinition } from "./types.ts";
 import { createWorkflowStateMachine } from "./workflow-state-machine.ts";
 
 let linearPipeline: WorkflowDefinition;
@@ -8,14 +13,29 @@ let signalLoop: WorkflowDefinition;
 let reviewCycle: WorkflowDefinition;
 let conditionalRouting: WorkflowDefinition;
 let aopDefault: WorkflowDefinition;
+let pausedWorkflow: WorkflowDefinition;
+let landingPage: WorkflowDefinition;
+let deepResearch: WorkflowDefinition;
 
 beforeAll(async () => {
-  [linearPipeline, signalLoop, reviewCycle, conditionalRouting, aopDefault] = await Promise.all([
+  [
+    linearPipeline,
+    signalLoop,
+    reviewCycle,
+    conditionalRouting,
+    aopDefault,
+    pausedWorkflow,
+    landingPage,
+    deepResearch,
+  ] = await Promise.all([
     loadFixture("linear-pipeline"),
     loadFixture("signal-loop"),
     loadFixture("review-cycle"),
     loadFixture("conditional-routing"),
     loadOfficialWorkflow("aop-default"),
+    loadFixture("paused-workflow"),
+    loadOfficialWorkflow("landing-page"),
+    loadOfficialWorkflow("deep-research"),
   ]);
 });
 
@@ -62,11 +82,10 @@ describe("WorkflowStateMachine", () => {
     test("transitions to next step on success", () => {
       const sm = createWorkflowStateMachine(linearPipeline);
 
-      const result = sm.evaluateTransition("implement", { status: "success" });
+      const result = asStepResult(sm.evaluateTransition("implement", { status: "success" }));
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("test");
-      expect(result.step?.type).toBe("test");
+      expect(result.step.type).toBe("test");
     });
 
     test("transitions to blocked on failure", () => {
@@ -75,7 +94,6 @@ describe("WorkflowStateMachine", () => {
       const result = sm.evaluateTransition("implement", { status: "failure" });
 
       expect(result.type).toBe("blocked");
-      expect(result.stepId).toBeUndefined();
     });
 
     test("transitions to done terminal state", () => {
@@ -84,15 +102,13 @@ describe("WorkflowStateMachine", () => {
       const result = sm.evaluateTransition("test", { status: "success" });
 
       expect(result.type).toBe("done");
-      expect(result.stepId).toBeUndefined();
     });
 
     test("transitions to another step on failure", () => {
       const sm = createWorkflowStateMachine(linearPipeline);
 
-      const result = sm.evaluateTransition("test", { status: "failure" });
+      const result = asStepResult(sm.evaluateTransition("test", { status: "failure" }));
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("debug");
     });
 
@@ -127,9 +143,8 @@ describe("WorkflowStateMachine", () => {
     test("workflow can loop back to previous step", () => {
       const sm = createWorkflowStateMachine(linearPipeline);
 
-      const result = sm.evaluateTransition("debug", { status: "success" });
+      const result = asStepResult(sm.evaluateTransition("debug", { status: "success" }));
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("test");
     });
   });
@@ -146,7 +161,7 @@ describe("WorkflowStateMachine", () => {
       expect(result.type).toBe("done");
     });
 
-    test("signal takes precedence over success/failure", () => {
+    test("failure takes precedence over signal", () => {
       const sm = createWorkflowStateMachine(signalLoop);
 
       const result = sm.evaluateTransition("iterate", {
@@ -154,16 +169,27 @@ describe("WorkflowStateMachine", () => {
         signal: "NEEDS_REVIEW",
       });
 
-      expect(result.type).toBe("step");
+      expect(result.type).toBe("blocked");
+    });
+
+    test("signal works normally with success status", () => {
+      const sm = createWorkflowStateMachine(signalLoop);
+
+      const result = asStepResult(
+        sm.evaluateTransition("iterate", {
+          status: "success",
+          signal: "NEEDS_REVIEW",
+        }),
+      );
+
       expect(result.stepId).toBe("review");
     });
 
     test("uses __none__ transition when no signal detected and step succeeded", () => {
       const sm = createWorkflowStateMachine(signalLoop);
 
-      const result = sm.evaluateTransition("iterate", { status: "success" });
+      const result = asStepResult(sm.evaluateTransition("iterate", { status: "success" }));
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("iterate");
     });
 
@@ -222,13 +248,14 @@ describe("WorkflowStateMachine", () => {
     test("sets shouldIncrementIteration when transitioning to visited step", () => {
       const sm = createWorkflowStateMachine(reviewCycle);
 
-      const result = sm.evaluateTransition(
-        "fix",
-        { status: "success" },
-        { iteration: 0, visitedSteps: ["implement", "review", "fix"] },
+      const result = asStepResult(
+        sm.evaluateTransition(
+          "fix",
+          { status: "success" },
+          { iteration: 0, visitedSteps: ["implement", "review", "fix"] },
+        ),
       );
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("review");
       expect(result.shouldIncrementIteration).toBe(true);
     });
@@ -236,13 +263,14 @@ describe("WorkflowStateMachine", () => {
     test("does not set shouldIncrementIteration when step not yet visited", () => {
       const sm = createWorkflowStateMachine(reviewCycle);
 
-      const result = sm.evaluateTransition(
-        "implement",
-        { status: "success" },
-        { iteration: 0, visitedSteps: ["implement"] },
+      const result = asStepResult(
+        sm.evaluateTransition(
+          "implement",
+          { status: "success" },
+          { iteration: 0, visitedSteps: ["implement"] },
+        ),
       );
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("review");
       expect(result.shouldIncrementIteration).toBeFalsy();
     });
@@ -262,13 +290,14 @@ describe("WorkflowStateMachine", () => {
     test("allows transition when under maxIterations", () => {
       const sm = createWorkflowStateMachine(reviewCycle);
 
-      const result = sm.evaluateTransition(
-        "review",
-        { status: "failure" },
-        { iteration: 1, visitedSteps: ["implement", "review", "fix"] },
+      const result = asStepResult(
+        sm.evaluateTransition(
+          "review",
+          { status: "failure" },
+          { iteration: 1, visitedSteps: ["implement", "review", "fix"] },
+        ),
       );
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("fix");
     });
 
@@ -295,22 +324,22 @@ describe("WorkflowStateMachine", () => {
       };
 
       const sm = createWorkflowStateMachine(workflow);
-      const result = sm.evaluateTransition(
-        "review",
-        { status: "failure" },
-        { iteration: 2, visitedSteps: ["implement", "review", "fix"] },
+      const result = asStepResult(
+        sm.evaluateTransition(
+          "review",
+          { status: "failure" },
+          { iteration: 2, visitedSteps: ["implement", "review", "fix"] },
+        ),
       );
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("implement");
     });
 
     test("works without context (backward compatibility)", () => {
       const sm = createWorkflowStateMachine(reviewCycle);
 
-      const result = sm.evaluateTransition("implement", { status: "success" });
+      const result = asStepResult(sm.evaluateTransition("implement", { status: "success" }));
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("review");
     });
   });
@@ -319,36 +348,40 @@ describe("WorkflowStateMachine", () => {
     test("uses default target on iteration 0", () => {
       const sm = createWorkflowStateMachine(conditionalRouting);
 
-      const result = sm.evaluateTransition(
-        "fix",
-        { status: "success" },
-        { iteration: 0, visitedSteps: ["implement", "full-review", "fix"] },
+      const result = asStepResult(
+        sm.evaluateTransition(
+          "fix",
+          { status: "success" },
+          { iteration: 0, visitedSteps: ["implement", "full-review", "fix"] },
+        ),
       );
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("quick-review");
     });
 
     test("uses thenTarget when iteration >= afterIteration", () => {
       const sm = createWorkflowStateMachine(conditionalRouting);
 
-      const result = sm.evaluateTransition(
-        "fix",
-        { status: "success" },
-        { iteration: 1, visitedSteps: ["implement", "full-review", "fix", "quick-review"] },
+      const result = asStepResult(
+        sm.evaluateTransition(
+          "fix",
+          { status: "success" },
+          { iteration: 1, visitedSteps: ["implement", "full-review", "fix", "quick-review"] },
+        ),
       );
 
-      expect(result.type).toBe("step");
       expect(result.stepId).toBe("full-review");
     });
 
     test("sets shouldIncrementIteration when thenTarget loops back", () => {
       const sm = createWorkflowStateMachine(conditionalRouting);
 
-      const result = sm.evaluateTransition(
-        "fix",
-        { status: "success" },
-        { iteration: 1, visitedSteps: ["implement", "full-review", "fix", "quick-review"] },
+      const result = asStepResult(
+        sm.evaluateTransition(
+          "fix",
+          { status: "success" },
+          { iteration: 1, visitedSteps: ["implement", "full-review", "fix", "quick-review"] },
+        ),
       );
 
       expect(result.stepId).toBe("full-review");
@@ -358,54 +391,15 @@ describe("WorkflowStateMachine", () => {
     test("does not increment iteration on first visit via afterIteration", () => {
       const sm = createWorkflowStateMachine(conditionalRouting);
 
-      const result = sm.evaluateTransition(
-        "fix",
-        { status: "success" },
-        { iteration: 0, visitedSteps: ["implement", "full-review", "fix"] },
+      const result = asStepResult(
+        sm.evaluateTransition(
+          "fix",
+          { status: "success" },
+          { iteration: 0, visitedSteps: ["implement", "full-review", "fix"] },
+        ),
       );
 
       expect(result.stepId).toBe("quick-review");
-      expect(result.shouldIncrementIteration).toBeFalsy();
-    });
-  });
-
-  describe("self-loop iteration isolation", () => {
-    test("self-loops do not increment iteration counter", () => {
-      const sm = createWorkflowStateMachine(aopDefault);
-
-      const trace = simulateExecutionServiceFlow(sm, [
-        { status: "success", signal: "CHUNK_DONE" }, // iterate → iterate (self-loop)
-        { status: "success", signal: "CHUNK_DONE" }, // iterate → iterate (self-loop)
-        { status: "success", signal: "CHUNK_DONE" }, // iterate → iterate (self-loop)
-        { status: "success", signal: "ALL_TASKS_DONE" }, // iterate → full-review
-        { status: "success", signal: "REVIEW_FAILED" }, // full-review → should go to fix-issues
-      ]);
-
-      expect(trace).toHaveLength(5);
-
-      // All iterate self-loops should keep iteration at 0
-      expect(trace[0]?.iteration).toBe(0);
-      expect(trace[1]?.iteration).toBe(0);
-      expect(trace[2]?.iteration).toBe(0);
-      expect(trace[3]?.iteration).toBe(0);
-
-      // REVIEW_FAILED should transition to fix-issues, NOT block
-      expect(trace[4]?.iteration).toBe(0);
-      expect(trace[4]?.resultType).toBe("step");
-      expect(trace[4]?.nextStepId).toBe("fix-issues");
-    });
-
-    test("self-loops do not set shouldIncrementIteration", () => {
-      const sm = createWorkflowStateMachine(signalLoop);
-
-      const result = sm.evaluateTransition(
-        "iterate",
-        { status: "success" },
-        { iteration: 0, visitedSteps: ["iterate"] },
-      );
-
-      expect(result.type).toBe("step");
-      expect(result.stepId).toBe("iterate");
       expect(result.shouldIncrementIteration).toBeFalsy();
     });
   });
@@ -492,6 +486,184 @@ describe("WorkflowStateMachine", () => {
       // Step 6: full-review(REVIEW_PASSED) → done
       expect(trace[5]?.resolvedCurrentStepId).toBe("full-review");
       expect(trace[5]?.resultType).toBe("done");
+    });
+  });
+
+  describe("landing-page outline_page transitions", () => {
+    test("PLAN_READY pauses for human approval", () => {
+      const sm = createWorkflowStateMachine(landingPage);
+
+      const result = sm.evaluateTransition("outline_page", {
+        status: "success",
+        signal: "PLAN_READY",
+      });
+
+      expect(result.type).toBe("paused");
+    });
+
+    test("PLAN_APPROVED transitions to write_copy", () => {
+      const sm = createWorkflowStateMachine(landingPage);
+
+      const result = asStepResult(
+        sm.evaluateTransition("outline_page", {
+          status: "success",
+          signal: "PLAN_APPROVED",
+        }),
+      );
+
+      expect(result.stepId).toBe("write_copy");
+    });
+
+    test("__none__ loops back to outline_page when no signal emitted", () => {
+      const sm = createWorkflowStateMachine(landingPage);
+
+      const result = asStepResult(sm.evaluateTransition("outline_page", { status: "success" }));
+
+      expect(result.stepId).toBe("outline_page");
+    });
+
+    test("REQUIRES_INPUT pauses for human input", () => {
+      const sm = createWorkflowStateMachine(landingPage);
+
+      const result = sm.evaluateTransition("outline_page", {
+        status: "success",
+        signal: "REQUIRES_INPUT",
+      });
+
+      expect(result.type).toBe("paused");
+    });
+
+    test("failure blocks the workflow", () => {
+      const sm = createWorkflowStateMachine(landingPage);
+
+      const result = sm.evaluateTransition("outline_page", { status: "failure" });
+
+      expect(result.type).toBe("blocked");
+    });
+
+    test("outline flow pauses: market_analysis → design_brief → outline_page(PLAN_READY) → paused", () => {
+      const sm = createWorkflowStateMachine(landingPage);
+
+      const trace = simulateExecutionServiceFlow(sm, [
+        { status: "success", signal: "RESEARCH_COMPLETE" },
+        { status: "success", signal: "BRIEF_READY" },
+        { status: "success", signal: "PLAN_READY" },
+      ]);
+
+      expect(trace).toHaveLength(3);
+      expect(trace[0]?.nextStepId).toBe("design_brief");
+      expect(trace[1]?.nextStepId).toBe("outline_page");
+      expect(trace[2]?.resultType).toBe("paused");
+    });
+  });
+
+  describe("deep-research plan_research transitions", () => {
+    test("PLAN_READY pauses for human approval", () => {
+      const sm = createWorkflowStateMachine(deepResearch);
+
+      const result = sm.evaluateTransition("plan_research", {
+        status: "success",
+        signal: "PLAN_READY",
+      });
+
+      expect(result.type).toBe("paused");
+    });
+
+    test("PLAN_APPROVED transitions to research", () => {
+      const sm = createWorkflowStateMachine(deepResearch);
+
+      const result = asStepResult(
+        sm.evaluateTransition("plan_research", {
+          status: "success",
+          signal: "PLAN_APPROVED",
+        }),
+      );
+
+      expect(result.stepId).toBe("research");
+    });
+
+    test("__none__ loops back to plan_research when no signal emitted", () => {
+      const sm = createWorkflowStateMachine(deepResearch);
+
+      const result = asStepResult(sm.evaluateTransition("plan_research", { status: "success" }));
+
+      expect(result.stepId).toBe("plan_research");
+    });
+
+    test("failure blocks the workflow", () => {
+      const sm = createWorkflowStateMachine(deepResearch);
+
+      const result = sm.evaluateTransition("plan_research", { status: "failure" });
+
+      expect(result.type).toBe("blocked");
+    });
+
+    test("plan flow pauses: codebase_research → plan_research(PLAN_READY) → paused", () => {
+      const sm = createWorkflowStateMachine(deepResearch);
+
+      const trace = simulateExecutionServiceFlow(sm, [
+        { status: "success", signal: "RESEARCH_COMPLETE" },
+        { status: "success", signal: "PLAN_READY" },
+      ]);
+
+      expect(trace).toHaveLength(2);
+      expect(trace[0]?.nextStepId).toBe("plan_research");
+      expect(trace[1]?.resultType).toBe("paused");
+    });
+  });
+
+  describe("PAUSED workflow transitions", () => {
+    test("REQUIRES_INPUT signal transitions to paused", () => {
+      const sm = createWorkflowStateMachine(pausedWorkflow);
+
+      const result = sm.evaluateTransition("plan", {
+        status: "success",
+        signal: "REQUIRES_INPUT",
+      });
+
+      expect(result.type).toBe("paused");
+    });
+
+    test("isTerminalState recognizes __paused__", () => {
+      expect(isTerminalState(TERMINAL_PAUSED)).toBe(true);
+      expect(isTerminalState("__paused__")).toBe(true);
+    });
+
+    test("research step type is accepted in workflow", () => {
+      const sm = createWorkflowStateMachine(pausedWorkflow);
+
+      const step = sm.getInitialStep();
+
+      expect(step.id).toBe("research");
+      expect(step.type).toBe("research");
+    });
+
+    test("paused workflow simulation: research → plan(REQUIRES_INPUT) → paused", () => {
+      const sm = createWorkflowStateMachine(pausedWorkflow);
+
+      const trace = simulateExecutionServiceFlow(sm, [
+        { status: "success", signal: "RESEARCH_COMPLETE" },
+        { status: "success", signal: "REQUIRES_INPUT" },
+      ]);
+
+      expect(trace).toHaveLength(2);
+      expect(trace[0]?.nextStepId).toBe("plan");
+      expect(trace[1]?.resultType).toBe("paused");
+    });
+
+    test("paused workflow happy path: research → plan(PLAN_READY) → implement → done", () => {
+      const sm = createWorkflowStateMachine(pausedWorkflow);
+
+      const trace = simulateExecutionServiceFlow(sm, [
+        { status: "success", signal: "RESEARCH_COMPLETE" },
+        { status: "success", signal: "PLAN_READY" },
+        { status: "success", signal: "TASK_COMPLETE" },
+      ]);
+
+      expect(trace).toHaveLength(3);
+      expect(trace[0]?.nextStepId).toBe("plan");
+      expect(trace[1]?.nextStepId).toBe("implement");
+      expect(trace[2]?.resultType).toBe("done");
     });
   });
 });

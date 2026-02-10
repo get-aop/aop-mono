@@ -1,0 +1,52 @@
+version: 1
+name: refactor
+initialStep: codebase_research
+steps:
+  codebase_research:
+    id: codebase_research
+    type: research
+    promptTemplate: codebase-research.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: RESEARCH_COMPLETE
+        description: codebase exploration is done, findings are written
+    transitions:
+      - condition: RESEARCH_COMPLETE
+        target: refactor_iterate
+      - condition: __none__
+        target: refactor_iterate
+      - condition: failure
+        target: __blocked__
+
+  refactor_iterate:
+    id: refactor_iterate
+    type: iterate
+    promptTemplate: refactor.md.hbs
+    maxAttempts: 10
+    signals:
+      - name: REFACTOR_COMPLETE
+        description: all refactoring changes are done and verified with passing tests
+      - name: CHUNK_DONE
+        description: completed a chunk of refactoring, more work remains
+      - name: REQUIRES_INPUT
+        description: stuck, needs human input on design direction or scope
+    transitions:
+      - condition: REFACTOR_COMPLETE
+        target: __done__
+      - condition: CHUNK_DONE
+        target: refactor_iterate
+        maxIterations: 8
+        onMaxIterations: __blocked__
+      - condition: REQUIRES_INPUT
+        target: __paused__
+      - condition: __none__
+        target: refactor_iterate
+        maxIterations: 8
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+
+terminalStates:
+  - __done__
+  - __blocked__
+  - __paused__

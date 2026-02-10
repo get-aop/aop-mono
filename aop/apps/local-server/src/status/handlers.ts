@@ -16,6 +16,7 @@ export const toSSETask = (
   status: task.status,
   baseBranch: task.base_branch ?? null,
   preferredProvider: task.preferred_provider ?? null,
+  preferredWorkflow: task.preferred_workflow ?? null,
   createdAt: task.created_at,
   updatedAt: task.updated_at,
   errorMessage: undefined,

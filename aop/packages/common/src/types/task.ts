@@ -1,7 +1,9 @@
 export const TaskStatus = {
   DRAFT: "DRAFT",
   READY: "READY",
+  RESUMING: "RESUMING",
   WORKING: "WORKING",
+  PAUSED: "PAUSED",
   BLOCKED: "BLOCKED",
   DONE: "DONE",
   REMOVED: "REMOVED",

@@ -8,8 +8,10 @@ interface StatusBadgeProps {
 const statusConfig: Record<TaskStatus, { color: string; label: string }> = {
   DRAFT: { color: "bg-aop-charcoal", label: "DRAFT" },
   READY: { color: "bg-aop-amber", label: "READY" },
+  RESUMING: { color: "bg-aop-amber", label: "RESUMING" },
   WORKING: { color: "bg-aop-working", label: "WORKING" },
   DONE: { color: "bg-aop-success", label: "DONE" },
+  PAUSED: { color: "bg-aop-amber", label: "PAUSED" },
   BLOCKED: { color: "bg-aop-blocked", label: "BLOCKED" },
   REMOVED: { color: "bg-aop-slate-dark", label: "REMOVED" },
 };

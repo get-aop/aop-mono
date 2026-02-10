@@ -89,6 +89,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -143,6 +144,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -187,6 +189,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -225,6 +228,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -258,6 +262,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -292,6 +297,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -318,6 +324,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           executeTask: mockExecuteTask,
         },
         { pollIntervalMs: 100 },
@@ -340,6 +347,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           executeTask: mockExecuteTask,
         },
         { pollIntervalMs: 100 },
@@ -367,6 +375,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -399,6 +408,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -431,6 +441,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -463,6 +474,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -501,6 +513,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -511,6 +524,238 @@ describe("QueueProcessor", () => {
 
       expect(result).toBeNull();
       expect(mockExecuteTask).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("retry_from_step", () => {
+    test("passes retryFromStep to serverSync.markTaskReady when set on task", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
+      await ctx.taskRepository.update("task-1", { retry_from_step: "full-review" });
+
+      const capturedCalls: Array<{ options: unknown }> = [];
+      const mockServerSync = {
+        isDegraded: () => false,
+        isTaskQueued: () => false,
+        markTaskReady: mock(async (_taskId: string, _repoId: string, options?: unknown) => {
+          capturedCalls.push({ options });
+          return {
+            status: "WORKING" as const,
+            step: {
+              id: "step-1",
+              type: "iterate",
+              promptTemplate: "test",
+              signals: [],
+              attempt: 1,
+            },
+            execution: { id: "exec-1", workflowId: "workflow_aop_default" },
+          };
+        }),
+      };
+
+      const mockExecuteTask = mock(
+        (_task: Task, _stepCommand: StepCommand, _execution: ExecutionInfo) => {},
+      );
+
+      const processor = createQueueProcessor(
+        {
+          taskRepository: ctx.taskRepository,
+          repoRepository: ctx.repoRepository,
+          settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
+          serverSync: mockServerSync as never,
+          executeTask: mockExecuteTask,
+        },
+        { pollIntervalMs: 100 },
+      );
+
+      const result = await processor.processOnce();
+
+      expect(result).not.toBeNull();
+      expect(capturedCalls).toHaveLength(1);
+      expect(capturedCalls[0]?.options).toEqual({
+        retryFromStep: "full-review",
+      });
+
+      // retry_from_step should be cleared after execution starts
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.retry_from_step).toBeNull();
+    });
+  });
+
+  describe("resume processing", () => {
+    test("picks up RESUMING task and calls serverSync.resumeStep", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "RESUMING");
+      await ctx.taskRepository.update("task-1", { resume_input: "Approved" });
+
+      // Create execution + step for getLatestStepExecution
+      await db
+        .insertInto("executions")
+        .values({
+          id: "exec-1",
+          task_id: "task-1",
+          status: "running",
+          started_at: new Date().toISOString(),
+        })
+        .execute();
+      await db
+        .insertInto("step_executions")
+        .values({
+          id: "step-1",
+          execution_id: "exec-1",
+          step_type: "iterate",
+          status: "running",
+          started_at: new Date().toISOString(),
+        })
+        .execute();
+
+      const mockServerSync = {
+        isDegraded: () => false,
+        isTaskQueued: () => false,
+        markTaskReady: mock(async () => ({})),
+        resumeStep: mock(async () => ({
+          taskStatus: "WORKING" as const,
+          step: { id: "step-2", type: "iterate", promptTemplate: "test", signals: [], attempt: 1 },
+          execution: { id: "exec-1", workflowId: "workflow_aop_default" },
+        })),
+      };
+
+      const mockExecuteTask = mock(
+        (_task: Task, _stepCommand: StepCommand, _execution: ExecutionInfo) => {},
+      );
+
+      const processor = createQueueProcessor(
+        {
+          taskRepository: ctx.taskRepository,
+          repoRepository: ctx.repoRepository,
+          settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
+          serverSync: mockServerSync as never,
+          executeTask: mockExecuteTask,
+        },
+        { pollIntervalMs: 100 },
+      );
+
+      const result = await processor.processOnce();
+
+      expect(result).not.toBeNull();
+      expect(result?.id).toBe("task-1");
+      expect(mockServerSync.resumeStep).toHaveBeenCalledWith("step-1", "Approved");
+      expect(mockExecuteTask).toHaveBeenCalledTimes(1);
+
+      // resume_input should be cleared after execution starts
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.resume_input).toBeNull();
+    });
+
+    test("keeps task in RESUMING when server is degraded", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "RESUMING");
+      await ctx.taskRepository.update("task-1", { resume_input: "Approved" });
+
+      const mockServerSync = {
+        isDegraded: () => true,
+        isTaskQueued: () => false,
+        markTaskReady: mock(async () => ({})),
+        resumeStep: mock(async () => ({})),
+      };
+
+      const mockExecuteTask = mock(() => {});
+
+      const processor = createQueueProcessor(
+        {
+          taskRepository: ctx.taskRepository,
+          repoRepository: ctx.repoRepository,
+          settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
+          serverSync: mockServerSync as never,
+          executeTask: mockExecuteTask,
+        },
+        { pollIntervalMs: 100 },
+      );
+
+      const result = await processor.processOnce();
+
+      expect(result).toBeNull();
+      expect(mockServerSync.resumeStep).not.toHaveBeenCalled();
+      expect(mockExecuteTask).not.toHaveBeenCalled();
+
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.status).toBe("RESUMING");
+      expect(task?.resume_input).toBe("Approved");
+    });
+
+    test("prioritizes RESUMING tasks over READY tasks", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-ready", "repo-1", "changes/feat-1", "READY");
+      await createTestTask(db, "task-resume", "repo-1", "changes/feat-2", "RESUMING");
+      await ctx.taskRepository.update("task-resume", { resume_input: "Go" });
+
+      await db
+        .insertInto("executions")
+        .values({
+          id: "exec-1",
+          task_id: "task-resume",
+          status: "running",
+          started_at: new Date().toISOString(),
+        })
+        .execute();
+      await db
+        .insertInto("step_executions")
+        .values({
+          id: "step-1",
+          execution_id: "exec-1",
+          step_type: "iterate",
+          status: "running",
+          started_at: new Date().toISOString(),
+        })
+        .execute();
+
+      const mockServerSync = {
+        isDegraded: () => false,
+        isTaskQueued: () => false,
+        markTaskReady: mock(async () => ({
+          status: "WORKING" as const,
+          step: {
+            id: "step-new",
+            type: "implement",
+            promptTemplate: "test",
+            signals: [],
+            attempt: 1,
+          },
+          execution: { id: "exec-2", workflowId: "workflow_simple" },
+        })),
+        resumeStep: mock(async () => ({
+          taskStatus: "WORKING" as const,
+          step: { id: "step-2", type: "iterate", promptTemplate: "test", signals: [], attempt: 1 },
+          execution: { id: "exec-1", workflowId: "workflow_aop_default" },
+        })),
+      };
+
+      const executedTaskIds: string[] = [];
+      const mockExecuteTask = mock(
+        (task: Task, _stepCommand: StepCommand, _execution: ExecutionInfo) => {
+          executedTaskIds.push(task.id);
+        },
+      );
+
+      const processor = createQueueProcessor(
+        {
+          taskRepository: ctx.taskRepository,
+          repoRepository: ctx.repoRepository,
+          settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
+          serverSync: mockServerSync as never,
+          executeTask: mockExecuteTask,
+        },
+        { pollIntervalMs: 100 },
+      );
+
+      const result = await processor.processOnce();
+
+      expect(result?.id).toBe("task-resume");
+      expect(executedTaskIds[0]).toBe("task-resume");
     });
   });
 
@@ -529,6 +774,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           executeTask: mockExecuteTask,
         },
         { pollIntervalMs: 10000 },
@@ -551,6 +797,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           executeTask: mockExecuteTask,
         },
         { pollIntervalMs: 10000 },
@@ -572,6 +819,7 @@ describe("QueueProcessor", () => {
         taskRepository: ctx.taskRepository,
         repoRepository: ctx.repoRepository,
         settingsRepository: ctx.settingsRepository,
+        executionRepository: ctx.executionRepository,
         executeTask: mockExecuteTask,
       });
 
@@ -602,6 +850,7 @@ describe("QueueProcessor", () => {
           taskRepository: ctx.taskRepository,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           serverSync: mockServerSync as never,
           executeTask: mockExecuteTask,
         },
@@ -642,6 +891,7 @@ describe("QueueProcessor", () => {
           taskRepository: mockTaskRepository as never,
           repoRepository: ctx.repoRepository,
           settingsRepository: ctx.settingsRepository,
+          executionRepository: ctx.executionRepository,
           executeTask: mockExecuteTask,
         },
         { pollIntervalMs: 10 },

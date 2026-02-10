@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { loadOfficialWorkflow } from "./test-utils.ts";
+import { asStepResult, loadOfficialWorkflow } from "./test-utils.ts";
 import { TransitionSchema } from "./types.ts";
 import { WorkflowParseError } from "./workflow-parser.ts";
 import { createWorkflowStateMachine } from "./workflow-state-machine.ts";
@@ -75,8 +75,10 @@ steps:
     promptTemplate: iterate.md.hbs
     maxAttempts: 1
     signals:
-      - TASK_COMPLETE
-      - NEEDS_REVIEW
+      - name: TASK_COMPLETE
+        description: task is fully complete, all requirements met, tests passing
+      - name: NEEDS_REVIEW
+        description: implementation is ready for code review
     transitions:
       - condition: TASK_COMPLETE
         target: __done__
@@ -106,7 +108,13 @@ terminalStates:
     expect(result.name).toBe("ralph-loop");
     expect(result.initialStep).toBe("iterate");
     expect(Object.keys(result.steps)).toEqual(["iterate", "review"]);
-    expect(result.steps.iterate?.signals).toEqual(["TASK_COMPLETE", "NEEDS_REVIEW"]);
+    expect(result.steps.iterate?.signals).toEqual([
+      {
+        name: "TASK_COMPLETE",
+        description: "task is fully complete, all requirements met, tests passing",
+      },
+      { name: "NEEDS_REVIEW", description: "implementation is ready for code review" },
+    ]);
   });
 
   test("parses transitions with maxIterations and onMaxIterations", () => {
@@ -335,7 +343,10 @@ describe("aop-default workflow integration", () => {
     const workflow = await loadOfficialWorkflow("aop-default");
     const step = workflow.steps.iterate;
 
-    expect(step?.signals).toEqual(["CHUNK_DONE", "ALL_TASKS_DONE"]);
+    expect(step?.signals).toEqual([
+      { name: "CHUNK_DONE", description: "completed a chunk, more tasks remain" },
+      { name: "ALL_TASKS_DONE", description: "all implementation tasks are complete" },
+    ]);
     expect(step?.transitions).toContainEqual({ condition: "CHUNK_DONE", target: "iterate" });
     expect(step?.transitions).toContainEqual({
       condition: "ALL_TASKS_DONE",
@@ -369,16 +380,20 @@ describe("aop-default workflow integration", () => {
     const initial = sm.getInitialStep();
     expect(initial.id).toBe("iterate");
 
-    const afterChunk = sm.evaluateTransition("iterate", {
-      status: "success",
-      signal: "CHUNK_DONE",
-    });
+    const afterChunk = asStepResult(
+      sm.evaluateTransition("iterate", {
+        status: "success",
+        signal: "CHUNK_DONE",
+      }),
+    );
     expect(afterChunk.stepId).toBe("iterate");
 
-    const afterAllTasks = sm.evaluateTransition("iterate", {
-      status: "success",
-      signal: "ALL_TASKS_DONE",
-    });
+    const afterAllTasks = asStepResult(
+      sm.evaluateTransition("iterate", {
+        status: "success",
+        signal: "ALL_TASKS_DONE",
+      }),
+    );
     expect(afterAllTasks.stepId).toBe("full-review");
 
     const afterReviewPass = sm.evaluateTransition("full-review", {
@@ -393,18 +408,14 @@ describe("aop-default workflow integration", () => {
     const sm = createWorkflowStateMachine(workflow);
     const ctx = { iteration: 0, visitedSteps: ["iterate", "full-review"] };
 
-    const afterReviewFail = sm.evaluateTransition(
-      "full-review",
-      { status: "success", signal: "REVIEW_FAILED" },
-      ctx,
+    const afterReviewFail = asStepResult(
+      sm.evaluateTransition("full-review", { status: "success", signal: "REVIEW_FAILED" }, ctx),
     );
     expect(afterReviewFail.stepId).toBe("fix-issues");
 
     ctx.visitedSteps.push("fix-issues");
-    const afterFix = sm.evaluateTransition(
-      "fix-issues",
-      { status: "success", signal: "FIX_COMPLETE" },
-      ctx,
+    const afterFix = asStepResult(
+      sm.evaluateTransition("fix-issues", { status: "success", signal: "FIX_COMPLETE" }, ctx),
     );
     expect(afterFix.stepId).toBe("quick-review");
 
@@ -425,10 +436,8 @@ describe("aop-default workflow integration", () => {
       visitedSteps: ["iterate", "full-review", "fix-issues", "quick-review"],
     };
 
-    const afterFix = sm.evaluateTransition(
-      "fix-issues",
-      { status: "success", signal: "FIX_COMPLETE" },
-      ctx,
+    const afterFix = asStepResult(
+      sm.evaluateTransition("fix-issues", { status: "success", signal: "FIX_COMPLETE" }, ctx),
     );
     expect(afterFix.stepId).toBe("full-review");
     expect(afterFix.shouldIncrementIteration).toBe(true);

@@ -2,19 +2,7 @@ You are implementing a task in a software project.
 
 You MUST follow ALL the instructions and emit the REQUIRED SIGNALS at the bottom.
 
-## Worktree Information
-
-- **Path**: {{worktree.path}}
-- **Branch**: {{worktree.branch}}
-
-## Task Details
-
-- **Change Path**: {{task.changePath}}
-
-## Execution Context
-
-- **Step Type**: {{step.type}}
-- **Iteration**: {{step.iteration}}
+{{> task-context}}
 
 ## Instructions
 
@@ -150,18 +138,4 @@ This includes:
 - Any other style that is inconsistent with the file
 - also be mindful about deadcode, redeclared functions, DRY, YAGNI, and also for reinventing the wheel (recreating functionalities that already exist in the codebase, skipping existing utilities/packages patterns like not using the infra logger and using console.log)
 
-### Signals (REQUIRED)
-
-When you complete a cohesive chunk but more work remains:
-```
-<aop>CHUNK_DONE</aop>
-```
-
-When all implementation tasks are complete:
-```
-<aop>ALL_TASKS_DONE</aop>
-```
-
-**Important**: Do not signal until the self-check passes. If blocked, describe the issue clearly. 
-
-DO NOT FINISH THE SESSION WITHOUT SIGNALING.
+{{> output-signals}}

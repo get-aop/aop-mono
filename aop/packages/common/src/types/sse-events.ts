@@ -11,6 +11,7 @@ export interface SSETask {
   status: TaskStatus;
   baseBranch: string | null;
   preferredProvider: string | null;
+  preferredWorkflow: string | null;
   createdAt: string;
   updatedAt: string;
   errorMessage?: string;

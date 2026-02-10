@@ -756,4 +756,79 @@ describe("log-routes file-based streaming", () => {
     expect(events[0]?.id).toBe("0");
     expect(events[1]?.id).toBe("2");
   });
+
+  it("includes persisted logs from completed steps in running execution replay", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+    await ctx.executionRepository.createExecution({
+      id: "exec-multi",
+      task_id: "task-1",
+      status: ExecutionStatus.RUNNING,
+      started_at: new Date().toISOString(),
+    });
+
+    // Step 1 completed — its log file was deleted, but logs persisted to DB
+    await ctx.executionRepository.createStepExecution({
+      id: "step-completed",
+      execution_id: "exec-multi",
+      step_type: "iterate",
+      agent_pid: null,
+      session_id: null,
+      status: "success",
+      exit_code: 0,
+      signal: null,
+      error: null,
+      started_at: "2024-01-01T00:00:00.000Z",
+      ended_at: "2024-01-01T00:08:00.000Z",
+    });
+    await ctx.executionRepository.saveExecutionLogs([
+      {
+        execution_id: "exec-multi",
+        stream: "stdout",
+        content: "step 1 output",
+        timestamp: "2024-01-01T00:01:00.000Z",
+      },
+      {
+        execution_id: "exec-multi",
+        stream: "stdout",
+        content: "step 1 done",
+        timestamp: "2024-01-01T00:07:00.000Z",
+      },
+    ]);
+
+    // Step 2 running — its log file exists on disk
+    await ctx.executionRepository.createStepExecution({
+      id: "step-running",
+      execution_id: "exec-multi",
+      step_type: "review",
+      agent_pid: 99993,
+      session_id: null,
+      status: "running",
+      exit_code: null,
+      signal: null,
+      error: null,
+      started_at: "2024-01-01T00:08:01.000Z",
+      ended_at: null,
+    });
+    writeJsonl("step-running.jsonl", [
+      { type: "assistant", message: { content: [{ type: "text", text: "step 2 reviewing" }] } },
+    ]);
+
+    setupFileRoute(() => false);
+
+    const res = await app.request("/api/executions/exec-multi/logs");
+    expect(res.status).toBe(200);
+
+    const text = await res.text();
+    const events = parseSSEEvents(text);
+    const parsed = events.map((e) => JSON.parse(e.data));
+
+    const replayEvent = parsed.find((e: { type: string }) => e.type === "replay");
+    expect(replayEvent).toBeDefined();
+    // Should contain both persisted step 1 logs AND current step 2 file logs
+    expect(replayEvent.lines).toHaveLength(3);
+    expect(replayEvent.lines[0].content).toBe("step 1 output");
+    expect(replayEvent.lines[1].content).toBe("step 1 done");
+    expect(replayEvent.lines[2].content).toBe("step 2 reviewing");
+  });
 });

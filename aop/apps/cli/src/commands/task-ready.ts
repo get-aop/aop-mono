@@ -7,6 +7,7 @@ const logger = getLogger("cli", "task-ready");
 export interface TaskReadyOptions {
   workflow?: string;
   baseBranch?: string;
+  retryFromStep?: string;
 }
 
 type Task = SSETask;
@@ -46,6 +47,7 @@ const markTaskReady = async (task: Task, options?: TaskReadyOptions): Promise<vo
   const body: Record<string, string> = {};
   if (options?.workflow) body.workflow = options.workflow;
   if (options?.baseBranch) body.baseBranch = options.baseBranch;
+  if (options?.retryFromStep) body.retryFromStep = options.retryFromStep;
   const result = await fetchServer<TaskReadyResponse>(
     `/api/repos/${task.repoId}/tasks/${task.id}/ready`,
     {
@@ -76,8 +78,8 @@ const handleReadyError = (error: {
     logger.error("Error: Cannot mark task as READY from status {status}", {
       status: error.status ?? "unknown",
     });
-  } else if (error.error === "Change is missing tasks.md file") {
-    logger.error("Error: Change is missing tasks.md — create it before marking ready", {
+  } else if (error.error?.includes("no .md files")) {
+    logger.error("Error: Change has no .md files — add at least one before marking ready", {
       changePath: error.changePath,
     });
   } else {

@@ -38,10 +38,14 @@ export const loadWorkflowsFromDirectory = async (
 
   for (const file of files) {
     const filePath = join(workflowsDir, file);
-    const content = await Bun.file(filePath).text();
-    const workflow = parseWorkflowYaml(content);
-    workflows.push(workflow);
-    logger.info("Loaded workflow {name} from {file}", { name: workflow.name, file });
+    try {
+      const content = await Bun.file(filePath).text();
+      const workflow = parseWorkflowYaml(content);
+      workflows.push(workflow);
+      logger.info("Loaded workflow {name} from {file}", { name: workflow.name, file });
+    } catch (err) {
+      logger.error("Failed to load workflow from {file}: {error}", { file, error: String(err) });
+    }
   }
 
   return workflows;

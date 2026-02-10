@@ -97,6 +97,61 @@ describe("WorkflowRepository", () => {
     });
   });
 
+  describe("listNames (active filter)", () => {
+    test("excludes inactive workflows", async () => {
+      await repository.create({ id: "w-1", name: "active-wf", definition: "{}" });
+      await repository.create({ id: "w-2", name: "inactive-wf", definition: "{}" });
+      await repository.deactivateByName("inactive-wf");
+
+      const names = await repository.listNames();
+
+      expect(names).toContain("active-wf");
+      expect(names).not.toContain("inactive-wf");
+    });
+  });
+
+  describe("listAllNames", () => {
+    test("includes inactive workflows", async () => {
+      await repository.create({ id: "w-1", name: "active-wf", definition: "{}" });
+      await repository.create({ id: "w-2", name: "inactive-wf", definition: "{}" });
+      await repository.deactivateByName("inactive-wf");
+
+      const names = await repository.listAllNames();
+
+      expect(names).toContain("active-wf");
+      expect(names).toContain("inactive-wf");
+    });
+  });
+
+  describe("deactivateByName", () => {
+    test("deactivates an existing workflow and returns true", async () => {
+      await repository.create({ id: "w-1", name: "to-deactivate", definition: "{}" });
+
+      const result = await repository.deactivateByName("to-deactivate");
+
+      expect(result).toBe(true);
+
+      const workflow = await repository.findByName("to-deactivate");
+      expect(workflow).not.toBeNull();
+      expect(workflow?.active).toBe(false);
+    });
+
+    test("returns false for non-existent workflow", async () => {
+      const result = await repository.deactivateByName("non-existent");
+
+      expect(result).toBe(false);
+    });
+
+    test("returns false for already inactive workflow", async () => {
+      await repository.create({ id: "w-1", name: "already-inactive", definition: "{}" });
+      await repository.deactivateByName("already-inactive");
+
+      const result = await repository.deactivateByName("already-inactive");
+
+      expect(result).toBe(false);
+    });
+  });
+
   describe("upsert", () => {
     test("inserts new workflow when name does not exist", async () => {
       const workflow = await repository.upsert({

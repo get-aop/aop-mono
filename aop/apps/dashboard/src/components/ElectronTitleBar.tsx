@@ -30,7 +30,10 @@ export const ElectronTitleBar = () => {
     }
   };
 
+  const isElectron = !!window.electronAPI;
   const isMacOS = navigator.platform.startsWith("Mac");
+
+  if (!isElectron) return null;
 
   return (
     <div className="electron-titlebar">

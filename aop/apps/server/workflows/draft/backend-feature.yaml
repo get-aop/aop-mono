@@ -1,0 +1,117 @@
+version: 1
+name: backend-feature
+initialStep: codebase_research
+steps:
+  codebase_research:
+    id: codebase_research
+    type: research
+    promptTemplate: codebase-research.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: RESEARCH_COMPLETE
+        description: codebase exploration is done, findings are written
+    transitions:
+      - condition: RESEARCH_COMPLETE
+        target: plan_implementation
+      - condition: __none__
+        target: plan_implementation
+      - condition: failure
+        target: __blocked__
+
+  plan_implementation:
+    id: plan_implementation
+    type: iterate
+    promptTemplate: plan-implementation.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: PLAN_READY
+        description: plan is written to tasks.md, ready for human approval
+      - name: REQUIRES_INPUT
+        description: need clarification before planning can proceed. Also output `INPUT_REASON:` and `INPUT_TYPE:` tags explaining what you need
+    transitions:
+      - condition: PLAN_READY
+        target: implement_backend
+      - condition: REQUIRES_INPUT
+        target: __paused__
+      - condition: __none__
+        target: implement_backend
+      - condition: failure
+        target: __blocked__
+
+  implement_backend:
+    id: implement_backend
+    type: implement
+    promptTemplate: implement-backend.md.hbs
+    maxAttempts: 15
+    signals:
+      - name: TASK_COMPLETE
+        description: all tasks in tasks.md are complete
+      - name: CHUNK_DONE
+        description: completed a chunk, more tasks remain in tasks.md
+    transitions:
+      - condition: TASK_COMPLETE
+        target: run_tests
+      - condition: CHUNK_DONE
+        target: implement_backend
+      - condition: __none__
+        target: implement_backend
+      - condition: failure
+        target: __blocked__
+
+  run_tests:
+    id: run_tests
+    type: test
+    promptTemplate: run-tests.md.hbs
+    maxAttempts: 1
+    signals:
+      - name: TESTS_PASS
+        description: all relevant tests pass
+      - name: TESTS_FAIL
+        description: one or more tests are failing, details reported
+    transitions:
+      - condition: TESTS_PASS
+        target: code_review
+      - condition: TESTS_FAIL
+        target: debug_systematic
+        maxIterations: 3
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+
+  debug_systematic:
+    id: debug_systematic
+    type: debug
+    promptTemplate: debug-systematic.md.hbs
+    maxAttempts: 10
+    signals:
+      - name: FIX_COMPLETE
+        description: issue is fixed and verified
+    transitions:
+      - condition: FIX_COMPLETE
+        target: run_tests
+      - condition: failure
+        target: __blocked__
+
+  code_review:
+    id: code_review
+    type: review
+    promptTemplate: code-review-step.md.hbs
+    maxAttempts: 2
+    signals:
+      - name: REVIEW_PASSED
+        description: code is clean and ready
+      - name: REVIEW_FAILED
+        description: found issues that need the implementer to address
+    transitions:
+      - condition: REVIEW_PASSED
+        target: __done__
+      - condition: REVIEW_FAILED
+        target: implement_backend
+        maxIterations: 2
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+terminalStates:
+  - __done__
+  - __blocked__
+  - __paused__

@@ -255,7 +255,7 @@ describe("task/routes", () => {
   describe("POST /api/repos/:repoId/tasks/:taskId/ready", () => {
     const changePath = "changes/feat";
 
-    const createTasksFile = (repoId: string) => {
+    const createPromptFile = (repoId: string) => {
       const dir = join(aopPaths.repoDir(repoId), changePath);
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "tasks.md"), "# Tasks\n- [ ] Task 1");
@@ -303,7 +303,7 @@ describe("task/routes", () => {
       expect(body.error).toBe("Task not found");
     });
 
-    test("returns 422 when tasks.md is missing", async () => {
+    test("returns 422 when no .md files exist", async () => {
       await createTestRepo(db, "repo-1", "/path/to/repo");
       await createTestTask(db, "task-1", "repo-1", changePath, "DRAFT");
 
@@ -315,14 +315,14 @@ describe("task/routes", () => {
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(422);
-      expect(body.error).toBe("Change is missing tasks.md file");
+      expect(body.error).toContain("no .md files");
       expect(body.changePath).toBe(changePath);
     });
 
     test("marks DRAFT task as ready", async () => {
       await createTestRepo(db, "repo-1", "/path/to/repo");
       await createTestTask(db, "task-1", "repo-1", changePath, "DRAFT");
-      createTasksFile("repo-1");
+      createPromptFile("repo-1");
 
       const res = await app.request("/api/repos/repo-1/tasks/task-1/ready", {
         method: "POST",
@@ -339,7 +339,7 @@ describe("task/routes", () => {
     test("marks BLOCKED task as ready", async () => {
       await createTestRepo(db, "repo-1", "/path/to/repo");
       await createTestTask(db, "task-1", "repo-1", changePath, "BLOCKED");
-      createTasksFile("repo-1");
+      createPromptFile("repo-1");
 
       const res = await app.request("/api/repos/repo-1/tasks/task-1/ready", {
         method: "POST",
@@ -387,7 +387,7 @@ describe("task/routes", () => {
     test("accepts workflow parameter", async () => {
       await createTestRepo(db, "repo-1", "/path/to/repo");
       await createTestTask(db, "task-1", "repo-1", changePath, "DRAFT");
-      createTasksFile("repo-1");
+      createPromptFile("repo-1");
 
       const res = await app.request("/api/repos/repo-1/tasks/task-1/ready", {
         method: "POST",
@@ -404,7 +404,7 @@ describe("task/routes", () => {
     test("accepts baseBranch parameter", async () => {
       await createTestRepo(db, "repo-1", "/path/to/repo");
       await createTestTask(db, "task-1", "repo-1", changePath, "DRAFT");
-      createTasksFile("repo-1");
+      createPromptFile("repo-1");
 
       const res = await app.request("/api/repos/repo-1/tasks/task-1/ready", {
         method: "POST",
@@ -421,7 +421,7 @@ describe("task/routes", () => {
     test("accepts provider parameter", async () => {
       await createTestRepo(db, "repo-1", "/path/to/repo");
       await createTestTask(db, "task-1", "repo-1", changePath, "DRAFT");
-      createTasksFile("repo-1");
+      createPromptFile("repo-1");
 
       const res = await app.request("/api/repos/repo-1/tasks/task-1/ready", {
         method: "POST",
@@ -579,6 +579,205 @@ describe("task/routes", () => {
       expect(body.ok).toBe(true);
       expect(body.taskId).toBe("task-1");
       expect(body.agentKilled).toBeDefined();
+    });
+  });
+
+  describe("GET /api/repos/:repoId/tasks/:taskId/pause-context", () => {
+    test("returns 404 for non-existent repo", async () => {
+      const res = await app.request("/api/repos/non-existent/tasks/task-1/pause-context");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("Repo not found");
+    });
+
+    test("returns 404 for non-existent task", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+
+      const res = await app.request("/api/repos/repo-1/tasks/non-existent/pause-context");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("Task not found");
+    });
+
+    test("returns 409 when task is not PAUSED", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "WORKING");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/pause-context");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(409);
+      expect(body.error).toBe("Task is not paused");
+    });
+
+    test("returns pause context and signal for PAUSED task", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "PAUSED");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "success",
+        signal: "REQUIRES_INPUT",
+        pause_context: "INPUT_REASON: Need API key\nINPUT_TYPE: text",
+        started_at: new Date().toISOString(),
+      });
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/pause-context");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.pauseContext).toBe("INPUT_REASON: Need API key\nINPUT_TYPE: text");
+      expect(body.signal).toBe("REQUIRES_INPUT");
+    });
+
+    test("returns signal for review workflow", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "PAUSED");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "success",
+        signal: "PLAN_READY",
+        pause_context: "Implementation plan for feature X",
+        started_at: new Date().toISOString(),
+      });
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/pause-context");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.signal).toBe("PLAN_READY");
+      expect(body.pauseContext).toBe("Implementation plan for feature X");
+    });
+
+    test("returns null pauseContext and signal when no step exists", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "PAUSED");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/pause-context");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.pauseContext).toBeNull();
+      expect(body.signal).toBeNull();
+    });
+  });
+
+  describe("POST /api/repos/:repoId/tasks/:taskId/resume", () => {
+    test("returns 404 for non-existent repo", async () => {
+      const res = await app.request("/api/repos/non-existent/tasks/task-1/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: "test" }),
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("Repo not found");
+    });
+
+    test("returns 404 for non-existent task", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+
+      const res = await app.request("/api/repos/repo-1/tasks/non-existent/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: "test" }),
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("Task not found");
+    });
+
+    test("returns 400 when input is missing", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "PAUSED");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error).toBe("Missing required field: input");
+    });
+
+    test("returns 409 when task is not PAUSED via handler", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "WORKING");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: "test" }),
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(409);
+      expect(body.error).toBe("Task is not paused");
+    });
+
+    test("returns 404 when no step execution exists", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "PAUSED");
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: "test" }),
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error).toBe("No step execution found");
+    });
+
+    test("enqueues resume even when no server sync configured", async () => {
+      await createTestRepo(db, "repo-1", "/path/to/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat", "PAUSED");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "success",
+        signal: "REQUIRES_INPUT",
+        started_at: new Date().toISOString(),
+      });
+
+      const res = await app.request("/api/repos/repo-1/tasks/task-1/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: "test" }),
+      });
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.taskId).toBe("task-1");
     });
   });
 

@@ -75,18 +75,32 @@ describe("loadWorkflowsFromDirectory", () => {
     expect(workflows[0]?.name).toBe("test-workflow");
   });
 
-  test("throws if a yaml file has invalid syntax", async () => {
+  test("skips yaml files with invalid syntax and loads valid ones", async () => {
+    await Bun.write(join(tempDir, "valid.yaml"), validWorkflowYaml);
     await Bun.write(join(tempDir, "invalid.yaml"), "name: [unclosed bracket");
 
-    await expect(loadWorkflowsFromDirectory(tempDir)).rejects.toThrow("Invalid YAML syntax");
+    const workflows = await loadWorkflowsFromDirectory(tempDir);
+
+    expect(workflows).toHaveLength(1);
+    expect(workflows[0]?.name).toBe("test-workflow");
   });
 
-  test("throws if a yaml file fails schema validation", async () => {
+  test("skips yaml files that fail schema validation and loads valid ones", async () => {
+    await Bun.write(join(tempDir, "valid.yaml"), validWorkflowYaml);
     await Bun.write(join(tempDir, "invalid.yaml"), "version: 1\nname: test");
 
-    await expect(loadWorkflowsFromDirectory(tempDir)).rejects.toThrow(
-      "Invalid workflow definition",
-    );
+    const workflows = await loadWorkflowsFromDirectory(tempDir);
+
+    expect(workflows).toHaveLength(1);
+    expect(workflows[0]?.name).toBe("test-workflow");
+  });
+
+  test("returns empty array when all yaml files are invalid", async () => {
+    await Bun.write(join(tempDir, "invalid.yaml"), "name: [unclosed bracket");
+
+    const workflows = await loadWorkflowsFromDirectory(tempDir);
+
+    expect(workflows).toEqual([]);
   });
 
   test("loads from real workflows directory", async () => {
@@ -94,10 +108,11 @@ describe("loadWorkflowsFromDirectory", () => {
 
     const workflows = await loadWorkflowsFromDirectory(realWorkflowsDir);
 
-    expect(workflows.length).toBeGreaterThanOrEqual(3);
+    expect(workflows.length).toBeGreaterThanOrEqual(4);
     const names = workflows.map((w) => w.name);
     expect(names).toContain("simple");
-    expect(names).toContain("ralph-loop");
     expect(names).toContain("aop-default");
+    expect(names).toContain("deep-research");
+    expect(names).toContain("landing-page");
   });
 });

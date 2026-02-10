@@ -43,6 +43,7 @@ tasks.post("/tasks/:taskId/ready", async (c) => {
     taskId,
     parseResult.data.repoId,
     parseResult.data.workflowName,
+    parseResult.data.retryFromStep,
   );
 
   return c.json(response);

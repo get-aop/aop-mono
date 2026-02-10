@@ -1,0 +1,82 @@
+version: 1
+name: address-pr-feedback
+initialStep: codebase_research
+steps:
+  codebase_research:
+    id: codebase_research
+    type: research
+    promptTemplate: codebase-research.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: RESEARCH_COMPLETE
+        description: codebase exploration is done, findings are written
+    transitions:
+      - condition: RESEARCH_COMPLETE
+        target: address_feedback
+      - condition: __none__
+        target: address_feedback
+      - condition: failure
+        target: __blocked__
+
+  address_feedback:
+    id: address_feedback
+    type: implement
+    promptTemplate: address-feedback.md.hbs
+    maxAttempts: 10
+    signals:
+      - name: FEEDBACK_ADDRESSED
+        description: all feedback has been addressed
+      - name: CHUNK_DONE
+        description: addressed a chunk of feedback, more remains
+    transitions:
+      - condition: FEEDBACK_ADDRESSED
+        target: run_tests
+      - condition: CHUNK_DONE
+        target: address_feedback
+      - condition: __none__
+        target: address_feedback
+      - condition: failure
+        target: __blocked__
+
+  run_tests:
+    id: run_tests
+    type: test
+    promptTemplate: run-tests.md.hbs
+    maxAttempts: 1
+    signals:
+      - name: TESTS_PASS
+        description: all relevant tests pass
+      - name: TESTS_FAIL
+        description: one or more tests are failing, details reported
+    transitions:
+      - condition: TESTS_PASS
+        target: code_review
+      - condition: TESTS_FAIL
+        target: address_feedback
+        maxIterations: 3
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+
+  code_review:
+    id: code_review
+    type: review
+    promptTemplate: code-review-step.md.hbs
+    maxAttempts: 2
+    signals:
+      - name: REVIEW_PASSED
+        description: code is clean and ready
+      - name: REVIEW_FAILED
+        description: found issues that need the implementer to address
+    transitions:
+      - condition: REVIEW_PASSED
+        target: __done__
+      - condition: REVIEW_FAILED
+        target: address_feedback
+        maxIterations: 2
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+terminalStates:
+  - __done__
+  - __blocked__

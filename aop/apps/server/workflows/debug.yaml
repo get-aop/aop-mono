@@ -1,0 +1,46 @@
+version: 1
+name: debug
+initialStep: codebase_research
+steps:
+  codebase_research:
+    id: codebase_research
+    type: research
+    promptTemplate: codebase-research.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: RESEARCH_COMPLETE
+        description: codebase exploration is done, findings are written
+    transitions:
+      - condition: RESEARCH_COMPLETE
+        target: debug_systematic
+      - condition: __none__
+        target: debug_systematic
+      - condition: failure
+        target: __blocked__
+
+  debug_systematic:
+    id: debug_systematic
+    type: debug
+    promptTemplate: debug-systematic.md.hbs
+    maxAttempts: 10
+    signals:
+      - name: FIX_COMPLETE
+        description: issue is fixed and verified with passing tests
+      - name: REQUIRES_INPUT
+        description: stuck, needs human input to proceed (reproduction steps, environment info, etc.)
+    transitions:
+      - condition: FIX_COMPLETE
+        target: __done__
+      - condition: REQUIRES_INPUT
+        target: __paused__
+      - condition: __none__
+        target: debug_systematic
+        maxIterations: 8
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+
+terminalStates:
+  - __done__
+  - __blocked__
+  - __paused__

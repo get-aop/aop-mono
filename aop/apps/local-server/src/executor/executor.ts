@@ -2,6 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, symlinkSync, unlinkSync
 import { join } from "node:path";
 import type {
   ExecutionInfo,
+  SignalDefinition,
   StepCommand,
   StepCompleteResponse,
   TaskStatus,
@@ -22,7 +23,8 @@ import { detectSignal } from "../orchestrator/sync/signal-detector.ts";
 import { createTemplateContext, resolveTemplate } from "../orchestrator/sync/template-resolver.ts";
 import { SettingKey } from "../settings/types.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
-import type { ExecuteResult, ExecutorContext } from "./types.ts";
+import { isAgentRunning } from "./process-utils.ts";
+import type { ExecuteResult, ExecutorContext, StepWithTask } from "./types.ts";
 
 const logger = getLogger("executor");
 
@@ -106,7 +108,17 @@ const launchStep = async (opts: LaunchStepOptions): Promise<void> => {
     return;
   }
 
-  const stepId = await createStepRecord(ctx, executionId, stepCommand.type);
+  const stepId = await createStepRecord(
+    ctx,
+    executionId,
+    stepCommand.type,
+    stepCommand.id,
+    stepCommand.stepId,
+    executionInfo.id,
+    stepCommand.attempt,
+    stepCommand.iteration,
+    stepCommand.signals,
+  );
   logger.info("Created step record", {
     executionId,
     stepId,
@@ -140,7 +152,7 @@ const launchStep = async (opts: LaunchStepOptions): Promise<void> => {
   });
 };
 
-interface SpawnAgentOptions {
+export interface SpawnAgentOptions {
   ctx: LocalServerContext;
   executorCtx: ExecutorContext;
   worktreeInfo: WorktreeInfo;
@@ -151,10 +163,12 @@ interface SpawnAgentOptions {
   executionInfo: ExecutionInfo;
   taskId: string;
   repoId: string;
-  signals?: string[];
+  signals?: SignalDefinition[];
   serverSync?: ServerSync;
   provider?: LLMProvider;
 }
+
+export const REAPER_POLL_INTERVAL_MS = 2000;
 
 const getProvider = async (ctx: LocalServerContext, task: Task) => {
   if (task.preferred_provider) {
@@ -189,32 +203,188 @@ const spawnAgentWithReaper = async (opts: SpawnAgentOptions): Promise<void> => {
   const logFile = join(executorCtx.logsDir, `${stepId}.jsonl`);
   const timeoutMs = executorCtx.timeoutSecs * 1000;
 
-  return provider
-    .run({
-      prompt,
-      cwd: executorCtx.worktreePath,
-      logFilePath: logFile,
-      env: {
-        AOP_TASK_ID: taskId,
-        AOP_STEP_ID: stepId,
-      },
-      onSpawn: async (pid) => {
-        await ctx.executionRepository.updateStepExecution(stepId, {
-          agent_pid: pid,
-        });
-        logger.info("Agent spawned with PID {pid}", { pid, stepId });
-      },
-      inactivityTimeoutMs: timeoutMs,
-      fastMode: executorCtx.fastMode,
-    })
-    .then((runResult) => handleAgentCompletion(opts, logFile, runResult, signals));
+  // Agents are spawned as detached + unref'd processes so they survive server restarts.
+  // provider.run() awaits proc.exited which may never resolve for unref'd processes.
+  // We race two completion paths: provider resolution vs PID polling.
+  const runResult = await spawnAndReap(ctx, provider, logFile, {
+    prompt,
+    cwd: executorCtx.worktreePath,
+    logFilePath: logFile,
+    env: { AOP_TASK_ID: taskId, AOP_STEP_ID: stepId },
+    stepId,
+    inactivityTimeoutMs: timeoutMs,
+    fastMode: executorCtx.fastMode,
+  });
+
+  return handleAgentCompletion(opts, logFile, runResult, signals);
 };
 
-const handleAgentCompletion = async (
+interface SpawnAndReapOptions {
+  prompt: string;
+  cwd?: string;
+  logFilePath: string;
+  env: Record<string, string>;
+  stepId: string;
+  inactivityTimeoutMs?: number;
+  fastMode?: boolean;
+}
+
+type RunResultLike = { exitCode: number; sessionId?: string; timedOut?: boolean };
+
+/**
+ * Spawns the agent and waits for completion via whichever path resolves first:
+ * - Path A: provider.run() resolves (proc.exited works, or mock provider)
+ * - Path B: PID polling detects process exit/zombie (primary path for detached+unref agents)
+ */
+const spawnAndReap = (
+  ctx: LocalServerContext,
+  provider: LLMProvider,
+  logFile: string,
+  opts: SpawnAndReapOptions,
+): Promise<RunResultLike> => {
+  return new Promise<RunResultLike>((resolve, reject) => {
+    let settled = false;
+    let pollInterval: Timer | undefined;
+
+    const settle = (result: RunResultLike) => {
+      if (settled) return;
+      settled = true;
+      if (pollInterval) clearInterval(pollInterval);
+      resolve(result);
+    };
+
+    provider
+      .run({
+        prompt: opts.prompt,
+        cwd: opts.cwd,
+        logFilePath: opts.logFilePath,
+        env: opts.env,
+        onSpawn: async (pid) => {
+          await ctx.executionRepository.updateStepExecution(opts.stepId, {
+            agent_pid: pid,
+          });
+          logger.info("Agent spawned with PID {pid}", { pid, stepId: opts.stepId });
+
+          // Start PID polling — the primary completion mechanism for detached agents
+          if (!isAgentRunning(pid)) {
+            settle(readRunResultFromLog(logFile));
+            return;
+          }
+          pollInterval = setInterval(() => {
+            if (!isAgentRunning(pid)) {
+              settle(readRunResultFromLog(logFile));
+            }
+          }, REAPER_POLL_INTERVAL_MS);
+        },
+        inactivityTimeoutMs: opts.inactivityTimeoutMs,
+        fastMode: opts.fastMode,
+      })
+      .then((runResult) => {
+        // provider.run() resolved — use its result directly (mock providers, or proc.exited worked)
+        settle(runResult);
+      })
+      .catch((err) => {
+        if (!settled) reject(err);
+      });
+  });
+};
+
+/** Polls until the process is no longer running (exited or zombie). */
+export const pollForProcessExit = (pid: number): Promise<void> => {
+  return new Promise((resolve) => {
+    // Check immediately in case the process already exited
+    if (!isAgentRunning(pid)) {
+      resolve();
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (!isAgentRunning(pid)) {
+        clearInterval(interval);
+        resolve();
+      }
+    }, REAPER_POLL_INTERVAL_MS);
+  });
+};
+
+/**
+ * Reattaches to a running agent process from a previous server session.
+ * Waits for the process to exit, then runs the normal completion pipeline
+ * (log persistence → completeStep on server → next step chain).
+ */
+export const reattachToRunningAgent = async (
+  ctx: LocalServerContext,
+  step: StepWithTask,
+  serverSync?: ServerSync,
+  provider?: LLMProvider,
+): Promise<void> => {
+  const task = await ctx.taskRepository.get(step.task_id);
+  if (!task) throw new Error(`Task not found: ${step.task_id}`);
+
+  const executorCtx = await buildContext(ctx, task);
+  const worktreeInfo = await createWorktree(executorCtx);
+
+  const pid = step.agent_pid;
+  if (pid) {
+    await pollForProcessExit(pid);
+  }
+
+  const logFile = join(executorCtx.logsDir, `${step.id}.jsonl`);
+  const runResult = readRunResultFromLog(logFile);
+
+  const opts: SpawnAgentOptions = {
+    ctx,
+    executorCtx,
+    worktreeInfo,
+    prompt: "",
+    stepId: step.id,
+    executionId: step.execution_id,
+    stepCommand: {
+      id: step.id,
+      type: step.step_type ?? "unknown",
+      stepId: step.step_id ?? undefined,
+      promptTemplate: "",
+      signals: step.signals_json ? JSON.parse(step.signals_json) : [],
+      attempt: step.attempt ?? 1,
+      iteration: step.iteration ?? 1,
+    },
+    executionInfo: {
+      id: step.remote_execution_id ?? step.execution_id,
+      workflowId: "",
+    },
+    taskId: step.task_id,
+    repoId: task.repo_id,
+    serverSync,
+    provider,
+  };
+
+  const signals = step.signals_json ? JSON.parse(step.signals_json) : [];
+  await handleAgentCompletion(opts, logFile, runResult, signals);
+};
+
+/** Reads the JSONL log file to determine exit code from the result entry. */
+export const readRunResultFromLog = (logFile: string): { exitCode: number; timedOut?: boolean } => {
+  if (!existsSync(logFile)) {
+    return { exitCode: 1 };
+  }
+
+  const content = readFileSync(logFile, "utf-8");
+  let lastResult: "success" | "failure" | null = null;
+
+  forEachJsonlEntry(content, (data) => {
+    if (data.type === "result") {
+      lastResult = data.subtype === "success" ? "success" : "failure";
+    }
+  });
+
+  return { exitCode: lastResult === "success" ? 0 : 1 };
+};
+
+export const handleAgentCompletion = async (
   opts: SpawnAgentOptions,
   logFile: string,
   runResult: { exitCode: number; sessionId?: string; timedOut?: boolean },
-  signals: string[],
+  signals: SignalDefinition[],
 ): Promise<void> => {
   const {
     ctx,
@@ -386,14 +556,25 @@ export const createStepRecord = async (
   ctx: LocalServerContext,
   executionId: string,
   stepType?: string,
+  remoteStepId?: string,
+  workflowStepId?: string,
+  remoteExecutionId?: string,
+  attempt?: number,
+  iteration?: number,
+  signals?: SignalDefinition[],
 ): Promise<string> => {
-  const stepId = generateTypeId("step");
+  const stepId = remoteStepId ?? generateTypeId("step");
   const now = new Date().toISOString();
 
   await ctx.executionRepository.createStepExecution({
     id: stepId,
     execution_id: executionId,
+    step_id: workflowStepId ?? null,
     step_type: stepType ?? null,
+    remote_execution_id: remoteExecutionId ?? null,
+    attempt: attempt ?? null,
+    iteration: iteration ?? null,
+    signals_json: signals?.length ? JSON.stringify(signals) : null,
     status: StepExecutionStatus.RUNNING,
     started_at: now,
   });
@@ -451,6 +632,8 @@ export const buildPromptForExecution = async (opts: BuildPromptOptions): Promise
     stepType: stepCommand.type,
     executionId: executionId ?? "",
     iteration: stepCommand.iteration,
+    signals: stepCommand.signals,
+    input: stepCommand.input,
   });
   return resolveTemplate(stepCommand.promptTemplate, templateContext);
 };
@@ -458,7 +641,7 @@ export const buildPromptForExecution = async (opts: BuildPromptOptions): Promise
 export const processAgentCompletion = (
   logFile: string,
   runResult: { exitCode: number; sessionId?: string; timedOut?: boolean },
-  signals: string[],
+  signals: SignalDefinition[],
 ): ExecuteResult => {
   const collectedText: string[] = [];
 
@@ -472,13 +655,16 @@ export const processAgentCompletion = (
 
   const status = runResult.timedOut ? "timeout" : runResult.exitCode === 0 ? "success" : "failure";
   const fullOutput = collectedText.join("\n");
-  const { signal } = detectSignal(fullOutput, signals);
+  // Only detect signals when the agent succeeded — a crashed/timed-out agent's output is unreliable
+  const signal = status === "success" ? detectSignal(fullOutput, signals).signal : undefined;
+  const pauseContext = signal === "REQUIRES_INPUT" ? extractPauseContext(fullOutput) : undefined;
 
   return {
     exitCode: runResult.exitCode,
     sessionId: runResult.sessionId,
     status,
     signal,
+    pauseContext,
   };
 };
 
@@ -625,7 +811,8 @@ export const finalizeExecutionAndGetNextStep = async (
 
   await finalizeExecutionRecord(ctx, executionId, result);
 
-  const taskStatus: TaskStatus = result.status === "success" ? "DONE" : "BLOCKED";
+  // Server is the source of truth for workflow progression — without it we can't advance
+  const taskStatus: TaskStatus = "BLOCKED";
   await ctx.taskRepository.update(taskId, { status: taskStatus });
 
   if (serverSync) {
@@ -648,6 +835,7 @@ const updateStepExecutionRecord = async (
     status: stepStatus,
     exit_code: result.exitCode,
     signal: result.signal ?? null,
+    pause_context: result.pauseContext ?? null,
     ended_at: now,
     error: result.status === "timeout" ? "Inactivity timeout" : null,
   });
@@ -688,6 +876,7 @@ const completeStepOnServer = async (
               }
             : undefined,
       durationMs: 0,
+      pauseContext: result.pauseContext,
     };
 
     const response = await serverSync.completeStep(stepId, stepResult);
@@ -706,6 +895,19 @@ const completeStepOnServer = async (
     });
     return null;
   }
+};
+
+export const extractPauseContext = (output: string): string | undefined => {
+  const lines = output.split("\n");
+  const contextLines: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("INPUT_REASON:") || line.startsWith("INPUT_TYPE:")) {
+      contextLines.push(line);
+    }
+  }
+
+  return contextLines.length > 0 ? contextLines.join("\n") : undefined;
 };
 
 export const ensureDir = (dir: string): void => {

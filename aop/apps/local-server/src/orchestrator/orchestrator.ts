@@ -5,8 +5,7 @@ import { createProvider, type LLMProvider } from "@aop/llm-provider";
 import type { OrchestratorStatus } from "../app.ts";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
-import { abortTask } from "../executor/abort.ts";
-import { executeTask } from "../executor/executor.ts";
+import { executeTask, reattachToRunningAgent } from "../executor/executor.ts";
 import { recoverStaleTasks } from "../executor/recovery.ts";
 import { SettingKey } from "../settings/types.ts";
 import { createQueueProcessor, type QueueProcessor } from "./queue/processor.ts";
@@ -158,8 +157,10 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
       taskRepository: ctx.taskRepository,
       repoRepository: ctx.repoRepository,
       settingsRepository: ctx.settingsRepository,
+      executionRepository: ctx.executionRepository,
       serverSync: serverSync ?? undefined,
-      executeTask: (task, stepCommand, execution) => executeTaskAsync(task, stepCommand, execution),
+      executeTask: (task, stepCommand, execution, revertStatus) =>
+        executeTaskAsync(task, stepCommand, execution, revertStatus),
     });
 
     await queueProcessor.start();
@@ -188,6 +189,7 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
     task: Task,
     stepCommand: StepCommand,
     execution: ExecutionInfo,
+    revertStatus: TaskStatus = "READY",
   ): void => {
     const promise: Promise<void> = resolveProviderForTask(task)
       .then((provider) =>
@@ -200,13 +202,14 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
           error: String(err),
         });
 
-        // Revert task to READY so it can be retried.
-        // Early failures (e.g., worktree creation, branch not found) are
-        // often transient and retryable, unlike step execution failures.
+        // Revert task so it can be retried. READY tasks get automatic retry;
+        // BLOCKED tasks (e.g. resumed tasks whose context was already cleared)
+        // require manual intervention to avoid losing state.
         try {
-          await ctx.taskRepository.update(task.id, { status: "READY" });
-          logger.info("Task reverted to READY after execution failure", {
+          await ctx.taskRepository.update(task.id, { status: revertStatus });
+          logger.info("Task reverted to {status} after execution failure", {
             taskId: task.id,
+            status: revertStatus,
           });
         } catch (updateErr) {
           logger.error("Failed to revert task status after execution failure: {error}", {
@@ -273,22 +276,6 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
     });
   };
 
-  const abortExecutingTasks = async (): Promise<void> => {
-    if (executingTasks.size === 0) return;
-
-    const taskIds = Array.from(executingTasks.keys());
-    logger.info("Aborting {count} executing tasks on shutdown", { count: taskIds.length });
-
-    await Promise.allSettled(
-      taskIds.map((taskId) =>
-        abortTask(ctx, taskId, { targetStatus: "BLOCKED", serverSync: serverSync ?? undefined }),
-      ),
-    );
-
-    const promises = Array.from(executingTasks.values()).map((t) => t.promise);
-    await Promise.allSettled(promises);
-  };
-
   const waitForPendingRefresh = async (): Promise<void> => {
     if (pendingRefresh) {
       try {
@@ -318,7 +305,44 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
   };
 
   const handleStaleTaskRecovery = async (): Promise<void> => {
-    const result = await recoverStaleTasks(ctx, { logsDir: aopPaths.logs() });
+    const result = await recoverStaleTasks(ctx, {
+      logsDir: aopPaths.logs(),
+      reattachToRunningAgent: (step) => {
+        const promise = ctx.taskRepository
+          .get(step.task_id)
+          .then(async (task) => {
+            if (!task) return;
+            const provider = await resolveProviderForTask(task);
+            await reattachToRunningAgent(ctx, step, serverSync ?? undefined, provider);
+          })
+          .catch(async (err) => {
+            logger.error("Reattached agent failed: {error}", {
+              taskId: step.task_id,
+              error: String(err),
+            });
+            try {
+              await ctx.taskRepository.update(step.task_id, { status: "BLOCKED" });
+            } catch (updateErr) {
+              logger.error("Failed to set task BLOCKED after reattach failure: {error}", {
+                taskId: step.task_id,
+                error: String(updateErr),
+              });
+            }
+          })
+          .finally(() => {
+            executingTasks.delete(step.task_id);
+          });
+
+        executingTasks.set(step.task_id, {
+          task: { id: step.task_id } as Task,
+          promise,
+        });
+      },
+      serverSync: serverSync ?? undefined,
+      executeTask: (task, stepCommand, execution) => {
+        executeTaskAsync(task, stepCommand, execution, "BLOCKED");
+      },
+    });
 
     if (result.recovered > 0 || result.reset > 0 || result.reattached > 0) {
       logger.info(
@@ -333,8 +357,8 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
       const startTime = performance.now();
       logger.info("Starting orchestrator");
 
-      await handleStaleTaskRecovery();
       await initializeServerSync();
+      await handleStaleTaskRecovery();
       await startWatcher();
       await startTicker();
       await startQueueProcessor();
@@ -352,7 +376,6 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
       ticker?.stop();
       watcher?.stop();
 
-      await abortExecutingTasks();
       await waitForPendingRefresh();
       await flushServerSyncQueue();
 

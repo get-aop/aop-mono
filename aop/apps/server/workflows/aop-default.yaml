@@ -8,8 +8,10 @@ steps:
     promptTemplate: implement.md.hbs
     maxAttempts: 1
     signals:
-      - CHUNK_DONE
-      - ALL_TASKS_DONE
+      - name: CHUNK_DONE
+        description: completed a chunk, more tasks remain
+      - name: ALL_TASKS_DONE
+        description: all implementation tasks are complete
     transitions:
       - condition: CHUNK_DONE
         target: iterate
@@ -26,8 +28,10 @@ steps:
     promptTemplate: full-review.md.hbs
     maxAttempts: 1
     signals:
-      - REVIEW_PASSED
-      - REVIEW_FAILED
+      - name: REVIEW_PASSED
+        description: all checks pass, no issues found
+      - name: REVIEW_FAILED
+        description: issues found that need fixing
     transitions:
       - condition: REVIEW_PASSED
         target: __done__
@@ -44,7 +48,8 @@ steps:
     promptTemplate: fix-issues.md.hbs
     maxAttempts: 1
     signals:
-      - FIX_COMPLETE
+      - name: FIX_COMPLETE
+        description: all review issues have been addressed
     transitions:
       - condition: FIX_COMPLETE
         target: quick-review
@@ -59,8 +64,10 @@ steps:
     promptTemplate: quick-review.md.hbs
     maxAttempts: 1
     signals:
-      - REVIEW_PASSED
-      - REVIEW_FAILED
+      - name: REVIEW_PASSED
+        description: fixes verified, all checks pass
+      - name: REVIEW_FAILED
+        description: issues remain or new issues found
     transitions:
       - condition: REVIEW_PASSED
         target: __done__

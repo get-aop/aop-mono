@@ -127,6 +127,17 @@ describe("taskReadyCommand", () => {
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
+  test("passes retryFromStep in body when provided", async () => {
+    mockFetchServer.mockResolvedValueOnce(makeStatusWithTask()).mockResolvedValueOnce({
+      ok: true,
+      data: { ok: true, taskId: "task-abc-123" },
+    });
+
+    await taskReadyCommand("task-abc", { retryFromStep: "design_brief" });
+    const body = JSON.parse(mockFetchServer.mock.calls.at(1)?.at(1).body);
+    expect(body.retryFromStep).toBe("design_brief");
+  });
+
   test("exits on generic ready error", async () => {
     mockFetchServer.mockResolvedValueOnce(makeStatusWithTask()).mockResolvedValueOnce({
       ok: false,

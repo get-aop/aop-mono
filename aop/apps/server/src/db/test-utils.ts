@@ -114,7 +114,10 @@ const RALPH_LOOP_WORKFLOW_DEFINITION = {
       type: "iterate",
       promptTemplate: "iterate.md.hbs",
       maxAttempts: 1,
-      signals: ["TASK_COMPLETE", "NEEDS_REVIEW"],
+      signals: [
+        { name: "TASK_COMPLETE", description: "task is fully complete" },
+        { name: "NEEDS_REVIEW", description: "implementation is ready for review" },
+      ],
       transitions: [
         { condition: "TASK_COMPLETE", target: "__done__" },
         { condition: "NEEDS_REVIEW", target: "review" },
@@ -148,6 +151,114 @@ export const createRalphLoopWorkflow = async (
       id,
       name,
       definition: JSON.stringify(RALPH_LOOP_WORKFLOW_DEFINITION),
+    })
+    .onConflict((oc) => oc.column("id").doNothing())
+    .execute();
+
+  return { id, name };
+};
+
+const PAUSED_WORKFLOW_DEFINITION = {
+  version: 1,
+  name: "paused-test",
+  initialStep: "plan",
+  steps: {
+    plan: {
+      id: "plan",
+      type: "iterate",
+      promptTemplate: "plan-implementation.md.hbs",
+      maxAttempts: 1,
+      signals: [
+        { name: "PLAN_READY", description: "plan is ready for implementation" },
+        { name: "REQUIRES_INPUT", description: "needs user input to proceed" },
+      ],
+      transitions: [
+        { condition: "PLAN_READY", target: "implement" },
+        { condition: "REQUIRES_INPUT", target: "__paused__" },
+        { condition: "failure", target: "__blocked__" },
+      ],
+    },
+    implement: {
+      id: "implement",
+      type: "implement",
+      promptTemplate: "implement.md.hbs",
+      maxAttempts: 1,
+      transitions: [
+        { condition: "success", target: "__done__" },
+        { condition: "failure", target: "__blocked__" },
+      ],
+    },
+  },
+  terminalStates: ["__done__", "__blocked__", "__paused__"],
+};
+
+export const createPausedWorkflow = async (
+  db: Kysely<Database>,
+): Promise<{ id: string; name: string }> => {
+  const id = "workflow_paused_test";
+  const name = "paused-test";
+
+  await db
+    .insertInto("workflows")
+    .values({
+      id,
+      name,
+      definition: JSON.stringify(PAUSED_WORKFLOW_DEFINITION),
+    })
+    .onConflict((oc) => oc.column("id").doNothing())
+    .execute();
+
+  return { id, name };
+};
+
+const REVIEW_WORKFLOW_DEFINITION = {
+  version: 1,
+  name: "review-test",
+  initialStep: "plan",
+  steps: {
+    plan: {
+      id: "plan",
+      type: "iterate",
+      promptTemplate: "plan-implementation.md.hbs",
+      maxAttempts: 1,
+      signals: [
+        { name: "PLAN_READY", description: "plan is ready for review" },
+        { name: "PLAN_APPROVED", description: "plan approved, proceed" },
+        { name: "REQUIRES_INPUT", description: "needs user input" },
+      ],
+      transitions: [
+        { condition: "PLAN_READY", target: "__paused__" },
+        { condition: "PLAN_APPROVED", target: "implement" },
+        { condition: "REQUIRES_INPUT", target: "__paused__" },
+        { condition: "failure", target: "__blocked__" },
+      ],
+    },
+    implement: {
+      id: "implement",
+      type: "implement",
+      promptTemplate: "implement.md.hbs",
+      maxAttempts: 1,
+      transitions: [
+        { condition: "success", target: "__done__" },
+        { condition: "failure", target: "__blocked__" },
+      ],
+    },
+  },
+  terminalStates: ["__done__", "__blocked__", "__paused__"],
+};
+
+export const createReviewWorkflow = async (
+  db: Kysely<Database>,
+): Promise<{ id: string; name: string }> => {
+  const id = "workflow_review_test";
+  const name = "review-test";
+
+  await db
+    .insertInto("workflows")
+    .values({
+      id,
+      name,
+      definition: JSON.stringify(REVIEW_WORKFLOW_DEFINITION),
     })
     .onConflict((oc) => oc.column("id").doNothing())
     .execute();

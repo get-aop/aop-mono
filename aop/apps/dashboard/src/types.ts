@@ -12,6 +12,7 @@ export type StepStatus = "running" | "success" | "failure" | "cancelled";
 
 export interface Step {
   id: string;
+  stepId?: string;
   stepType: string | null;
   status: StepStatus;
   startedAt: string;

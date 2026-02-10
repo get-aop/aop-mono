@@ -12,6 +12,9 @@ import { addSignalToStepExecutionsMigration } from "./009-add-signal-to-step-exe
 import { seedRalphLoopWorkflowMigration } from "./010-seed-ralph-loop-workflow.ts";
 import { addCancelledStatusMigration } from "./011-add-cancelled-status.ts";
 import { addIterationTrackingMigration } from "./012-add-iteration-tracking.ts";
+import { addPauseContextMigration } from "./013-add-pause-context.ts";
+import { addStepIdMigration } from "./014-add-step-id.ts";
+import { addWorkflowActiveMigration } from "./014-add-workflow-active.ts";
 
 export interface Migration {
   name: string;
@@ -33,5 +36,8 @@ export const getMigrations = (): Migration[] => {
     seedRalphLoopWorkflowMigration,
     addCancelledStatusMigration,
     addIterationTrackingMigration,
+    addPauseContextMigration,
+    addWorkflowActiveMigration,
+    addStepIdMigration,
   ];
 };

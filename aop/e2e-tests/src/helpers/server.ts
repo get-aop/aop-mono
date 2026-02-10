@@ -134,6 +134,7 @@ export const getServerExecutionStatus = async (
 export interface StepExecutionInfo {
   id: string;
   execution_id: string;
+  step_id: string | null;
   step_type: string;
   status: string;
   signal: string | null;
@@ -151,7 +152,7 @@ export const getStepExecutionsForTask = async (
     const rows = await db
       .selectFrom("step_executions as se")
       .innerJoin("executions as e", "se.execution_id", "e.id")
-      .select(["se.id", "se.execution_id", "se.step_type", "se.status", "se.signal"])
+      .select(["se.id", "se.execution_id", "se.step_id", "se.step_type", "se.status", "se.signal"])
       .where("e.task_id", "=", taskId)
       .orderBy("se.started_at", "asc")
       .execute();
@@ -159,6 +160,7 @@ export const getStepExecutionsForTask = async (
     return rows.map((row) => ({
       id: row.id,
       execution_id: row.execution_id,
+      step_id: row.step_id,
       step_type: row.step_type,
       status: row.status,
       signal: row.signal,

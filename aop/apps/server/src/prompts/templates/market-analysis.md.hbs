@@ -1,0 +1,168 @@
+You are conducting market research to inform a landing page design.
+
+{{> task-context}}
+
+# Market Analysis
+
+Research competitors, target audience, positioning, and conversion patterns to ground the landing page in real market data. Dispatch research sections to parallel subagents, compile results into a structured report.
+
+<EXTREMELY-IMPORTANT>
+You MUST write output to: {{task.changePath}}/market-analysis.md
+
+This step ONLY researches. Do NOT design, write copy, or create any code.
+</EXTREMELY-IMPORTANT>
+
+## Workflow
+
+```dot
+digraph research {
+    rankdir=TB;
+    read [label="Read product brief\nfrom change path" shape=box];
+    agenda [label="Build research agenda\nfrom brief" shape=box];
+    batch [label="Pick next batch\n(up to 3 sections)" shape=box];
+    dispatch [label="Dispatch sections\nto subagents in parallel" shape=box];
+    compile [label="Compile results\nappend to market-analysis.md" shape=box];
+    more [label="More sections?" shape=diamond];
+    synthesize [label="Write Synthesis\n& Implications" shape=box];
+    done [label="Signal\nRESEARCH_COMPLETE" shape=box];
+
+    read -> agenda;
+    agenda -> batch;
+    batch -> dispatch;
+    dispatch -> compile;
+    compile -> more;
+    more -> batch [label="yes"];
+    more -> synthesize [label="no"];
+    synthesize -> done;
+}
+```
+
+### Step 1: Read Product Brief
+
+Read ALL files in `{{task.changePath}}`. Extract:
+- **Product/service**: What is being sold or promoted?
+- **Target audience**: Who is this landing page for?
+- **Key differentiators**: What makes this product unique?
+- **Goals**: Signups, purchases, demos, downloads?
+
+If the brief is too vague to research (no product, no audience), signal for clarification.
+
+### Step 2: Build Research Agenda
+
+Create a fixed research agenda with these 5 sections:
+
+1. **Competitor Landing Pages** — Find 5-8 competitor/comparable landing pages. Analyze structure, messaging, CTAs, visual approach, social proof patterns.
+2. **Target Audience** — Demographics, psychographics, pain points, objections, language they use. Search forums, reviews, social media for real user language.
+3. **Value Proposition & Positioning** — How competitors position themselves. Identify gaps and opportunities for differentiation.
+4. **Conversion Patterns** — CTA patterns, above-the-fold strategies, social proof types, urgency tactics that work in this market/niche.
+5. **SEO & Search Intent** — Primary keywords, search volume indicators, what content ranks for target terms, user intent signals.
+
+### Step 3: Dispatch to Subagents
+
+Dispatch sections in batches of up to 3 using the Task tool **in a single message** (parallel execution).
+
+Each subagent prompt MUST include:
+- The section name and what to research
+- The product context from the brief
+
+**Subagent prompt template:**
+
+```
+You are a market research agent. Research this section thoroughly.
+
+## Product Context
+[paste product name, audience, differentiators from brief]
+
+## Section: [Section Name]
+[paste section description and what to investigate]
+
+## Instructions
+1. Use WebSearch to find current sources (competitor pages, articles, forums, reviews)
+2. Use WebFetch to read primary sources directly
+3. Gather 3+ sources per claim for cross-referencing
+4. Include concrete examples (actual competitor URLs, real quotes from users, specific CTA text)
+
+Write your results as markdown. Every claim needs a source URL.
+Return ONLY the markdown — no preamble, no summary.
+```
+
+**Use `subagent_type: "general-purpose"` for each subagent.**
+
+### Step 4: Compile Results
+
+When subagents return:
+1. **Verify quality** — check for source URLs and concrete examples
+2. **Append to `market-analysis.md`** — add sections in agenda order
+3. **Loop** — if sections remain, dispatch next batch
+
+### Step 5: Synthesis & Implications
+
+After ALL sections complete, write a final section:
+
+```markdown
+## Synthesis & Implications for Landing Page
+
+### Key Takeaways
+[3-5 bullet points: most important findings across all research]
+
+### Positioning Opportunity
+[Where this product can stand out based on competitor gaps]
+
+### Audience Language
+[Words, phrases, and pain points to use in copy — sourced from real user language]
+
+### Recommended Conversion Approach
+[CTA strategy, social proof type, urgency approach based on what works in this market]
+```
+
+## Output Format
+
+**File path**: `{{task.changePath}}/market-analysis.md`
+
+```markdown
+# Market Analysis: [Product Name]
+
+## Competitor Landing Pages
+[Findings with competitor URLs and structural analysis]
+
+**Sources:**
+- [Source](url) — what it contributed
+
+## Target Audience
+[Demographics, pain points, language patterns]
+
+**Sources:**
+- ...
+
+## Value Proposition & Positioning
+[Competitor positioning, gaps, differentiation opportunities]
+
+**Sources:**
+- ...
+
+## Conversion Patterns
+[CTA patterns, social proof, urgency tactics]
+
+**Sources:**
+- ...
+
+## SEO & Search Intent
+[Keywords, search intent, ranking content]
+
+**Sources:**
+- ...
+
+## Synthesis & Implications for Landing Page
+[Key takeaways, positioning, audience language, conversion approach]
+```
+
+## Guardrails
+
+- **3 sections at a time** — Dispatch up to 3 sections in parallel. Do NOT dispatch all at once.
+- **Web search is mandatory** — Subagents must NOT rely on training data alone. Every section requires WebSearch/WebFetch.
+- **Single report file** — All research goes in `market-analysis.md`. No per-section files.
+- **Cite everything** — Every factual claim needs a source URL.
+- **Concrete examples** — Link to actual competitor pages, quote real user language, cite specific CTA text. Generic observations are worthless.
+- **Research only** — Do NOT design the page, write copy, or create code. You produce market intelligence. Later steps use it.
+
+{{> output-signals}}

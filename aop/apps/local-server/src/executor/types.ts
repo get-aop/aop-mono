@@ -1,10 +1,13 @@
-import type { Task } from "../db/schema.ts";
+import type { StepExecution, Task } from "../db/schema.ts";
+
+export type StepWithTask = StepExecution & { task_id: string };
 
 export interface ExecuteResult {
   exitCode: number;
   sessionId?: string;
   status: "success" | "failure" | "timeout";
   signal?: string;
+  pauseContext?: string;
 }
 
 export interface ExecutorContext {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { SignalDefinition } from "@aop/common/protocol";
 import { aopPaths, useTestAopHome } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
@@ -17,10 +18,14 @@ import {
   ensureDir,
   finalizeExecutionAndGetNextStep,
   markTaskWorking,
+  pollForProcessExit,
   processAgentCompletion,
+  readRunResultFromLog,
   setupWorktreeOpenspecSymlink,
 } from "./executor.ts";
 import type { ExecutorContext } from "./types.ts";
+
+const sig = (name: string): SignalDefinition => ({ name, description: "" });
 
 const createMockTask = (overrides: Partial<Task> = {}): Task => ({
   id: "task-1",
@@ -34,6 +39,8 @@ const createMockTask = (overrides: Partial<Task> = {}): Task => ({
   preferred_workflow: null,
   base_branch: null,
   preferred_provider: null,
+  retry_from_step: null,
+  resume_input: null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
   ...overrides,
@@ -206,6 +213,21 @@ describe("executor", () => {
 
       const step = await ctx.executionRepository.getStepExecution(stepId);
       expect(step?.step_type).toBeNull();
+    });
+
+    test("uses remote step ID when provided", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+
+      const executionId = await createExecutionRecord(ctx, "task-1");
+      const remoteId = "step_remote_abc123";
+      const stepId = await createStepRecord(ctx, executionId, "implement", remoteId);
+
+      expect(stepId).toBe(remoteId);
+
+      const step = await ctx.executionRepository.getStepExecution(stepId);
+      expect(step?.id).toBe(remoteId);
+      expect(step?.step_type).toBe("implement");
     });
   });
 
@@ -537,8 +559,139 @@ describe("executor", () => {
       const result = processAgentCompletion(
         logFile,
         { exitCode: 0, sessionId: "session-456", timedOut: false },
-        ["IMPL_DONE"],
+        [sig("IMPL_DONE")],
       );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.status).toBe("success");
+      expect(result.signal).toBe("IMPL_DONE");
+
+      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
+    });
+
+    test("extracts pauseContext when REQUIRES_INPUT signal is detected", () => {
+      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
+      mkdirSync(testLogsDir, { recursive: true });
+      const logFile = join(testLogsDir, "test.jsonl");
+
+      const logContent = [
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [
+              {
+                type: "text",
+                text: "I need user input.\n<aop>REQUIRES_INPUT</aop>\nINPUT_REASON: Need clarification on the database schema\nINPUT_TYPE: text",
+              },
+            ],
+          },
+        }),
+      ].join("\n");
+      Bun.write(logFile, logContent);
+
+      const result = processAgentCompletion(logFile, { exitCode: 0, timedOut: false }, [
+        sig("REQUIRES_INPUT"),
+      ]);
+
+      expect(result.signal).toBe("REQUIRES_INPUT");
+      expect(result.pauseContext).toBe(
+        "INPUT_REASON: Need clarification on the database schema\nINPUT_TYPE: text",
+      );
+
+      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
+    });
+
+    test("returns undefined pauseContext when signal is not REQUIRES_INPUT", () => {
+      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
+      mkdirSync(testLogsDir, { recursive: true });
+      const logFile = join(testLogsDir, "test.jsonl");
+
+      const logContent = JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "Done <aop>IMPL_DONE</aop>" }],
+        },
+      });
+      Bun.write(logFile, logContent);
+
+      const result = processAgentCompletion(logFile, { exitCode: 0, timedOut: false }, [
+        sig("IMPL_DONE"),
+      ]);
+
+      expect(result.signal).toBe("IMPL_DONE");
+      expect(result.pauseContext).toBeUndefined();
+
+      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
+    });
+
+    test("extracts pauseContext with only INPUT_REASON tag", () => {
+      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
+      mkdirSync(testLogsDir, { recursive: true });
+      const logFile = join(testLogsDir, "test.jsonl");
+
+      const logContent = JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "text",
+              text: "<aop>REQUIRES_INPUT</aop>\nINPUT_REASON: Need API key from user",
+            },
+          ],
+        },
+      });
+      Bun.write(logFile, logContent);
+
+      const result = processAgentCompletion(logFile, { exitCode: 0, timedOut: false }, [
+        sig("REQUIRES_INPUT"),
+      ]);
+
+      expect(result.signal).toBe("REQUIRES_INPUT");
+      expect(result.pauseContext).toBe("INPUT_REASON: Need API key from user");
+
+      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
+    });
+
+    test("suppresses signal when exit code is non-zero", () => {
+      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
+      mkdirSync(testLogsDir, { recursive: true });
+      const logFile = join(testLogsDir, "test.jsonl");
+
+      const logContent = JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "Processing <aop>IMPL_DONE</aop> then crash" }],
+        },
+      });
+      Bun.write(logFile, logContent);
+
+      const result = processAgentCompletion(logFile, { exitCode: 1, timedOut: false }, [
+        sig("IMPL_DONE"),
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.status).toBe("failure");
+      expect(result.signal).toBeUndefined();
+
+      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
+    });
+
+    test("detects signal when exit code is 0", () => {
+      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
+      mkdirSync(testLogsDir, { recursive: true });
+      const logFile = join(testLogsDir, "test.jsonl");
+
+      const logContent = JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "Done <aop>IMPL_DONE</aop>" }],
+        },
+      });
+      Bun.write(logFile, logContent);
+
+      const result = processAgentCompletion(logFile, { exitCode: 0, timedOut: false }, [
+        sig("IMPL_DONE"),
+      ]);
 
       expect(result.exitCode).toBe(0);
       expect(result.status).toBe("success");
@@ -591,7 +744,7 @@ describe("executor", () => {
       expect(step?.exit_code).toBe(0);
 
       const task = await ctx.taskRepository.get("task-1");
-      expect(task?.status).toBe("DONE");
+      expect(task?.status).toBe("BLOCKED");
     });
 
     test("updates local execution records on failure", async () => {
@@ -720,7 +873,7 @@ describe("executor", () => {
         mockServerSync as never,
       );
 
-      expect(mockServerSync.syncTask).toHaveBeenCalledWith("task-1", "repo-1", "DONE");
+      expect(mockServerSync.syncTask).toHaveBeenCalledWith("task-1", "repo-1", "BLOCKED");
     });
 
     test("returns next step from server when available", async () => {
@@ -743,7 +896,7 @@ describe("executor", () => {
         id: "server-step-2",
         type: "review",
         promptTemplate: "Review the changes",
-        signals: ["REVIEW_DONE"],
+        signals: [sig("REVIEW_DONE")],
         attempt: 1,
       };
 
@@ -834,7 +987,7 @@ describe("executor", () => {
       expect(task?.status).toBe("DONE");
     });
 
-    test("falls back to local status when server completeStep throws error", async () => {
+    test("falls back to BLOCKED when server completeStep throws error", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
       await ctx.executionRepository.createExecution({
@@ -875,8 +1028,8 @@ describe("executor", () => {
       expect(result).toBeNull();
 
       const task = await ctx.taskRepository.get("task-1");
-      expect(task?.status).toBe("DONE");
-      expect(mockServerSync.syncTask).toHaveBeenCalledWith("task-1", "repo-1", "DONE");
+      expect(task?.status).toBe("BLOCKED");
+      expect(mockServerSync.syncTask).toHaveBeenCalledWith("task-1", "repo-1", "BLOCKED");
     });
 
     test("falls back to local status on failure when server completeStep throws error", async () => {
@@ -1074,6 +1227,62 @@ describe("executor", () => {
       );
     });
 
+    test("includes pauseContext in server completion for REQUIRES_INPUT signal", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: ExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: StepExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+
+      const mockServerSync = {
+        syncTask: mock(() => Promise.resolve()),
+        completeStep: mock(() =>
+          Promise.resolve({
+            taskStatus: "PAUSED",
+          }),
+        ),
+      };
+
+      await finalizeExecutionAndGetNextStep(
+        ctx,
+        "task-1",
+        "exec-1",
+        "step-1",
+        {
+          exitCode: 0,
+          status: "success",
+          signal: "REQUIRES_INPUT",
+          pauseContext: "INPUT_REASON: Need database schema\nINPUT_TYPE: text",
+        },
+        mockServerSync as never,
+        {
+          serverStepId: "server-step-1",
+          serverExecutionId: "server-exec-1",
+          attempt: 1,
+        },
+      );
+
+      expect(mockServerSync.completeStep).toHaveBeenCalledWith(
+        "server-step-1",
+        expect.objectContaining({
+          signal: "REQUIRES_INPUT",
+          pauseContext: "INPUT_REASON: Need database schema\nINPUT_TYPE: text",
+        }),
+      );
+
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.status).toBe("PAUSED");
+    });
+
     test("includes signal in server completion", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
@@ -1125,6 +1334,54 @@ describe("executor", () => {
       );
     });
 
+    test("stores pauseContext in step execution record", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: ExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: StepExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+
+      const mockServerSync = {
+        syncTask: mock(() => Promise.resolve()),
+        completeStep: mock(() =>
+          Promise.resolve({
+            taskStatus: "PAUSED",
+          }),
+        ),
+      };
+
+      await finalizeExecutionAndGetNextStep(
+        ctx,
+        "task-1",
+        "exec-1",
+        "step-1",
+        {
+          exitCode: 0,
+          status: "success",
+          signal: "REQUIRES_INPUT",
+          pauseContext: "INPUT_REASON: Need API key\nINPUT_TYPE: text",
+        },
+        mockServerSync as never,
+        {
+          serverStepId: "server-step-1",
+          serverExecutionId: "server-exec-1",
+          attempt: 1,
+        },
+      );
+
+      const step = await ctx.executionRepository.getStepExecution("step-1");
+      expect(step?.pause_context).toBe("INPUT_REASON: Need API key\nINPUT_TYPE: text");
+    });
+
     test("stores signal in step execution record", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
@@ -1174,6 +1431,100 @@ describe("executor", () => {
       expect(existsSync(testDir)).toBe(true);
 
       rmSync(testDir, { recursive: true });
+    });
+  });
+
+  describe("readRunResultFromLog", () => {
+    test("returns exitCode 1 when log file does not exist", () => {
+      const result = readRunResultFromLog("/nonexistent/path.jsonl");
+
+      expect(result.exitCode).toBe(1);
+    });
+
+    test("returns exitCode 0 when last result is success", () => {
+      const testDir = join(tmpdir(), `aop-test-readlog-${Date.now()}`);
+      mkdirSync(testDir, { recursive: true });
+      const logFile = join(testDir, "test.jsonl");
+
+      const content = [
+        JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "hi" }] } }),
+        JSON.stringify({ type: "result", subtype: "success" }),
+      ].join("\n");
+      Bun.write(logFile, content);
+
+      const result = readRunResultFromLog(logFile);
+
+      expect(result.exitCode).toBe(0);
+
+      rmSync(testDir, { recursive: true });
+    });
+
+    test("returns exitCode 1 when last result is failure", () => {
+      const testDir = join(tmpdir(), `aop-test-readlog-${Date.now()}`);
+      mkdirSync(testDir, { recursive: true });
+      const logFile = join(testDir, "test.jsonl");
+
+      const content = JSON.stringify({ type: "result", subtype: "error" });
+      Bun.write(logFile, content);
+
+      const result = readRunResultFromLog(logFile);
+
+      expect(result.exitCode).toBe(1);
+
+      rmSync(testDir, { recursive: true });
+    });
+
+    test("returns exitCode 1 when log has no result entry", () => {
+      const testDir = join(tmpdir(), `aop-test-readlog-${Date.now()}`);
+      mkdirSync(testDir, { recursive: true });
+      const logFile = join(testDir, "test.jsonl");
+
+      const content = JSON.stringify({
+        type: "assistant",
+        message: { content: [{ type: "text", text: "output" }] },
+      });
+      Bun.write(logFile, content);
+
+      const result = readRunResultFromLog(logFile);
+
+      expect(result.exitCode).toBe(1);
+
+      rmSync(testDir, { recursive: true });
+    });
+
+    test("uses last result entry when multiple exist", () => {
+      const testDir = join(tmpdir(), `aop-test-readlog-${Date.now()}`);
+      mkdirSync(testDir, { recursive: true });
+      const logFile = join(testDir, "test.jsonl");
+
+      const content = [
+        JSON.stringify({ type: "result", subtype: "error" }),
+        JSON.stringify({ type: "result", subtype: "success" }),
+      ].join("\n");
+      Bun.write(logFile, content);
+
+      const result = readRunResultFromLog(logFile);
+
+      expect(result.exitCode).toBe(0);
+
+      rmSync(testDir, { recursive: true });
+    });
+  });
+
+  describe("pollForProcessExit", () => {
+    test("resolves immediately for non-existent process", async () => {
+      await pollForProcessExit(999999999);
+    });
+
+    test("resolves immediately for current process pid if it were dead", async () => {
+      // pollForProcessExit checks isAgentRunning which returns true for alive non-zombie processes
+      // For current process it will poll forever, so just test with dead PID
+      const start = Date.now();
+      await pollForProcessExit(999999999);
+      const elapsed = Date.now() - start;
+
+      // Should resolve almost immediately, not after a poll interval
+      expect(elapsed).toBeLessThan(500);
     });
   });
 });

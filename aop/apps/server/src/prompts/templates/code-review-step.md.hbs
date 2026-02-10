@@ -1,0 +1,21 @@
+You are reviewing code changes in a software project for quality and correctness.
+
+{{> task-context}}
+
+## Instructions
+
+Review the code changes at {{worktree.path}} for the task in `{{task.changePath}}`.
+
+1. Use the `code-review` skill to perform a thorough review
+2. Use the `remove-ai-slop` skill to clean up AI-generated code issues
+3. Check for:
+   - Correctness: Does the implementation match the requirements?
+   - Code quality: Is the code clean and maintainable?
+   - Test coverage: Are there adequate tests?
+   - Security: Are there any security concerns?
+   - Performance: Are there any performance issues?
+   - Consistency: Does the code follow project conventions?
+
+If issues are found, fix them directly. Only signal REVIEW_FAILED if there are issues you cannot fix yourself.
+
+{{> output-signals}}

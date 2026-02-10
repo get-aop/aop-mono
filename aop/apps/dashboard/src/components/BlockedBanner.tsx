@@ -1,14 +1,23 @@
-import type { Task } from "../types";
+import { useState } from "react";
+import type { Step, Task } from "../types";
+import { RetryDialog } from "./RetryDialog";
 import { StatusBadge } from "./StatusBadge";
 
 interface BlockedBannerProps {
   tasks: Task[];
-  onRetry?: (task: Task) => void;
-  onRemove?: (task: Task) => void;
+  stepsMap?: Record<string, Step[]>;
+  onRetry?: (task: Task, stepId?: string) => void;
   onTaskClick?: (task: Task) => void;
 }
 
-export const BlockedBanner = ({ tasks, onRetry, onRemove, onTaskClick }: BlockedBannerProps) => {
+export const BlockedBanner = ({
+  tasks,
+  stepsMap = {},
+  onRetry,
+  onTaskClick,
+}: BlockedBannerProps) => {
+  const [retryTarget, setRetryTarget] = useState<Task | null>(null);
+
   if (tasks.length === 0) return null;
 
   return (
@@ -37,28 +46,33 @@ export const BlockedBanner = ({ tasks, onRetry, onRemove, onTaskClick }: Blocked
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-body text-sm text-aop-cream">{changeName}</span>
                   <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemove?.(task);
-                      }}
-                      data-testid={`remove-button-${task.id}`}
-                      className="cursor-pointer rounded-aop bg-aop-charcoal px-2 py-1 font-mono text-[10px] text-aop-cream transition-colors hover:bg-aop-slate-dark"
-                    >
-                      Remove
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRetry?.(task);
-                      }}
-                      data-testid={`retry-button-${task.id}`}
-                      className="cursor-pointer rounded-aop bg-aop-charcoal px-2 py-1 font-mono text-[10px] text-aop-cream transition-colors hover:bg-aop-slate-dark"
-                    >
-                      Retry
-                    </button>
+                    {onRetry && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRetryTarget(task);
+                        }}
+                        data-testid={`retry-button-${task.id}`}
+                        className="flex cursor-pointer items-center gap-1 rounded-aop bg-aop-charcoal px-2 py-1 font-mono text-[10px] text-aop-cream transition-colors hover:bg-aop-slate-dark"
+                      >
+                        Retry
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </div>
                 <span className="mt-1 font-mono text-[10px] text-aop-slate-dark">{repoName}</span>
@@ -72,6 +86,17 @@ export const BlockedBanner = ({ tasks, onRetry, onRemove, onTaskClick }: Blocked
           })}
         </div>
       </div>
+
+      <RetryDialog
+        open={!!retryTarget}
+        task={retryTarget}
+        steps={retryTarget ? (stepsMap[retryTarget.id] ?? []) : []}
+        onSelect={(task, stepId) => {
+          onRetry?.(task, stepId);
+          setRetryTarget(null);
+        }}
+        onCancel={() => setRetryTarget(null)}
+      />
     </div>
   );
 };

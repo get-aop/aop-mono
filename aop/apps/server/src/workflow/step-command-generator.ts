@@ -1,5 +1,6 @@
-import type { StepCommand } from "@aop/common/protocol";
+import type { SignalDefinition, StepCommand } from "@aop/common/protocol";
 import type { TemplateLoader } from "../prompts/template-loader.ts";
+import { getStepBlock } from "./step-library.ts";
 import type { WorkflowStep } from "./types.ts";
 
 export interface StepCommandGenerator {
@@ -10,6 +11,21 @@ export interface StepCommandGenerator {
     iteration: number,
   ) => Promise<StepCommand>;
 }
+
+const enrichSignals = (step: WorkflowStep): SignalDefinition[] => {
+  const stepBlock = getStepBlock(step.id);
+  const yamlSignals = step.signals ?? [];
+
+  if (!stepBlock) {
+    return yamlSignals;
+  }
+
+  const descriptionMap = new Map(stepBlock.signals.map((s) => [s.name, s.description]));
+  return yamlSignals.map((s) => ({
+    name: s.name,
+    description: descriptionMap.get(s.name) ?? s.description,
+  }));
+};
 
 export const createStepCommandGenerator = (
   templateLoader: TemplateLoader,
@@ -25,9 +41,10 @@ export const createStepCommandGenerator = (
     return {
       id: stepExecutionId,
       type: step.type,
+      stepId: step.id,
       promptTemplate,
       attempt,
-      signals: step.signals,
+      signals: enrichSignals(step),
       iteration,
     };
   },

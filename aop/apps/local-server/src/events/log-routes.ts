@@ -99,6 +99,14 @@ export const createLogStreamHandler = (ctx: LocalServerContext, deps: LogStreamD
     const logFile = stepExecution ? join(logsDir, `${stepExecution.id}.jsonl`) : null;
     const agentPid = stepExecution?.agent_pid ?? null;
 
+    // Persisted logs from completed steps (their .jsonl files are deleted after persist)
+    const persistedLogs = await ctx.executionRepository.getExecutionLogs(executionId);
+    const historicalLines: LogLine[] = persistedLogs.map((log) => ({
+      stream: log.stream,
+      content: log.content,
+      timestamp: log.timestamp,
+    }));
+
     const lastEventId = c.req.header("Last-Event-ID");
     const resumeOffset = lastEventId ? Number.parseInt(lastEventId, 10) + 1 : 0;
 
@@ -120,6 +128,7 @@ export const createLogStreamHandler = (ctx: LocalServerContext, deps: LogStreamD
         isProcessAlive,
         executionId,
         ctx,
+        historicalLines,
       });
     });
   };
@@ -135,6 +144,7 @@ interface StreamFromFileOptions {
   isProcessAlive: (pid: number) => boolean;
   executionId: string;
   ctx: LocalServerContext;
+  historicalLines: LogLine[];
 }
 
 const isAgentDone = async (opts: StreamFromFileOptions): Promise<boolean> => {
@@ -145,10 +155,12 @@ const isAgentDone = async (opts: StreamFromFileOptions): Promise<boolean> => {
 };
 
 const streamFromFile = async (opts: StreamFromFileOptions): Promise<void> => {
-  const { sse, logFile, resumeOffset } = opts;
+  const { sse, logFile, resumeOffset, historicalLines } = opts;
 
   const snapshot = readLogLines(logFile, resumeOffset);
-  const sent = await sendReplayIfExists(sse, snapshot.lines);
+  const replayLines =
+    historicalLines.length > 0 ? [...historicalLines, ...snapshot.lines] : snapshot.lines;
+  const sent = await sendReplayIfExists(sse, replayLines);
   if (!sent) return;
 
   sse.setNextEventId(Math.max(snapshot.lineCount, resumeOffset));

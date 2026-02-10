@@ -184,8 +184,10 @@ interface StatusCardProps {
 const statusColors: Record<TaskStatus, { dot: string; text: string }> = {
   DRAFT: { dot: "bg-aop-charcoal", text: "text-aop-slate" },
   READY: { dot: "bg-aop-amber", text: "text-aop-amber" },
+  RESUMING: { dot: "bg-aop-amber", text: "text-aop-amber" },
   WORKING: { dot: "bg-aop-working", text: "text-aop-working" },
   DONE: { dot: "bg-aop-success", text: "text-aop-success" },
+  PAUSED: { dot: "bg-aop-amber", text: "text-aop-amber" },
   BLOCKED: { dot: "bg-aop-blocked", text: "text-aop-blocked" },
   REMOVED: { dot: "bg-aop-slate-dark", text: "text-aop-slate-dark" },
 };

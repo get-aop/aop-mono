@@ -19,10 +19,17 @@ export interface StepContext {
   iteration: number;
 }
 
+export interface SignalContext {
+  name: string;
+  description: string;
+}
+
 export interface TemplateContext {
   worktree: WorktreeContext;
   task: TaskContext;
   step: StepContext;
+  signals?: SignalContext[];
+  input?: string;
 }
 
 export const resolveTemplate = (template: string, context: TemplateContext): string => {
@@ -50,6 +57,9 @@ export const validateTemplate = (template: string): string[] => {
     "step.type",
     "step.executionId",
     "step.iteration",
+    "input",
+    "this.name",
+    "this.description",
   ]);
 
   const unknownPlaceholders: string[] = [];
@@ -80,6 +90,8 @@ export const createTemplateContext = (params: {
   stepType: string;
   executionId: string;
   iteration: number;
+  signals?: SignalContext[];
+  input?: string;
 }): TemplateContext => ({
   worktree: {
     path: params.worktreePath,
@@ -94,4 +106,6 @@ export const createTemplateContext = (params: {
     executionId: params.executionId,
     iteration: params.iteration,
   },
+  signals: params.signals,
+  input: params.input,
 });

@@ -108,7 +108,7 @@ const checkMacOSProcess = (line: string): AgentProcess | null => {
   if (!isAgentProcess(parsed.cmd)) return null;
 
   try {
-    const fullCmdOutput = execSync(`ps -p ${parsed.pid} -o command=`, {
+    const fullCmdOutput = execSync(`ps eww -p ${parsed.pid} -o command=`, {
       encoding: "utf-8",
       maxBuffer: 10 * 1024 * 1024,
     });

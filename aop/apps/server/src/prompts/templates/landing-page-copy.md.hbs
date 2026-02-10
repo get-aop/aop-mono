@@ -1,0 +1,186 @@
+You are writing CRO-optimized copy for a landing page.
+
+{{> task-context}}
+
+# Landing Page Copy
+
+Read the landing page outline (tasks.md), market analysis, and design brief. Write conversion-optimized copy for every section of the landing page. The copy document is the single source of truth for all text content during implementation.
+
+<EXTREMELY-IMPORTANT>
+You MUST write output to: {{task.changePath}}/copy.md
+
+This step writes copy only. Do NOT create code, modify tasks.md, or build anything.
+</EXTREMELY-IMPORTANT>
+
+## Process
+
+```dot
+digraph copy {
+    rankdir=TB;
+    read [label="Read tasks.md,\nmarket-analysis.md,\ndesign-brief.md" shape=box];
+    audience [label="Define voice\nand messaging angle" shape=box];
+    hero [label="Write hero copy\n(most critical)" shape=box];
+    sections [label="Write copy for\neach section in order" shape=box];
+    cta [label="Write CTA variations\nand microcopy" shape=box];
+    meta [label="Write SEO meta copy\ntitle, description, OG" shape=box];
+    review [label="Self-review for\nCRO principles" shape=box];
+    save [label="Save to copy.md\nand signal" shape=box];
+
+    read -> audience;
+    audience -> hero;
+    hero -> sections;
+    sections -> cta;
+    cta -> meta;
+    meta -> review;
+    review -> save;
+}
+```
+
+### 1. Read All Context
+
+Read from `{{task.changePath}}`:
+- `tasks.md` — the landing page outline with section structure
+- `market-analysis.md` — audience language, competitor positioning, conversion patterns
+- `design-brief.md` — tone and mood to match in writing
+
+### 2. Define Voice & Messaging Angle
+
+Before writing any copy, establish:
+- **Voice**: How the brand speaks (confident, friendly, authoritative, playful?)
+- **Audience language**: Use words and phrases from the market analysis audience research — speak like the customer, not the marketer
+- **Messaging angle**: The one core message the entire page reinforces
+- **Objection map**: Top 3-5 objections and where they get addressed on the page
+
+### 3. Write Hero Copy (Most Critical)
+
+The hero section determines bounce rate. Write:
+- **Headline**: Clear value proposition in 6-12 words. Lead with the outcome, not the product. Test multiple formulas:
+  - Outcome-focused: "Ship features 10x faster"
+  - Pain-focused: "Stop losing customers to slow deploys"
+  - Curiosity: "The deployment tool your team will actually love"
+- **Subheadline**: Expand the headline — who it's for, how it works, or what makes it different. 15-25 words.
+- **Primary CTA**: Action-oriented button text. Not "Submit" or "Learn More". Use first-person when possible ("Start my free trial", "Get my report").
+- **Supporting element**: Trust badge, social proof snippet, or risk reducer ("No credit card required", "Used by 10,000+ teams")
+
+**Write 2-3 headline variations.** Mark the recommended one.
+
+### 4. Write Section Copy
+
+For each section in the outline (tasks.md), write all text content:
+
+**Social Proof Bar**: Logos alt text, trust badge labels, metric callouts ("10,000+ users", "99.9% uptime")
+
+**Problem/Pain Section**: Describe the pain in the audience's own words (from market analysis). Be specific — generic pain statements don't convert.
+
+**Features/Solution Section**: For each feature:
+- Feature headline (benefit-led, not feature-led: "Deploy in seconds" not "CI/CD Pipeline")
+- Feature description (2-3 sentences: what it does, why it matters)
+
+**Differentiator Section**: Copy for the unique interactive widget. This should intrigue and engage — it's the "wow" moment.
+
+**Testimonials**: Write placeholder structure with guidance on what real testimonials should include (specific results, role/company, relatable pain point resolved).
+
+**FAQ**: Write 5-8 questions that address real objections from the market analysis. Answers should be concise, honest, and conversion-friendly.
+
+**Final CTA**: Restate the value proposition with urgency. Different angle than hero CTA — address remaining hesitation.
+
+### 5. Write CTA Variations & Microcopy
+
+- **Primary CTA** variations (2-3 options for A/B testing)
+- **Secondary CTAs** (for users not ready to commit)
+- **Microcopy**: Form field placeholders, error messages, success messages, tooltip text
+- **Navigation labels**: If the page has anchor nav
+
+### 6. Write SEO Meta Copy
+
+- **Page title**: 50-60 characters, keyword-front-loaded
+- **Meta description**: 150-160 characters, includes CTA
+- **OG title** and **OG description**: Social sharing optimized
+- **H1 strategy**: Confirm the hero headline works as the page H1
+
+### 7. Self-Review for CRO
+
+Before saving, verify against CRO principles:
+- [ ] Hero headline communicates value in under 3 seconds of reading
+- [ ] Every section advances the reader toward conversion
+- [ ] Benefits lead over features throughout
+- [ ] Social proof appears before and after the primary ask
+- [ ] Objections are addressed before the final CTA
+- [ ] CTAs use action verbs and first-person language
+- [ ] No jargon — copy uses audience language from market analysis
+- [ ] Urgency or scarcity is present but not fabricated
+
+## Output Format
+
+```markdown
+# Copy: Landing Page — [Product Name]
+
+## Voice & Messaging
+- **Voice**: [description]
+- **Core message**: [the one thing the page communicates]
+- **Audience language notes**: [key phrases from market research]
+
+## Hero
+
+### Headline (Recommended)
+[Primary headline]
+
+### Headline Alternatives
+1. [Alternative 1]
+2. [Alternative 2]
+
+### Subheadline
+[Subheadline text]
+
+### Primary CTA
+[Button text]
+
+### Supporting Element
+[Trust badge / social proof snippet]
+
+## [Section Name]
+
+### Heading
+[Section heading]
+
+### Body
+[Section body copy]
+
+### CTA (if applicable)
+[Section CTA text]
+
+---
+
+[Repeat for each section from the outline]
+
+## CTA Variations
+| Location | Primary | Secondary |
+|----------|---------|-----------|
+| Hero | [text] | [text] |
+| Mid-page | [text] | [text] |
+| Final | [text] | [text] |
+
+## Microcopy
+- **Form placeholders**: [list]
+- **Success message**: [text]
+- **Navigation labels**: [list]
+
+## SEO Meta
+- **Title**: [50-60 chars]
+- **Description**: [150-160 chars]
+- **OG Title**: [text]
+- **OG Description**: [text]
+```
+
+## Guardrails
+
+- **Copy only** — Do NOT write code, modify the outline, or create components. Your deliverable is `copy.md`.
+- **Every section needs copy** — If it's in the outline, it needs text content. No "TBD" or "placeholder" sections.
+- **Use audience language** — Pull actual words and phrases from `market-analysis.md` audience research. Marketing jargon kills conversion.
+- **Benefits over features** — "Deploy in 30 seconds" not "Automated CI/CD pipeline with containerized builds".
+- **Concrete over vague** — "Used by 12,847 developers" not "Used by thousands". Numbers convert.
+- **No lorem ipsum** — Write real, final copy. This is the content source for implementation.
+- **Multiple headline options** — Always provide 2-3 hero headline variations. The hero is too important for a single attempt.
+- **CRO self-review is mandatory** — Run through the checklist in Step 7 before signaling.
+
+{{> output-signals}}

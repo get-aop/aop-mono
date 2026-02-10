@@ -7,10 +7,10 @@ import { createCreateTaskRoutes } from "./create-task/routes.ts";
 import { createEventsSSEHandler } from "./events/index.ts";
 import { createLogStreamHandler } from "./events/log-routes.ts";
 import { createFsRoutes } from "./fs/routes.ts";
+import { createHealthRoutes } from "./health/routes.ts";
 import { createRepoRoutes } from "./repo/routes";
 import { createRunTaskRoutes } from "./run-task/routes.ts";
 import { createSessionRoutes } from "./session/routes.ts";
-import { checkDbConnection } from "./settings/handlers.ts";
 import { createSettingsRoutes } from "./settings/routes";
 import { getServerStatus } from "./status/handlers.ts";
 import { resolveTaskByIdentifier } from "./task/handlers.ts";
@@ -61,7 +61,7 @@ export const createApp = (deps: AppDependencies) => {
   // Request logging middleware — skip noisy endpoints (SSE, health)
   app.use("/api/*", async (c, next) => {
     const path = new URL(c.req.url).pathname;
-    if (path === "/api/health" || path === "/api/events" || path.endsWith("/logs")) {
+    if (path.startsWith("/api/health") || path === "/api/events" || path.endsWith("/logs")) {
       return next();
     }
 
@@ -90,25 +90,14 @@ export const createApp = (deps: AppDependencies) => {
     }
   });
 
-  app.get("/api/health", async (c) => {
-    const { startTimeMs } = deps;
-    const uptimeMs = Date.now() - startTimeMs;
-    const uptimeSecs = Math.floor(uptimeMs / 1000);
-
-    const dbConnected = await checkDbConnection(ctx);
-
-    return c.json({
-      ok: true,
-      service: "aop",
-      uptime: uptimeSecs,
-      db: { connected: dbConnected },
-      orchestrator: deps.orchestratorStatus?.() ?? {
-        watcher: "stopped",
-        ticker: "stopped",
-        processor: "stopped",
-      },
-    });
-  });
+  app.route(
+    "/api/health",
+    createHealthRoutes({
+      ctx,
+      startTimeMs: deps.startTimeMs,
+      orchestratorStatus: deps.orchestratorStatus,
+    }),
+  );
 
   app.get("/api/status", async (c) => {
     const status = await getServerStatus(ctx);
@@ -161,7 +150,16 @@ export const createApp = (deps: AppDependencies) => {
       const taskId = c.req.param("taskId");
       const body = await c.req.json<{ status: string }>();
 
-      const validStatuses = ["DRAFT", "READY", "WORKING", "BLOCKED", "DONE", "REMOVED"];
+      const validStatuses = [
+        "DRAFT",
+        "READY",
+        "RESUMING",
+        "WORKING",
+        "PAUSED",
+        "BLOCKED",
+        "DONE",
+        "REMOVED",
+      ];
       if (!validStatuses.includes(body.status)) {
         return c.json({ error: "Invalid status" }, 400);
       }
@@ -172,7 +170,14 @@ export const createApp = (deps: AppDependencies) => {
       }
 
       const updated = await ctx.taskRepository.update(taskId, {
-        status: body.status as "DRAFT" | "READY" | "WORKING" | "BLOCKED" | "DONE" | "REMOVED",
+        status: body.status as
+          | "DRAFT"
+          | "READY"
+          | "WORKING"
+          | "PAUSED"
+          | "BLOCKED"
+          | "DONE"
+          | "REMOVED",
       });
 
       return c.json({ ok: true, task: updated });

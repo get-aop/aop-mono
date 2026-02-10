@@ -5,8 +5,10 @@ export interface WorkflowRepository {
   findById: (id: string) => Promise<Workflow | null>;
   findByName: (name: string) => Promise<Workflow | null>;
   listNames: () => Promise<string[]>;
+  listAllNames: () => Promise<string[]>;
   create: (workflow: NewWorkflow) => Promise<Workflow>;
   upsert: (workflow: NewWorkflow) => Promise<Workflow>;
+  deactivateByName: (name: string) => Promise<boolean>;
 }
 
 export const createWorkflowRepository = (db: Kysely<Database>): WorkflowRepository => ({
@@ -29,6 +31,16 @@ export const createWorkflowRepository = (db: Kysely<Database>): WorkflowReposito
   },
 
   listNames: async (): Promise<string[]> => {
+    const rows = await db
+      .selectFrom("workflows")
+      .select("name")
+      .where("active", "=", true)
+      .orderBy("name")
+      .execute();
+    return rows.map((r) => r.name);
+  },
+
+  listAllNames: async (): Promise<string[]> => {
     const rows = await db.selectFrom("workflows").select("name").orderBy("name").execute();
     return rows.map((r) => r.name);
   },
@@ -50,6 +62,7 @@ export const createWorkflowRepository = (db: Kysely<Database>): WorkflowReposito
         .set({
           definition: workflow.definition,
           version: existing.version + 1,
+          active: true,
         })
         .where("id", "=", existing.id)
         .returningAll()
@@ -57,5 +70,15 @@ export const createWorkflowRepository = (db: Kysely<Database>): WorkflowReposito
     }
 
     return db.insertInto("workflows").values(workflow).returningAll().executeTakeFirstOrThrow();
+  },
+
+  deactivateByName: async (name: string): Promise<boolean> => {
+    const result = await db
+      .updateTable("workflows")
+      .set({ active: false })
+      .where("name", "=", name)
+      .where("active", "=", true)
+      .executeTakeFirst();
+    return (result.numUpdatedRows ?? 0n) > 0n;
   },
 });

@@ -29,7 +29,7 @@ describe("workflow startup sync integration", () => {
     const workflows = await loadWorkflowsFromDirectory(workflowsDir);
     const result = await syncWorkflows(repository, workflows);
 
-    expect(result.inserted).toBe(3);
+    expect(result.inserted).toBe(6);
     expect(result.updated).toBe(0);
 
     const simple = await repository.findByName("simple");
@@ -41,17 +41,6 @@ describe("workflow startup sync integration", () => {
     expect(simpleDefinition.version).toBe(1);
     expect(simpleDefinition.initialStep).toBe("implement");
     expect(simpleDefinition.steps.implement.type).toBe("implement");
-
-    const ralphLoop = await repository.findByName("ralph-loop");
-    expect(ralphLoop).not.toBeNull();
-    expect(ralphLoop?.name).toBe("ralph-loop");
-
-    if (!ralphLoop) throw new Error("Expected ralph-loop workflow to exist");
-    const ralphDefinition = JSON.parse(ralphLoop.definition);
-    expect(ralphDefinition.version).toBe(1);
-    expect(ralphDefinition.initialStep).toBe("iterate");
-    expect(ralphDefinition.steps.iterate.type).toBe("iterate");
-    expect(ralphDefinition.steps.review.type).toBe("review");
 
     const aopDefault = await repository.findByName("aop-default");
     expect(aopDefault).not.toBeNull();
@@ -78,7 +67,7 @@ describe("workflow startup sync integration", () => {
 
     const secondResult = await syncWorkflows(repository, workflows);
     expect(secondResult.inserted).toBe(0);
-    expect(secondResult.updated).toBe(3);
+    expect(secondResult.updated).toBe(6);
 
     const updatedSimple = await repository.findByName("simple");
     expect(updatedSimple?.version).toBe(2);
@@ -88,22 +77,40 @@ describe("workflow startup sync integration", () => {
   test("loads correct workflow definitions from YAML files", async () => {
     const workflows = await loadWorkflowsFromDirectory(workflowsDir);
 
-    expect(workflows).toHaveLength(3);
+    expect(workflows).toHaveLength(6);
 
     const simple = workflows.find((w) => w.name === "simple");
     expect(simple).toBeDefined();
     expect(simple?.terminalStates).toContain("__done__");
     expect(simple?.terminalStates).toContain("__blocked__");
 
-    const ralphLoop = workflows.find((w) => w.name === "ralph-loop");
-    expect(ralphLoop).toBeDefined();
-    const iterateStep = ralphLoop?.steps.iterate;
-    expect(iterateStep?.signals).toContain("TASK_COMPLETE");
-    expect(iterateStep?.signals).toContain("NEEDS_REVIEW");
-
     const aopDefault = workflows.find((w) => w.name === "aop-default");
     expect(aopDefault).toBeDefined();
-    expect(aopDefault?.steps.iterate?.signals).toContain("CHUNK_DONE");
-    expect(aopDefault?.steps.iterate?.signals).toContain("ALL_TASKS_DONE");
+    expect(aopDefault?.steps.iterate?.signals).toContainEqual(
+      expect.objectContaining({ name: "CHUNK_DONE" }),
+    );
+    expect(aopDefault?.steps.iterate?.signals).toContainEqual(
+      expect.objectContaining({ name: "ALL_TASKS_DONE" }),
+    );
+  });
+
+  test("deactivates stale workflows on re-sync", async () => {
+    await repository.create({
+      id: "stale-id",
+      name: "removed-workflow",
+      definition: JSON.stringify({ version: 1, name: "removed-workflow", steps: {} }),
+    });
+
+    const workflows = await loadWorkflowsFromDirectory(workflowsDir);
+    const result = await syncWorkflows(repository, workflows);
+
+    expect(result.deactivated).toBe(1);
+
+    const stale = await repository.findByName("removed-workflow");
+    expect(stale).not.toBeNull();
+    expect(stale?.active).toBe(false);
+
+    const activeNames = await repository.listNames();
+    expect(activeNames).not.toContain("removed-workflow");
   });
 });

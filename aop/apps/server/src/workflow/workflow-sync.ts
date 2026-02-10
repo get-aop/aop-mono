@@ -8,12 +8,14 @@ const logger = getLogger("workflow-sync");
 export const syncWorkflows = async (
   repository: WorkflowRepository,
   workflows: WorkflowDefinition[],
-): Promise<{ inserted: number; updated: number }> => {
+): Promise<{ inserted: number; updated: number; deactivated: number }> => {
   const log = logger.with({ count: workflows.length });
   log.info("Starting workflow sync with {count} workflows");
 
   let inserted = 0;
   let updated = 0;
+
+  const fileNames = new Set(workflows.map((w) => w.name));
 
   for (const workflow of workflows) {
     const existing = await repository.findByName(workflow.name);
@@ -34,6 +36,21 @@ export const syncWorkflows = async (
     }
   }
 
-  log.info("Workflow sync complete: {inserted} inserted, {updated} updated", { inserted, updated });
-  return { inserted, updated };
+  const dbNames = await repository.listAllNames();
+  const staleNames = dbNames.filter((name) => !fileNames.has(name));
+  let deactivated = 0;
+
+  for (const name of staleNames) {
+    const wasDeactivated = await repository.deactivateByName(name);
+    if (wasDeactivated) {
+      deactivated++;
+      log.info("Deactivated stale workflow {name}", { name });
+    }
+  }
+
+  log.info(
+    "Workflow sync complete: {inserted} inserted, {updated} updated, {deactivated} deactivated",
+    { inserted, updated, deactivated },
+  );
+  return { inserted, updated, deactivated };
 };

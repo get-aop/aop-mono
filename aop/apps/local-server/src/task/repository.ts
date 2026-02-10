@@ -35,6 +35,7 @@ export interface TaskRepository {
   list: (filters?: ListFilters) => Promise<Task[]>;
   countWorking: (repoId?: string) => Promise<number>;
   getNextExecutable: (limits: ConcurrencyLimits) => Promise<Task | null>;
+  getNextResumable: (limits: ConcurrencyLimits) => Promise<Task | null>;
   resetStaleWorkingTasks: () => Promise<number>;
   getMetrics: (repoId?: string) => Promise<TaskMetrics>;
 }
@@ -276,6 +277,43 @@ export const createTaskRepository = (
       return null;
     },
 
+    getNextResumable: async (limits: ConcurrencyLimits): Promise<Task | null> => {
+      const globalWorking = await db
+        .selectFrom("tasks")
+        .select((eb) => eb.fn.countAll<number>().as("count"))
+        .where("status", "=", "WORKING")
+        .executeTakeFirstOrThrow();
+
+      if (globalWorking.count >= limits.globalMax) {
+        return null;
+      }
+
+      const resumingTasks = await db
+        .selectFrom("tasks")
+        .innerJoin("repos", "tasks.repo_id", "repos.id")
+        .selectAll("tasks")
+        .where("tasks.status", "=", "RESUMING")
+        .orderBy("tasks.updated_at", "asc")
+        .execute();
+
+      for (const task of resumingTasks) {
+        const repoWorking = await db
+          .selectFrom("tasks")
+          .select((eb) => eb.fn.countAll<number>().as("count"))
+          .where("status", "=", "WORKING")
+          .where("repo_id", "=", task.repo_id)
+          .executeTakeFirstOrThrow();
+
+        const repoMax = await limits.getRepoMax(task.repo_id);
+
+        if (repoWorking.count < repoMax) {
+          return task;
+        }
+      }
+
+      return null;
+    },
+
     resetStaleWorkingTasks: async (): Promise<number> => {
       const workingTasks = await db
         .selectFrom("tasks")
@@ -319,7 +357,9 @@ export const createTaskRepository = (
       const byStatus: Record<TaskStatus, number> = {
         DRAFT: 0,
         READY: 0,
+        RESUMING: 0,
         WORKING: 0,
+        PAUSED: 0,
         BLOCKED: 0,
         DONE: 0,
         REMOVED: 0,

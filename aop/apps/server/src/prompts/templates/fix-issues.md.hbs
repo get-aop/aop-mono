@@ -1,18 +1,6 @@
 You are fixing issues found during code review.
 
-## Worktree Information
-
-- **Path**: {{worktree.path}}
-- **Branch**: {{worktree.branch}}
-
-## Task Details
-
-- **Change Path**: {{task.changePath}}
-
-## Execution Context
-
-- **Step Type**: {{step.type}}
-- **Iteration**: {{step.iteration}}
+{{> task-context}}
 
 ## Instructions
 
@@ -32,11 +20,4 @@ Address the issues identified in the review report.
 - Ensure fixes don't break existing functionality
 - Update tests if needed to cover the fixes
 
-### Signal
-
-When all issues have been addressed:
-```
-<aop>FIX_COMPLETE</aop>
-```
-
-If unable to fix an issue, document the blocker clearly before signaling.
+{{> output-signals}}

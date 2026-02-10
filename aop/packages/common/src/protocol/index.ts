@@ -16,6 +16,7 @@ export const StepExecutionStatus = {
   SUCCESS: "success",
   FAILURE: "failure",
   CANCELLED: "cancelled",
+  AWAITING_INPUT: "awaiting_input",
 } as const;
 
 export type StepExecutionStatus = (typeof StepExecutionStatus)[keyof typeof StepExecutionStatus];
@@ -39,7 +40,16 @@ export const AbortReason = {
 export type AbortReason = (typeof AbortReason)[keyof typeof AbortReason];
 
 export type { TaskStatus };
-const TaskStatusEnum = z.enum(["DRAFT", "READY", "WORKING", "BLOCKED", "DONE", "REMOVED"]);
+const TaskStatusEnum = z.enum([
+  "DRAFT",
+  "READY",
+  "RESUMING",
+  "WORKING",
+  "PAUSED",
+  "BLOCKED",
+  "DONE",
+  "REMOVED",
+]);
 
 const ErrorCodeEnum = z.enum([
   "agent_timeout",
@@ -82,17 +92,27 @@ export type SyncTaskRequest = z.infer<typeof SyncTaskRequestSchema>;
 export const TaskReadyRequestSchema = z.object({
   repoId: z.string(),
   workflowName: z.string().optional(),
+  retryFromStep: z.string().optional(),
 });
 
 export type TaskReadyRequest = z.infer<typeof TaskReadyRequestSchema>;
 
+export const SignalDefinitionSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+});
+
+export type SignalDefinition = z.infer<typeof SignalDefinitionSchema>;
+
 export const StepCommandSchema = z.object({
   id: z.string(),
   type: z.string(),
+  stepId: z.string().optional(),
   promptTemplate: z.string(),
   attempt: z.number().int().positive(),
-  signals: z.array(z.string()).optional(),
+  signals: z.array(SignalDefinitionSchema).optional(),
   iteration: z.number().int().nonnegative(),
+  input: z.string().optional(),
 });
 
 export type StepCommand = z.infer<typeof StepCommandSchema>;
@@ -129,9 +149,16 @@ export const StepCompleteRequestSchema = z.object({
   signal: z.string().optional(),
   error: StepErrorSchema.optional(),
   durationMs: z.number().int().nonnegative(),
+  pauseContext: z.string().optional(),
 });
 
 export type StepCompleteRequest = z.infer<typeof StepCompleteRequestSchema>;
+
+export const StepResumeRequestSchema = z.object({
+  input: z.string(),
+});
+
+export type StepResumeRequest = z.infer<typeof StepResumeRequestSchema>;
 
 export const StepCompleteResponseSchema = z.object({
   taskStatus: TaskStatusEnum,

@@ -1,0 +1,167 @@
+You are outlining the structure and information architecture of a landing page.
+
+{{> task-context}}
+
+# Outline Landing Page
+
+Read the market analysis and design brief, then produce a section-by-section landing page outline with information hierarchy, CTA strategy, and conversion flow. The outline becomes the implementation plan (tasks.md).
+
+<EXTREMELY-IMPORTANT>
+You MUST write the output to: {{task.changePath}}/tasks.md
+
+Once you finish the outline, you MUST output one of the required signals.
+</EXTREMELY-IMPORTANT>
+
+## Process
+
+```dot
+digraph outline {
+    rankdir=TB;
+    read [label="Read market-analysis.md\nand design-brief.md" shape=box];
+    gate [label="Enough context\nto outline?" shape=diamond];
+    ask [label="Signal REQUIRES_INPUT\nfor missing info" shape=box];
+    structure [label="Define section flow\nand hierarchy" shape=box];
+    cta [label="Map CTA strategy\nper section" shape=box];
+    tasks [label="Convert outline\nto tasks.md" shape=box];
+    save [label="Save to\ntasks.md" shape=box];
+    present [label="Present outline\nfor approval" shape=box];
+
+    read -> gate;
+    gate -> ask [label="no — missing\nproduct info"];
+    gate -> structure [label="yes"];
+    structure -> cta;
+    cta -> tasks;
+    tasks -> save;
+    save -> present;
+}
+```
+
+### 1. Read Context Files
+
+Read from `{{task.changePath}}`:
+- `market-analysis.md` — competitor patterns, audience language, conversion tactics
+- `design-brief.md` — visual direction, color palette, typography
+
+Also read any product brief or input documents in the change path.
+
+### 2. Define Section Flow
+
+Design the landing page structure as an ordered sequence of sections. Each section has a purpose in the conversion funnel.
+
+**Standard landing page anatomy** (adapt to product):
+
+| Order | Section | Purpose |
+|-------|---------|---------|
+| 1 | **Hero** | Value proposition, primary CTA, first impression |
+| 2 | **Social Proof Bar** | Logos, trust badges, quick credibility |
+| 3 | **Problem/Pain** | Articulate the problem the audience faces |
+| 4 | **Solution/Features** | How the product solves it (3-5 features) |
+| 5 | **Product Differentiator** | Custom interactive widget — the unique "plus" |
+| 6 | **Testimonials/Case Studies** | Deep social proof with real results |
+| 7 | **Pricing/Plans** | If applicable — clear, comparable options |
+| 8 | **FAQ** | Overcome remaining objections |
+| 9 | **Final CTA** | Last conversion push with urgency |
+| 10 | **Footer** | Legal, links, secondary navigation |
+
+Not every page needs every section. Remove or reorder based on the product and market analysis findings.
+
+### 3. Map CTA Strategy
+
+For each section, define:
+- **Primary CTA**: What action? What button text pattern? Where does it lead?
+- **Micro-conversions**: Email capture, social follow, content download
+- **Scroll triggers**: What makes the user keep reading?
+
+Use conversion patterns from the market analysis.
+
+### 4. Convert to Implementation Tasks
+
+Transform the outline into `tasks.md` format — the implementation checklist the build step will follow.
+
+**Each section becomes a task group. Each task is a buildable unit.**
+
+Use the `vercel-react-best-practices` skill context: the page should be built with Next.js generating SEO-friendly static pages (SSG with `getStaticProps` or App Router with static rendering).
+
+## Output Format (STRICT)
+
+```markdown
+# Plan: Landing Page — [Product Name]
+
+## Summary
+
+[2-3 sentences: what this landing page achieves, target audience, conversion goal]
+
+## Context
+
+[References to market-analysis.md and design-brief.md findings that shaped this outline]
+[Key decisions: why these sections in this order, CTA strategy rationale]
+
+## Tasks
+
+### Project Setup
+
+- [ ] **Initialize Next.js project with static export**
+Set up Next.js App Router with static rendering. Configure Tailwind CSS with design tokens from design-brief.md (colors, typography, spacing). Set up Google Fonts loading.
+
+- [ ] **Create shared layout and global styles**
+Implement root layout with meta tags, OG tags, favicon. Apply design tokens as CSS custom properties. Set up responsive breakpoints.
+
+### Hero Section
+
+- [ ] **Build hero section with primary CTA**
+[Describe: layout, what elements, responsive behavior]
+Content source: copy.md hero section
+Design: [reference design-brief.md tokens]
+
+### [Next Section Name]
+
+- [ ] **Build [section] component**
+[Description of what to build, layout, interactive behavior]
+Content source: copy.md [section] section
+
+### Product Differentiator
+
+- [ ] **Design and build custom interactive widget**
+[Describe the unique interactive element that sets this LP apart]
+This is NOT a standard section — it should be a custom, memorable experience.
+
+### SEO & Performance
+
+- [ ] **Add structured data and meta tags**
+JSON-LD schema, Open Graph tags, Twitter cards, canonical URL, sitemap
+
+- [ ] **Optimize for Core Web Vitals**
+Image optimization (next/image), font loading strategy, minimize CLS, lazy load below-fold sections
+
+## Verification
+
+- [ ] All sections render correctly on desktop and mobile
+- [ ] Primary CTA is visible above the fold
+- [ ] Page passes Lighthouse performance audit (90+)
+- [ ] All images have alt text, heading hierarchy is correct
+- [ ] Static export builds without errors
+```
+
+### Format Rules
+
+**Checkboxes are mandatory.** Every actionable item in Tasks AND Verification MUST have a `- [ ]` checkbox. No exceptions.
+
+**Group tasks by section** using `### Section Name`. Each section maps to a visual section of the landing page.
+
+**Separate title from description.** The checkbox line has the bold task title only. Description follows on the next line(s).
+
+**Include content source references.** Each section task should reference `copy.md` as the content source (written by the next step).
+
+## Guardrails
+
+- **Always save the plan file** — The outline MUST be written to `{{task.changePath}}/tasks.md`. An outline only shown in chat is a failure.
+- **Always present for approval** — After saving, show the file path and summary in chat. The user must approve the LP structure before copy begins.
+- **Outline, don't build** — Do NOT write code, create files, or implement anything. The outline is the deliverable.
+- **Outline, don't write copy** — Do NOT write headlines, body text, or CTA text. Use placeholder descriptions like "Content source: copy.md hero section". The copy step writes the actual text.
+- **Section order matters** — The order defines the scroll experience. Justify the sequence based on conversion psychology and market analysis findings.
+- **Include the differentiator** — Every outline MUST have a Product Differentiator section. This is the custom interactive widget that makes the LP unique. It is NOT a generic feature grid.
+- **Next.js SSG** — The implementation should target Next.js with static rendering for SEO. Make this explicit in the project setup tasks.
+- **Strict format only** — 5 top-level sections: `# Plan:`, `## Summary`, `## Context`, `## Tasks`, `## Verification`. No extras.
+- **No horizontal rules** — Tasks are separated by blank lines only.
+
+{{> output-signals}}

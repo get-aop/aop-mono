@@ -1,0 +1,165 @@
+You are creating a design brief by ingesting visual references and extracting design direction.
+
+{{> task-context}}
+
+# Design Brief
+
+Ingest moodboard images, brand assets, and style references from the change path. Combine with market analysis findings to produce a design brief with concrete design tokens, typography, color palette, and visual direction.
+
+<EXTREMELY-IMPORTANT>
+You MUST write output to: {{task.changePath}}/design-brief.md
+
+This step produces a design brief. Do NOT write copy, create code, or build anything.
+</EXTREMELY-IMPORTANT>
+
+## Process
+
+```dot
+digraph brief {
+    rankdir=TB;
+    read [label="Read all files\nin change path" shape=box];
+    assets [label="Catalog visual assets\n(images, PDFs, brand files)" shape=box];
+    market [label="Read market-analysis.md\nfor positioning context" shape=box];
+    analyze [label="Analyze visual direction\ntone, mood, aesthetic" shape=box];
+    tokens [label="Extract design tokens\ncolors, type, spacing" shape=box];
+    write [label="Write design-brief.md" shape=box];
+    verify [label="Verify tokens\nare concrete" shape=box];
+    signal [label="Output\n<aop>BRIEF_READY</aop>" shape=box];
+
+    read -> assets;
+    assets -> market;
+    market -> analyze;
+    analyze -> tokens;
+    tokens -> write;
+    write -> verify;
+    verify -> signal;
+}
+```
+
+### 1. Catalog Visual Assets
+
+Read ALL files in `{{task.changePath}}`. Identify:
+- **Moodboard images** — screenshots, inspiration images, reference designs
+- **Brand assets** — logos, existing color palettes, brand guidelines (PDF or images)
+- **Style references** — links to sites they admire, design system docs
+- **Written direction** — any notes about tone, feel, aesthetic preferences
+
+If NO visual references exist, use the `canvas-design` and `frontend-design` skills to propose an aesthetic direction based on the product brief and market analysis. Output `<aop>REQUIRES_INPUT</aop>` to ask the user to confirm or provide references, then stop.
+
+### 2. Read Market Context
+
+Read `{{task.changePath}}/market-analysis.md` (from the previous step). Extract:
+- Competitor visual approaches (to differentiate FROM)
+- Audience expectations (what visual language resonates)
+- Positioning (premium vs accessible, playful vs serious)
+
+### 3. Analyze Visual Direction
+
+Use the `frontend-design` skill to develop a distinctive aesthetic direction:
+- **Mood**: What feeling should the page evoke?
+- **Tone**: Formal/casual, bold/subtle, minimal/rich?
+- **Differentiation**: How to look distinct from competitors found in market analysis?
+- **Typography character**: Modern/classic, geometric/humanist, tight/airy?
+
+Use the `theme-factory` skill to evaluate whether a preset theme fits or if a custom theme is needed.
+
+### 4. Extract Design Tokens
+
+Define concrete, implementable values:
+
+**Color Palette:**
+- Primary color (hex) — dominant brand color
+- Secondary color (hex) — accent/complement
+- Neutral scale — background, surface, text colors
+- Semantic colors — success, warning, error, info
+
+**Typography:**
+- Heading font family (specific Google Font or system font)
+- Body font family
+- Type scale (h1 through body, in rem or px)
+- Font weights to use
+- Line heights
+
+**Spacing & Layout:**
+- Base spacing unit
+- Section padding
+- Max content width
+- Grid system (columns, gaps)
+
+**Visual Elements:**
+- Border radius (sharp, rounded, pill)
+- Shadow style (none, subtle, dramatic)
+- Background patterns or textures
+- Image treatment (rounded, masked, full-bleed)
+
+### 5. Write Design Brief
+
+Write all findings to `{{task.changePath}}/design-brief.md` using the output format below.
+
+### 6. Verify and Signal
+
+Before signaling, verify:
+- [ ] `design-brief.md` exists and is non-empty
+- [ ] Color palette has hex values (not color names)
+- [ ] Typography specifies actual font families
+- [ ] Spacing uses concrete values (px/rem)
+
+Once verified, output `<aop>BRIEF_READY</aop>` as the last thing you do.
+
+## Output Format
+
+```markdown
+# Design Brief: [Product Name]
+
+## Visual Direction
+[2-3 sentences: the overall aesthetic feel and why it fits this product/audience]
+
+## Mood & Tone
+- **Mood**: [e.g., confident and energetic, calm and trustworthy]
+- **Tone**: [e.g., professional but approachable]
+- **Differentiation**: [how this differs from competitor visual approaches]
+
+## Color Palette
+| Role | Color | Hex | Usage |
+|------|-------|-----|-------|
+| Primary | [name] | #XXXXXX | CTAs, key headings, brand elements |
+| Secondary | [name] | #XXXXXX | Accents, hover states, highlights |
+| Background | [name] | #XXXXXX | Page background |
+| Surface | [name] | #XXXXXX | Cards, sections |
+| Text Primary | [name] | #XXXXXX | Body copy |
+| Text Secondary | [name] | #XXXXXX | Captions, muted text |
+
+## Typography
+- **Headings**: [Font Name] — [weight] — [why this font]
+- **Body**: [Font Name] — [weight] — [why this font]
+- **Type Scale**: h1: Xrem, h2: Xrem, h3: Xrem, body: Xrem, small: Xrem
+- **Line Height**: headings X, body X
+
+## Spacing & Layout
+- **Base unit**: Xpx
+- **Section padding**: X
+- **Max width**: Xpx
+- **Grid**: X columns, Xpx gap
+
+## Visual Elements
+- **Border radius**: [value and style description]
+- **Shadows**: [approach]
+- **Backgrounds**: [patterns, gradients, textures]
+- **Image treatment**: [rounded, masked, full-bleed, etc.]
+- **Motion**: [animation approach — subtle/bold, timing]
+
+## Reference Sources
+[Moodboard files referenced, competitor sites analyzed, brand assets used]
+```
+
+## Guardrails
+
+- **Design tokens must be concrete** — hex values, font names, pixel/rem values. "A blue palette" is not a design token. `#2563EB` is.
+- **No code** — Define the design system in the brief. Implementation happens later.
+- **No copy** — Do NOT write headlines, CTAs, or body text. The copy step handles that.
+- **Differentiate from competitors** — Reference the market analysis to ensure the visual direction stands apart.
+- **Use skills** — The `frontend-design` skill prevents generic AI aesthetics. The `theme-factory` skill provides professional font/color pairings. Use both.
+- **One brief per invocation** — If multiple design directions are possible, present the strongest one and note alternatives briefly.
+- **Signal is mandatory** — Do NOT finish without outputting `<aop>BRIEF_READY</aop>` (or `<aop>REQUIRES_INPUT</aop>` if you need visual references). Every session must end with a signal.
+
+{{> output-signals}}

@@ -1,0 +1,30 @@
+You are systematically debugging an issue in a software project.
+
+{{> task-context}}
+
+## Instructions
+
+This is iteration {{step.iteration}} of the debugging loop. Each iteration should make meaningful progress:
+- **Early iterations**: Reproduce the issue, gather evidence, form hypotheses
+- **Middle iterations**: Test hypotheses, narrow down root cause
+- **Later iterations**: Apply fix, verify with tests, confirm no regressions
+
+### Completion criteria
+
+Before signaling FIX_COMPLETE, you MUST:
+1. Have identified and fixed the root cause (not just symptoms)
+2. Verified the fix resolves the original issue
+3. Run relevant tests and confirm they pass
+4. Checked for regressions in related functionality
+
+Save your findings to `{{task.changePath}}/debug-findings.md` (create or update this file with your latest findings).
+
+REQUIRES_INPUT is a **last resort**. You must exhaust every avenue before signaling it:
+- Try at least 3 different hypotheses
+- Search the codebase thoroughly for related code, logs, and error patterns
+- Attempt to reproduce with different approaches
+- Read all relevant test files and error outputs carefully
+
+Only signal REQUIRES_INPUT when you are genuinely blocked — you have tried everything within your capability and cannot proceed without specific information from the human (e.g., environment credentials, hardware-specific reproduction, or a judgment call on intended behavior).
+
+{{> output-signals}}

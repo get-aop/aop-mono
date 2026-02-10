@@ -8,8 +8,10 @@ steps:
     promptTemplate: iterate.md.hbs
     maxAttempts: 1
     signals:
-      - TASK_COMPLETE
-      - NEEDS_REVIEW
+      - name: TASK_COMPLETE
+        description: task is fully complete
+      - name: NEEDS_REVIEW
+        description: implementation is ready for review
     transitions:
       - condition: TASK_COMPLETE
         target: __done__

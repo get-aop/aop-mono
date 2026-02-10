@@ -150,10 +150,12 @@ export const registerCommands = (
     .command("task:ready <identifier>", "Mark task as READY")
     .option("--workflow <name>", "Workflow name")
     .option("--base-branch <branch>", "Base branch for worktree creation")
+    .option("--resume [stepId]", "Retry from last step, or a specific step")
     .action((identifier, options) =>
       commands.taskReadyCommand(identifier, {
         workflow: options.workflow,
         baseBranch: options.baseBranch,
+        retryFromStep: options.resume === true ? "last" : options.resume || undefined,
       }),
     );
 

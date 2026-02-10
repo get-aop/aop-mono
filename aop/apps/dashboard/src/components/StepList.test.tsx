@@ -49,6 +49,38 @@ describe("StepList", () => {
       expect(html).toContain("quick review");
     });
 
+    test("prefers stepId over stepType for badge label", async () => {
+      const steps: Step[] = [
+        {
+          id: "step-1",
+          stepId: "codebase_research",
+          stepType: "research",
+          status: "success",
+          startedAt: "2024-01-01T00:00:00.000Z",
+          endedAt: "2024-01-01T00:05:00.000Z",
+        },
+      ];
+
+      const html = await renderToString(<StepList steps={steps} />);
+      expect(html).toContain("codebase research");
+      expect(html).not.toContain(">research<");
+    });
+
+    test("falls back to stepType when stepId is absent", async () => {
+      const steps: Step[] = [
+        {
+          id: "step-1",
+          stepType: "iterate",
+          status: "success",
+          startedAt: "2024-01-01T00:00:00.000Z",
+          endedAt: "2024-01-01T00:05:00.000Z",
+        },
+      ];
+
+      const html = await renderToString(<StepList steps={steps} />);
+      expect(html).toContain("iterate");
+    });
+
     test("shows unknown for null step type", async () => {
       const steps: Step[] = [
         {
@@ -204,7 +236,7 @@ describe("StepList", () => {
     });
   });
 
-  describe("step expansion", () => {
+  describe("step selection", () => {
     const steps: Step[] = [
       {
         id: "step-1",
@@ -222,53 +254,28 @@ describe("StepList", () => {
       },
     ];
 
-    const logLines: LogLine[] = [
-      { type: "stdout", content: "step 1 log", timestamp: "2024-01-01T00:02:00.000Z" },
-      { type: "stdout", content: "step 2 log", timestamp: "2024-01-01T00:07:00.000Z" },
-    ];
-
     const noop = () => {};
 
     test("renders chevron indicators when onStepClick is provided", async () => {
       const html = await renderToString(
-        <StepList steps={steps} logLines={logLines} selectedStepId={null} onStepClick={noop} />,
+        <StepList steps={steps} selectedStepId={null} onStepClick={noop} />,
       );
       expect(html).toContain("▶");
       expect(html).not.toContain("▼");
     });
 
-    test("expanded step shows down chevron", async () => {
+    test("selected step shows down chevron", async () => {
       const html = await renderToString(
-        <StepList steps={steps} logLines={logLines} selectedStepId="step-1" onStepClick={noop} />,
+        <StepList steps={steps} selectedStepId="step-1" onStepClick={noop} />,
       );
       expect(html).toContain("▼");
     });
 
-    test("expanded step shows LogViewer with filtered logs", async () => {
+    test("selected step has highlight background", async () => {
       const html = await renderToString(
-        <StepList steps={steps} logLines={logLines} selectedStepId="step-1" onStepClick={noop} />,
+        <StepList steps={steps} selectedStepId="step-1" onStepClick={noop} />,
       );
-      expect(html).toContain("step-logs-step-1");
-      expect(html).toContain("step 1 log");
-      expect(html).not.toContain("step 2 log");
-    });
-
-    test("only selected step shows logs", async () => {
-      const html = await renderToString(
-        <StepList steps={steps} logLines={logLines} selectedStepId="step-2" onStepClick={noop} />,
-      );
-      expect(html).toContain("step-logs-step-2");
-      expect(html).not.toContain("step-logs-step-1");
-      expect(html).toContain("step 2 log");
-      expect(html).not.toContain("step 1 log");
-    });
-
-    test("no LogViewer when no step is selected", async () => {
-      const html = await renderToString(
-        <StepList steps={steps} logLines={logLines} selectedStepId={null} onStepClick={noop} />,
-      );
-      expect(html).not.toContain("step-logs-");
-      expect(html).not.toContain("log-viewer");
+      expect(html).toContain("bg-aop-charcoal/30");
     });
 
     test("no chevron indicators without onStepClick", async () => {
@@ -279,7 +286,7 @@ describe("StepList", () => {
 
     test("renders button element when clickable", async () => {
       const html = await renderToString(
-        <StepList steps={steps} logLines={logLines} selectedStepId={null} onStepClick={noop} />,
+        <StepList steps={steps} selectedStepId={null} onStepClick={noop} />,
       );
       expect(html).toContain("<button");
     });
@@ -287,6 +294,14 @@ describe("StepList", () => {
     test("renders div element when not clickable", async () => {
       const html = await renderToString(<StepList steps={steps} />);
       expect(html).not.toContain("<button");
+    });
+
+    test("does not render inline log viewer", async () => {
+      const html = await renderToString(
+        <StepList steps={steps} selectedStepId="step-1" onStepClick={noop} />,
+      );
+      expect(html).not.toContain("step-logs-");
+      expect(html).not.toContain("log-viewer");
     });
   });
 });

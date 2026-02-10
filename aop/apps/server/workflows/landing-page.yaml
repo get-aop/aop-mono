@@ -1,0 +1,192 @@
+version: 1
+name: landing-page
+initialStep: market_analysis
+steps:
+  market_analysis:
+    id: market_analysis
+    type: research
+    promptTemplate: market-analysis.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: RESEARCH_COMPLETE
+        description: market research is done, findings are written
+    transitions:
+      - condition: RESEARCH_COMPLETE
+        target: design_brief
+      - condition: __none__
+        target: market_analysis
+      - condition: failure
+        target: __blocked__
+
+  design_brief:
+    id: design_brief
+    type: iterate
+    promptTemplate: design-brief.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: BRIEF_READY
+        description: design brief with tokens is written and ready
+      - name: REQUIRES_INPUT
+        description: need visual references or brand direction
+    transitions:
+      - condition: BRIEF_READY
+        target: outline_page
+      - condition: REQUIRES_INPUT
+        target: __paused__
+      - condition: __none__
+        target: design_brief
+      - condition: failure
+        target: __blocked__
+
+  outline_page:
+    id: outline_page
+    type: iterate
+    promptTemplate: outline-landing-page.md.hbs
+    maxAttempts: 3
+    signals:
+      - name: PLAN_READY
+        description: outline is written to tasks.md, ready for human approval
+      - name: PLAN_APPROVED
+        description: human approved the outline, proceed to copy
+      - name: REQUIRES_INPUT
+        description: need clarification on page structure or goals
+    transitions:
+      - condition: PLAN_READY
+        target: __paused__
+      - condition: PLAN_APPROVED
+        target: write_copy
+      - condition: REQUIRES_INPUT
+        target: __paused__
+      - condition: __none__
+        target: outline_page
+      - condition: failure
+        target: __blocked__
+
+  write_copy:
+    id: write_copy
+    type: iterate
+    promptTemplate: landing-page-copy.md.hbs
+    maxAttempts: 5
+    signals:
+      - name: CONTENT_READY
+        description: copy is written and CRO-reviewed
+      - name: REQUIRES_INPUT
+        description: need clarification on messaging or tone
+    transitions:
+      - condition: CONTENT_READY
+        target: implement_page
+      - condition: REQUIRES_INPUT
+        target: __paused__
+      - condition: __none__
+        target: implement_page
+      - condition: failure
+        target: __blocked__
+
+  implement_page:
+    id: implement_page
+    type: implement
+    promptTemplate: implement-frontend.md.hbs
+    maxAttempts: 15
+    signals:
+      - name: TASK_COMPLETE
+        description: all tasks in tasks.md are complete
+      - name: CHUNK_DONE
+        description: completed a chunk, more tasks remain in tasks.md
+    transitions:
+      - condition: TASK_COMPLETE
+        target: visual_verify
+      - condition: CHUNK_DONE
+        target: implement_page
+      - condition: __none__
+        target: implement_page
+      - condition: failure
+        target: __blocked__
+
+  visual_verify:
+    id: visual_verify
+    type: review
+    promptTemplate: visual-verify.md.hbs
+    maxAttempts: 5
+    signals:
+      - name: LOOKS_GOOD
+        description: visual implementation matches expectations
+      - name: NEEDS_CHANGES
+        description: identified visual issues that need fixing
+      - name: REQUIRES_INPUT
+        description: need human judgment on the visual result
+    transitions:
+      - condition: LOOKS_GOOD
+        target: add_differentiator
+      - condition: NEEDS_CHANGES
+        target: implement_page
+        maxIterations: 3
+        onMaxIterations: __blocked__
+      - condition: REQUIRES_INPUT
+        target: __paused__
+      - condition: failure
+        target: __blocked__
+
+  add_differentiator:
+    id: add_differentiator
+    type: implement
+    promptTemplate: add-differentiator.md.hbs
+    maxAttempts: 10
+    signals:
+      - name: TASK_COMPLETE
+        description: differentiator widget is built and integrated
+      - name: CHUNK_DONE
+        description: completed a chunk, more work remains
+    transitions:
+      - condition: TASK_COMPLETE
+        target: seo_audit
+      - condition: CHUNK_DONE
+        target: add_differentiator
+      - condition: __none__
+        target: add_differentiator
+      - condition: failure
+        target: __blocked__
+
+  seo_audit:
+    id: seo_audit
+    type: review
+    promptTemplate: seo-audit.md.hbs
+    maxAttempts: 1
+    signals:
+      - name: SEO_PASS
+        description: SEO checks meet acceptable thresholds
+      - name: SEO_NEEDS_WORK
+        description: issues found that need addressing
+    transitions:
+      - condition: SEO_PASS
+        target: code_review
+      - condition: SEO_NEEDS_WORK
+        target: implement_page
+        maxIterations: 2
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+
+  code_review:
+    id: code_review
+    type: review
+    promptTemplate: code-review-step.md.hbs
+    maxAttempts: 2
+    signals:
+      - name: REVIEW_PASSED
+        description: code is clean and ready
+      - name: REVIEW_FAILED
+        description: found issues that need the implementer to address
+    transitions:
+      - condition: REVIEW_PASSED
+        target: __done__
+      - condition: REVIEW_FAILED
+        target: implement_page
+        maxIterations: 2
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+
+terminalStates:
+  - __done__
+  - __blocked__
+  - __paused__

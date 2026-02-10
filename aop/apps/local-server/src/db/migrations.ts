@@ -15,6 +15,12 @@ export const runMigrations = async (db: Kysely<Database>): Promise<void> => {
   await createExecutionsTable(db);
   await createStepExecutionsTable(db);
   await addStepExecutionSignalColumns(db);
+  await addStepExecutionPauseContext(db);
+  await addStepExecutionStepId(db);
+  await addTaskRetryFromStep(db);
+  await addTaskResumeInput(db);
+  await addStepExecutionRemoteExecutionId(db);
+  await addStepExecutionCommandData(db);
   await createExecutionLogsTable(db);
   await createInteractiveSessionsTable(db);
   await createSessionMessagesTable(db);
@@ -184,6 +190,66 @@ const addStepExecutionSignalColumns = async (db: Kysely<Database>): Promise<void
 
   if (!columns.includes("signal")) {
     await sql`ALTER TABLE step_executions ADD COLUMN signal TEXT`.execute(db);
+  }
+};
+
+const addStepExecutionPauseContext = async (db: Kysely<Database>): Promise<void> => {
+  const tableInfo = await sql<{ name: string }>`PRAGMA table_info(step_executions)`.execute(db);
+  const columns = tableInfo.rows.map((row) => row.name);
+
+  if (!columns.includes("pause_context")) {
+    await sql`ALTER TABLE step_executions ADD COLUMN pause_context TEXT`.execute(db);
+  }
+};
+
+const addTaskRetryFromStep = async (db: Kysely<Database>): Promise<void> => {
+  const tableInfo = await sql<{ name: string }>`PRAGMA table_info(tasks)`.execute(db);
+  const columns = tableInfo.rows.map((row) => row.name);
+
+  if (!columns.includes("retry_from_step")) {
+    await sql`ALTER TABLE tasks ADD COLUMN retry_from_step TEXT`.execute(db);
+  }
+};
+
+const addTaskResumeInput = async (db: Kysely<Database>): Promise<void> => {
+  const tableInfo = await sql<{ name: string }>`PRAGMA table_info(tasks)`.execute(db);
+  const columns = tableInfo.rows.map((row) => row.name);
+
+  if (!columns.includes("resume_input")) {
+    await sql`ALTER TABLE tasks ADD COLUMN resume_input TEXT`.execute(db);
+  }
+};
+
+const addStepExecutionStepId = async (db: Kysely<Database>): Promise<void> => {
+  const tableInfo = await sql<{ name: string }>`PRAGMA table_info(step_executions)`.execute(db);
+  const columns = tableInfo.rows.map((row) => row.name);
+
+  if (!columns.includes("step_id")) {
+    await sql`ALTER TABLE step_executions ADD COLUMN step_id TEXT`.execute(db);
+  }
+};
+
+const addStepExecutionRemoteExecutionId = async (db: Kysely<Database>): Promise<void> => {
+  const tableInfo = await sql<{ name: string }>`PRAGMA table_info(step_executions)`.execute(db);
+  const columns = tableInfo.rows.map((row) => row.name);
+
+  if (!columns.includes("remote_execution_id")) {
+    await sql`ALTER TABLE step_executions ADD COLUMN remote_execution_id TEXT`.execute(db);
+  }
+};
+
+const addStepExecutionCommandData = async (db: Kysely<Database>): Promise<void> => {
+  const tableInfo = await sql<{ name: string }>`PRAGMA table_info(step_executions)`.execute(db);
+  const columns = tableInfo.rows.map((row) => row.name);
+
+  if (!columns.includes("attempt")) {
+    await sql`ALTER TABLE step_executions ADD COLUMN attempt INTEGER`.execute(db);
+  }
+  if (!columns.includes("iteration")) {
+    await sql`ALTER TABLE step_executions ADD COLUMN iteration INTEGER`.execute(db);
+  }
+  if (!columns.includes("signals_json")) {
+    await sql`ALTER TABLE step_executions ADD COLUMN signals_json TEXT`.execute(db);
   }
 };
 

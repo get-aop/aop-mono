@@ -6,11 +6,12 @@ export const StepType = {
   REVIEW: "review",
   DEBUG: "debug",
   ITERATE: "iterate",
+  RESEARCH: "research",
 } as const;
 
 export type StepType = (typeof StepType)[keyof typeof StepType];
 
-const StepTypeEnum = z.enum(["implement", "test", "review", "debug", "iterate"]);
+const StepTypeEnum = z.enum(["implement", "test", "review", "debug", "iterate", "research"]);
 
 export const TransitionCondition = {
   SUCCESS: "success",
@@ -37,7 +38,7 @@ export const WorkflowStepSchema = z.object({
   promptTemplate: z.string(),
   maxAttempts: z.number().int().positive().default(1),
   transitions: z.array(TransitionSchema),
-  signals: z.array(z.string()).optional(),
+  signals: z.array(z.object({ name: z.string(), description: z.string() })).optional(),
 });
 
 export type WorkflowStep = z.infer<typeof WorkflowStepSchema>;
@@ -54,6 +55,7 @@ export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;
 
 export const TERMINAL_SUCCESS = "__done__" as const;
 export const TERMINAL_BLOCKED = "__blocked__" as const;
+export const TERMINAL_PAUSED = "__paused__" as const;
 
 export const isTerminalState = (target: string): boolean =>
-  target === TERMINAL_SUCCESS || target === TERMINAL_BLOCKED;
+  target === TERMINAL_SUCCESS || target === TERMINAL_BLOCKED || target === TERMINAL_PAUSED;

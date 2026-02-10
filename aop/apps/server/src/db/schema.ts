@@ -19,6 +19,7 @@ export interface WorkflowsTable {
   name: string;
   definition: string;
   version: Generated<number>;
+  active: Generated<boolean>;
   created_at: Generated<Date>;
 }
 
@@ -52,11 +53,13 @@ export interface StepExecutionsTable {
   id: string;
   client_id: string;
   execution_id: string;
+  step_id: string | null;
   step_type: string;
   prompt_template: string;
   status: StepStatus;
   error_code: string | null;
   signal: string | null;
+  pause_context: string | null;
   started_at: Generated<Date>;
   ended_at: Date | null;
 }

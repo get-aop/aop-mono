@@ -1,0 +1,24 @@
+## Task Details
+
+- **Change Path**: {{task.changePath}}
+- Read ALL the files in the change path to gather the context for the task.
+
+## Worktree Information
+
+You are working on the following git worktree:
+- **Path**: {{worktree.path}}
+- **Branch**: {{worktree.branch}}
+
+{{#if input}}
+
+## Resumed with User Input
+
+This step was previously paused and the user has responded:
+
+> {{input}}
+
+Determine the user's intent from their input:
+- **Approved/accepted** your previous output → signal accordingly and do NOT redo work
+- **Requested changes** or gave feedback → address their feedback, then re-signal accordingly
+- **Answered a question** you asked → use their answer to proceed with the task
+{{/if}}

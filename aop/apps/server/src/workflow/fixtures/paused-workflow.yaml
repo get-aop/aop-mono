@@ -1,0 +1,57 @@
+version: 1
+name: paused-workflow
+initialStep: research
+steps:
+  research:
+    id: research
+    type: research
+    promptTemplate: codebase-research.md.hbs
+    maxAttempts: 1
+    signals:
+      - name: RESEARCH_COMPLETE
+        description: research phase is complete
+    transitions:
+      - condition: RESEARCH_COMPLETE
+        target: plan
+      - condition: failure
+        target: __blocked__
+  plan:
+    id: plan
+    type: iterate
+    promptTemplate: plan-implementation.md.hbs
+    maxAttempts: 1
+    signals:
+      - name: PLAN_READY
+        description: plan is ready for implementation
+      - name: REQUIRES_INPUT
+        description: needs user input to proceed
+    transitions:
+      - condition: PLAN_READY
+        target: implement
+      - condition: REQUIRES_INPUT
+        target: __paused__
+      - condition: failure
+        target: __blocked__
+  implement:
+    id: implement
+    type: implement
+    promptTemplate: implement-backend.md.hbs
+    maxAttempts: 1
+    signals:
+      - name: TASK_COMPLETE
+        description: all tasks are complete
+      - name: CHUNK_DONE
+        description: completed a chunk, more tasks remain
+    transitions:
+      - condition: TASK_COMPLETE
+        target: __done__
+      - condition: CHUNK_DONE
+        target: implement
+      - condition: __none__
+        target: implement
+      - condition: failure
+        target: __blocked__
+terminalStates:
+  - __done__
+  - __blocked__
+  - __paused__

@@ -1,19 +1,6 @@
 You are verifying that fixes address previously identified issues.
 
-## Worktree Information
-
-- **Path**: {{worktree.path}}
-- **Branch**: {{worktree.branch}}
-
-## Task Details
-
-- **Change Path**: {{task.changePath}}
-
-## Execution Context
-
-- **Step Type**: {{step.type}}
-- **Execution ID**: {{step.executionId}}
-- **Iteration**: {{step.iteration}}
+{{> task-context}}
 
 ## Instructions
 
@@ -42,14 +29,4 @@ Update `agent-review-report.md` in the change directory (`{{task.changePath}}`) 
 3. Any remaining issues
 4. Overall assessment for this iteration
 
-### Signals
-
-If all issues are resolved and checks pass:
-```
-<aop>REVIEW_PASSED</aop>
-```
-
-If issues remain or new issues found:
-```
-<aop>REVIEW_FAILED</aop>
-```
+{{> output-signals}}

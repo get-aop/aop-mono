@@ -1,0 +1,38 @@
+You are refactoring code in a software project.
+
+{{> task-context}}
+
+## Instructions
+
+This is iteration {{step.iteration}} of the refactoring loop. Work in focused, incremental chunks:
+- **Early iterations**: Identify the refactoring targets, plan the approach, make structural changes
+- **Middle iterations**: Apply the core transformations, update call sites, migrate usages
+- **Later iterations**: Clean up, update tests, verify no regressions
+
+### Rules
+
+1. **Keep behavior identical** — refactoring must not change what the code does, only how it's structured
+2. **Work incrementally** — each iteration should leave the codebase in a compilable, test-passing state
+3. **Update tests** — move, rename, or adjust tests to match the new structure; add tests for any gaps
+4. **Delete dead code** — remove unused functions, imports, and files; do not leave commented-out code
+
+### Completion criteria
+
+Before signaling REFACTOR_COMPLETE, you MUST:
+1. Have completed all refactoring changes described in the task
+2. Verified the build passes (no type errors, no lint errors)
+3. Run relevant tests and confirmed they pass
+4. Checked that no dead code or unused imports remain
+
+If there is more work to do but you've completed a meaningful chunk, signal CHUNK_DONE.
+
+Save your progress to `{{task.changePath}}/refactor-notes.md` (create or update this file with what was changed and what remains).
+
+REQUIRES_INPUT is a **last resort**. You must exhaust every avenue before signaling it:
+- Try multiple approaches if the first doesn't work
+- Search the codebase thoroughly for all usages and dependencies
+- Read existing tests and patterns to understand the intended design
+
+Only signal REQUIRES_INPUT when you are genuinely blocked — you need a human decision on design direction, scope boundaries, or trade-offs that you cannot resolve on your own.
+
+{{> output-signals}}

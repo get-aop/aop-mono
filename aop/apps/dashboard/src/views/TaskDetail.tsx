@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, applyTask, blockTask, markReady, removeTask } from "../api/client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ApiError, applyTask, blockTask, markReady, removeTask, resumeTask } from "../api/client";
 import { ApplyDialog } from "../components/ApplyDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { type LogLine, LogViewer } from "../components/LogViewer";
 import { MarkReadyDialog } from "../components/MarkReadyDialog";
+import { ResumeDialog } from "../components/ResumeDialog";
+import { RetryDialog } from "../components/RetryDialog";
 import { SpecsTab } from "../components/SpecsTab";
 import { StatusBadge } from "../components/StatusBadge";
-import { StepList } from "../components/StepList";
+import { filterLogsByStep, StepList } from "../components/StepList";
 import { TaskProgress } from "../components/TaskProgress";
 import { useSSE } from "../hooks/useSSE";
 import { useTaskEvents } from "../hooks/useTaskEvents";
@@ -78,6 +80,8 @@ const useDialogs = (task: Task | undefined, onClose: () => void) => {
   const [showMarkReadyDialog, setShowMarkReadyDialog] = useState(false);
   const [showApplyDialog, setShowApplyDialog] = useState(false);
   const [showBlockDialog, setShowBlockDialog] = useState(false);
+  const [showResumeDialog, setShowResumeDialog] = useState(false);
+  const [showRetryDialog, setShowRetryDialog] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -145,6 +149,36 @@ const useDialogs = (task: Task | undefined, onClose: () => void) => {
     }
   };
 
+  const handleRetryConfirm = async (_task: Task, stepId?: string) => {
+    if (!task) return;
+    try {
+      await markReady(
+        task.repoId,
+        task.id,
+        task.preferredWorkflow ?? undefined,
+        task.baseBranch ?? undefined,
+        task.preferredProvider ?? undefined,
+        stepId,
+      );
+      setShowRetryDialog(false);
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Failed to retry task");
+      setShowRetryDialog(false);
+    }
+  };
+
+  const handleResumeConfirm = async (input: string) => {
+    if (!task) return;
+    try {
+      await resumeTask(task.repoId, task.id, input);
+      setShowResumeDialog(false);
+      showToast("Task resumed", "success");
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Failed to resume task");
+      setShowResumeDialog(false);
+    }
+  };
+
   return {
     showRemoveDialog,
     setShowRemoveDialog,
@@ -154,28 +188,44 @@ const useDialogs = (task: Task | undefined, onClose: () => void) => {
     setShowApplyDialog,
     showBlockDialog,
     setShowBlockDialog,
+    showResumeDialog,
+    setShowResumeDialog,
+    showRetryDialog,
+    setShowRetryDialog,
     isRemoving,
     isBlocking,
     toastMessage,
     toastType,
     handleMarkReadyConfirm,
     handleApplyConfirm,
+    handleRetryConfirm,
     handleRemove,
     handleBlock,
+    handleResumeConfirm,
   };
 };
 
 const TaskDetailDialogs = ({
   task,
   dialogs,
+  steps,
 }: {
   task: Task;
   dialogs: ReturnType<typeof useDialogs>;
+  steps: Step[];
 }) => {
   const changeName = task.changePath?.split("/").pop() ?? task.changePath ?? "";
 
   return (
     <>
+      <RetryDialog
+        open={dialogs.showRetryDialog}
+        task={task}
+        steps={steps}
+        onSelect={dialogs.handleRetryConfirm}
+        onCancel={() => dialogs.setShowRetryDialog(false)}
+      />
+
       <MarkReadyDialog
         open={dialogs.showMarkReadyDialog}
         repoId={task.repoId}
@@ -189,6 +239,14 @@ const TaskDetailDialogs = ({
         defaultBranch={task.baseBranch}
         onConfirm={dialogs.handleApplyConfirm}
         onCancel={() => dialogs.setShowApplyDialog(false)}
+      />
+
+      <ResumeDialog
+        open={dialogs.showResumeDialog}
+        repoId={task.repoId}
+        taskId={task.id}
+        onConfirm={dialogs.handleResumeConfirm}
+        onCancel={() => dialogs.setShowResumeDialog(false)}
       />
 
       <ConfirmDialog
@@ -237,16 +295,23 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
   const [activeTab, setActiveTab] = useState<DetailTab>(defaultTab);
 
   const activeExecutionId =
-    task?.status === "WORKING" ? task.currentExecutionId : expandedExecutionId;
+    expandedExecutionId ?? (task?.status === "WORKING" ? (task.currentExecutionId ?? null) : null);
 
   const { logLines, connected: logsConnected } = useTaskLogs(activeExecutionId ?? null);
+  const allSteps = useMemo(() => executions.flatMap((e) => e.steps), [executions]);
   const dialogs = useDialogs(task, onClose);
 
   useEffect(() => {
     if (!task) return;
     fetch(`/api/repos/${task.repoId}/tasks/${task.id}/executions`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => data && setExecutions(data.executions ?? []))
+      .then((data) => {
+        if (!data) return;
+        const execs: Execution[] = data.executions ?? [];
+        setExecutions(execs);
+        const latest = execs[0];
+        if (latest) setExpandedExecutionId(latest.id);
+      })
       .catch(() => {});
   }, [task]);
 
@@ -271,6 +336,8 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
             task={task}
             onMarkReady={() => dialogs.setShowMarkReadyDialog(true)}
             onApply={() => dialogs.setShowApplyDialog(true)}
+            onRetry={() => dialogs.setShowRetryDialog(true)}
+            onResume={() => dialogs.setShowResumeDialog(true)}
             onShowBlockDialog={() => dialogs.setShowBlockDialog(true)}
             onShowRemoveDialog={() => dialogs.setShowRemoveDialog(true)}
           />
@@ -288,9 +355,7 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
               expandedExecutionId={expandedExecutionId}
               logLines={logLines}
               logsConnected={logsConnected}
-              onToggleExecution={(id) =>
-                setExpandedExecutionId((prev) => (prev === id ? null : id))
-              }
+              onToggleExecution={(id) => setExpandedExecutionId(id)}
             />
           )}
 
@@ -298,7 +363,7 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
         </div>
       </main>
 
-      <TaskDetailDialogs task={task} dialogs={dialogs} />
+      <TaskDetailDialogs task={task} dialogs={dialogs} steps={allSteps} />
     </div>
   );
 };
@@ -378,29 +443,27 @@ const ProviderBadge = ({ provider }: { provider: string }) => (
   </div>
 );
 
-interface TaskInfoCardProps {
+interface TaskActionsProps {
   task: Task;
   onMarkReady: () => void;
   onApply: () => void;
+  onRetry: () => void;
+  onResume: () => void;
   onShowBlockDialog: () => void;
   onShowRemoveDialog: () => void;
 }
 
 const TaskActions = ({
-  status,
+  task,
   onMarkReady,
   onApply,
+  onRetry,
+  onResume,
   onShowBlockDialog,
   onShowRemoveDialog,
-}: {
-  status: string;
-  onMarkReady: () => void;
-  onApply: () => void;
-  onShowBlockDialog: () => void;
-  onShowRemoveDialog: () => void;
-}) => (
+}: TaskActionsProps) => (
   <div className="flex items-center gap-2">
-    {(status === "DRAFT" || status === "BLOCKED") && (
+    {(task.status === "DRAFT" || task.status === "BLOCKED") && (
       <button
         type="button"
         onClick={onMarkReady}
@@ -410,7 +473,41 @@ const TaskActions = ({
         Mark Ready
       </button>
     )}
-    {(status === "DONE" || status === "BLOCKED") && (
+    {task.status === "BLOCKED" && (
+      <button
+        type="button"
+        onClick={onRetry}
+        data-testid="retry-button"
+        className="flex cursor-pointer items-center gap-1 rounded-aop border border-aop-charcoal px-3 py-1 font-mono text-[10px] text-aop-slate-light transition-colors hover:border-aop-slate-dark hover:text-aop-cream"
+      >
+        Retry
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+    )}
+    {task.status === "PAUSED" && (
+      <button
+        type="button"
+        onClick={onResume}
+        data-testid="resume-button"
+        className="cursor-pointer rounded-aop bg-aop-amber px-3 py-1 font-mono text-[10px] text-aop-black transition-colors hover:bg-aop-amber/90"
+      >
+        Resume
+      </button>
+    )}
+    {task.status === "DONE" && (
       <button
         type="button"
         onClick={onApply}
@@ -420,7 +517,7 @@ const TaskActions = ({
         Apply
       </button>
     )}
-    {status === "WORKING" && (
+    {task.status === "WORKING" && (
       <button
         type="button"
         onClick={onShowBlockDialog}
@@ -441,10 +538,22 @@ const TaskActions = ({
   </div>
 );
 
+interface TaskInfoCardProps {
+  task: Task;
+  onMarkReady: () => void;
+  onApply: () => void;
+  onRetry: () => void;
+  onResume: () => void;
+  onShowBlockDialog: () => void;
+  onShowRemoveDialog: () => void;
+}
+
 const TaskInfoCard = ({
   task,
   onMarkReady,
   onApply,
+  onRetry,
+  onResume,
   onShowBlockDialog,
   onShowRemoveDialog,
 }: TaskInfoCardProps) => {
@@ -464,9 +573,11 @@ const TaskInfoCard = ({
         </div>
 
         <TaskActions
-          status={task.status}
+          task={task}
           onMarkReady={onMarkReady}
           onApply={onApply}
+          onRetry={onRetry}
+          onResume={onResume}
           onShowBlockDialog={onShowBlockDialog}
           onShowRemoveDialog={onShowRemoveDialog}
         />
@@ -505,40 +616,37 @@ const findRunningStepId = (steps: Step[]): string | null =>
 interface ExecutionHistoryProps {
   executions: Execution[];
   expandedExecutionId: string | null;
-  logLines: LogLine[];
+  selectedStepId: string | null;
   onToggleExecution: (id: string) => void;
+  onStepClick: (stepId: string) => void;
 }
 
 const ExecutionHistory = ({
   executions,
   expandedExecutionId,
-  logLines,
+  selectedStepId,
   onToggleExecution,
+  onStepClick,
 }: ExecutionHistoryProps) => {
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [prevExpandedId, setPrevExpandedId] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const ascending = useMemo(() => [...executions].reverse(), [executions]);
 
-  const expandedExecution = useMemo(
-    () => executions.find((e) => e.id === expandedExecutionId),
-    [executions, expandedExecutionId],
-  );
-
-  // Reset step selection when switching executions
-  if (expandedExecutionId !== prevExpandedId) {
-    setPrevExpandedId(expandedExecutionId);
-    const running = expandedExecution ? findRunningStepId(expandedExecution.steps) : null;
-    setSelectedStepId(running);
-  }
-
-  // Auto-follow running step during live executions
-  const runningStepId = expandedExecution ? findRunningStepId(expandedExecution.steps) : null;
+  // Scroll to bottom on mount so latest execution is visible
   useEffect(() => {
-    if (runningStepId) setSelectedStepId(runningStepId);
-  }, [runningStepId]);
+    if (ascending.length === 0) return;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [ascending]);
 
-  const handleStepClick = (stepId: string) => {
-    setSelectedStepId((prev) => (prev === stepId ? null : stepId));
-  };
+  // Scroll so the last step of the expanded execution is visible
+  useEffect(() => {
+    if (!expandedExecutionId || !scrollRef.current) return;
+    const el = scrollRef.current.querySelector(
+      `[data-testid="execution-item-${expandedExecutionId}"]`,
+    );
+    if (!el) return;
+    el.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [expandedExecutionId]);
 
   const getStatusLabel = (status: Execution["status"]) =>
     ({ running: "Running", completed: "Completed", failed: "Failed" })[status];
@@ -549,25 +657,22 @@ const ExecutionHistory = ({
     ];
 
   return (
-    <div
-      className={`flex flex-col ${expandedExecutionId ? "flex-1 overflow-hidden" : "shrink-0"}`}
-      data-testid="execution-history"
-    >
+    <div className="shrink-0" data-testid="execution-history">
       <h2 className="shrink-0 font-mono text-[10px] text-aop-slate-dark">EXECUTION HISTORY</h2>
 
       {executions.length === 0 ? (
         <div className="mt-2 font-mono text-xs text-aop-slate-dark">No executions yet</div>
       ) : (
-        <div className="mt-2 flex flex-1 flex-col gap-1.5 overflow-auto">
-          {executions.map((execution) => {
+        <div
+          ref={scrollRef}
+          className="mt-2 flex flex-col gap-1.5 overflow-auto"
+          style={{ maxHeight: "7rem" }}
+        >
+          {ascending.map((execution) => {
             const isExpanded = expandedExecutionId === execution.id;
 
             return (
-              <div
-                key={execution.id}
-                data-testid={`execution-item-${execution.id}`}
-                className={`flex flex-col ${isExpanded ? "flex-1 overflow-hidden" : ""}`}
-              >
+              <div key={execution.id} data-testid={`execution-item-${execution.id}`}>
                 <button
                   type="button"
                   onClick={() => onToggleExecution(execution.id)}
@@ -592,12 +697,11 @@ const ExecutionHistory = ({
                 </button>
 
                 {isExpanded && execution.steps.length > 0 && (
-                  <div className="mt-1 flex flex-1 flex-col overflow-hidden border-l border-aop-charcoal pl-3">
+                  <div className="mt-1 border-l border-aop-charcoal pl-3">
                     <StepList
                       steps={execution.steps}
-                      logLines={logLines}
                       selectedStepId={selectedStepId}
-                      onStepClick={handleStepClick}
+                      onStepClick={onStepClick}
                     />
                   </div>
                 )}
@@ -610,10 +714,80 @@ const ExecutionHistory = ({
   );
 };
 
-interface LiveLogsProps {
-  logLines: LogLine[];
-  connected: boolean;
-}
+const useStepSelection = (
+  executions: Execution[],
+  expandedExecutionId: string | null,
+  isLive: boolean,
+) => {
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [prevExpandedId, setPrevExpandedId] = useState<string | null>(null);
+
+  const expandedExecution = useMemo(
+    () => executions.find((e) => e.id === expandedExecutionId),
+    [executions, expandedExecutionId],
+  );
+
+  if (expandedExecutionId !== prevExpandedId) {
+    setPrevExpandedId(expandedExecutionId);
+    const running = expandedExecution ? findRunningStepId(expandedExecution.steps) : null;
+    setSelectedStepId(running);
+  }
+
+  const runningStepId = expandedExecution ? findRunningStepId(expandedExecution.steps) : null;
+  useEffect(() => {
+    if (runningStepId) setSelectedStepId(runningStepId);
+  }, [runningStepId]);
+
+  const handleStepClick = (stepId: string) => {
+    setSelectedStepId((prev) => (prev === stepId ? null : stepId));
+  };
+
+  const isStreamingLive = isLive && (!selectedStepId || selectedStepId === runningStepId);
+
+  return { selectedStepId, expandedExecution, isStreamingLive, handleStepClick };
+};
+
+const getDisplayedLogs = (
+  logLines: LogLine[],
+  selectedStepId: string | null,
+  expandedExecution: Execution | undefined,
+  isLive: boolean,
+): LogLine[] => {
+  if (!selectedStepId) return logLines;
+  const step = expandedExecution?.steps.find((s) => s.id === selectedStepId);
+  if (!step || (step.status === "running" && isLive)) return logLines;
+  return filterLogsByStep(logLines, step);
+};
+
+const LogViewerPanel = ({
+  isStreamingLive,
+  hasStepSelected,
+  logsConnected,
+  displayedLogs,
+}: {
+  isStreamingLive: boolean;
+  hasStepSelected: boolean;
+  logsConnected: boolean;
+  displayedLogs: LogLine[];
+}) => (
+  <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="mb-1 flex shrink-0 items-center justify-between">
+      <h2 className="font-mono text-[10px] text-aop-slate-dark">
+        {isStreamingLive ? "LIVE LOGS" : hasStepSelected ? "STEP LOGS" : "LOGS"}
+      </h2>
+      {isStreamingLive && (
+        <span
+          className={`font-mono text-[10px] ${logsConnected ? "text-aop-success" : "text-aop-slate-dark"}`}
+        >
+          {logsConnected ? "● Connected" : "○ Connecting..."}
+        </span>
+      )}
+    </div>
+    <div className="flex-1 min-h-0 overflow-hidden rounded-aop border border-aop-charcoal">
+      <LogViewer lines={displayedLogs} autoScroll={isStreamingLive} />
+    </div>
+  </div>
+);
 
 const LogsContent = ({
   task,
@@ -629,33 +803,40 @@ const LogsContent = ({
   logLines: LogLine[];
   logsConnected: boolean;
   onToggleExecution: (id: string) => void;
-}) => (
-  <>
-    <ExecutionHistory
-      executions={executions}
-      expandedExecutionId={expandedExecutionId}
-      logLines={logLines}
-      onToggleExecution={onToggleExecution}
-    />
+}) => {
+  const isLive =
+    task.status === "WORKING" &&
+    (!expandedExecutionId || expandedExecutionId === task.currentExecutionId);
 
-    {task.status === "WORKING" && task.currentExecutionId && (
-      <LiveLogs logLines={logLines} connected={logsConnected} />
-    )}
-  </>
-);
+  const { selectedStepId, expandedExecution, isStreamingLive, handleStepClick } = useStepSelection(
+    executions,
+    expandedExecutionId,
+    isLive,
+  );
 
-const LiveLogs = ({ logLines, connected }: LiveLogsProps) => (
-  <div className="flex flex-1 flex-col overflow-hidden">
-    <div className="mb-1 flex shrink-0 items-center justify-between">
-      <h2 className="font-mono text-[10px] text-aop-slate-dark">LIVE LOGS</h2>
-      <span
-        className={`font-mono text-[10px] ${connected ? "text-aop-success" : "text-aop-slate-dark"}`}
-      >
-        {connected ? "● Connected" : "○ Connecting..."}
-      </span>
-    </div>
-    <div className="flex-1 min-h-0 overflow-hidden rounded-aop border border-aop-charcoal">
-      <LogViewer lines={logLines} />
-    </div>
-  </div>
-);
+  const displayedLogs = useMemo(
+    () => getDisplayedLogs(logLines, selectedStepId, expandedExecution, isLive),
+    [logLines, selectedStepId, expandedExecution, isLive],
+  );
+
+  return (
+    <>
+      <ExecutionHistory
+        executions={executions}
+        expandedExecutionId={expandedExecutionId}
+        selectedStepId={selectedStepId}
+        onToggleExecution={onToggleExecution}
+        onStepClick={handleStepClick}
+      />
+
+      {(isLive || expandedExecutionId) && (
+        <LogViewerPanel
+          isStreamingLive={isStreamingLive}
+          hasStepSelected={!!selectedStepId}
+          logsConnected={logsConnected}
+          displayedLogs={displayedLogs}
+        />
+      )}
+    </>
+  );
+};

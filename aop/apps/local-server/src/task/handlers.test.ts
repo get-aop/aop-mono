@@ -15,6 +15,7 @@ import {
   markTaskReady,
   removeTask,
   resolveTaskByIdentifier,
+  resumeTask,
 } from "./handlers.ts";
 
 const TEST_REPO_ID = "repo-1";
@@ -74,7 +75,7 @@ describe("task/handlers", () => {
   describe("markTaskReady", () => {
     const changePath = "changes/feat";
 
-    const createTasksFile = () => {
+    const createPromptFile = () => {
       const dir = join(aopPaths.repoDir(TEST_REPO_ID), changePath);
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "tasks.md"), "# Tasks\n- [ ] Task 1");
@@ -90,7 +91,7 @@ describe("task/handlers", () => {
       }
     });
 
-    test("returns MISSING_TASKS_FILE when tasks.md does not exist", async () => {
+    test("returns MISSING_PROMPT_FILE when no .md files exist", async () => {
       await createTestRepo(db, TEST_REPO_ID, "/test/repo");
       await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
 
@@ -98,7 +99,7 @@ describe("task/handlers", () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("MISSING_TASKS_FILE");
+        expect(result.error.code).toBe("MISSING_PROMPT_FILE");
         expect((result.error as { changePath: string }).changePath).toBe(changePath);
       }
     });
@@ -106,7 +107,7 @@ describe("task/handlers", () => {
     test("marks DRAFT task as ready", async () => {
       await createTestRepo(db, TEST_REPO_ID, "/test/repo");
       await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
-      createTasksFile();
+      createPromptFile();
 
       const result = await markTaskReady(ctx, "task-1");
 
@@ -120,7 +121,7 @@ describe("task/handlers", () => {
     test("marks BLOCKED task as ready", async () => {
       await createTestRepo(db, TEST_REPO_ID, "/test/repo");
       await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "BLOCKED");
-      createTasksFile();
+      createPromptFile();
 
       const result = await markTaskReady(ctx, "task-1");
 
@@ -172,7 +173,7 @@ describe("task/handlers", () => {
     test("sets preferred_workflow when provided", async () => {
       await createTestRepo(db, TEST_REPO_ID, "/test/repo");
       await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
-      createTasksFile();
+      createPromptFile();
 
       const result = await markTaskReady(ctx, "task-1", {
         workflow: "custom-flow",
@@ -187,7 +188,7 @@ describe("task/handlers", () => {
     test("sets base_branch when provided", async () => {
       await createTestRepo(db, TEST_REPO_ID, "/test/repo");
       await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
-      createTasksFile();
+      createPromptFile();
 
       const result = await markTaskReady(ctx, "task-1", {
         baseBranch: "feature/foo",
@@ -202,7 +203,7 @@ describe("task/handlers", () => {
     test("sets base_branch to null when not provided", async () => {
       await createTestRepo(db, TEST_REPO_ID, "/test/repo");
       await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
-      createTasksFile();
+      createPromptFile();
 
       const result = await markTaskReady(ctx, "task-1");
 
@@ -215,7 +216,7 @@ describe("task/handlers", () => {
     test("returns UPDATE_FAILED when repository update fails", async () => {
       await createTestRepo(db, TEST_REPO_ID, "/test/repo");
       await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
-      createTasksFile();
+      createPromptFile();
 
       const originalUpdate = ctx.taskRepository.update;
       ctx.taskRepository.update = mock(() => Promise.resolve(null));
@@ -228,6 +229,114 @@ describe("task/handlers", () => {
       }
 
       ctx.taskRepository.update = originalUpdate;
+    });
+  });
+
+  describe("markTaskReady with retryFromStep", () => {
+    const changePath = "changes/feat-retry";
+
+    const createPromptFile = () => {
+      const dir = join(aopPaths.repoDir(TEST_REPO_ID), changePath);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "tasks.md"), "# Tasks");
+    };
+
+    test("stores retryFromStep on the task", async () => {
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "BLOCKED");
+      createPromptFile();
+
+      const result = await markTaskReady(ctx, "task-1", { retryFromStep: "full-review" });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.task.retry_from_step).toBe("full-review");
+      }
+    });
+
+    test("clears retryFromStep when not provided", async () => {
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "BLOCKED");
+      createPromptFile();
+
+      const result = await markTaskReady(ctx, "task-1");
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.task.retry_from_step).toBeNull();
+      }
+    });
+  });
+
+  describe("resumeTask", () => {
+    test("returns NOT_FOUND when task does not exist", async () => {
+      const result = await resumeTask(ctx, "non-existent", "some input");
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("NOT_FOUND");
+      }
+    });
+
+    test("returns NOT_PAUSED when task is not in PAUSED status", async () => {
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, "changes/feat", "WORKING");
+
+      const result = await resumeTask(ctx, "task-1", "some input");
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("NOT_PAUSED");
+      }
+    });
+
+    test("enqueues task with RESUMING status and stores resume_input", async () => {
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, "changes/feat", "PAUSED");
+
+      // Create execution + step so getLatestStepExecution works
+      await db
+        .insertInto("executions")
+        .values({
+          id: "exec-1",
+          task_id: "task-1",
+          status: "running",
+          started_at: new Date().toISOString(),
+        })
+        .execute();
+      await db
+        .insertInto("step_executions")
+        .values({
+          id: "step-1",
+          execution_id: "exec-1",
+          step_type: "iterate",
+          status: "running",
+          started_at: new Date().toISOString(),
+        })
+        .execute();
+
+      const result = await resumeTask(ctx, "task-1", "Approved, proceed");
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.taskId).toBe("task-1");
+      }
+
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.status).toBe("RESUMING");
+      expect(task?.resume_input).toBe("Approved, proceed");
+    });
+
+    test("returns NO_STEP_EXECUTION when no step execution exists", async () => {
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, "changes/feat", "PAUSED");
+
+      const result = await resumeTask(ctx, "task-1", "some input");
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("NO_STEP_EXECUTION");
+      }
     });
   });
 

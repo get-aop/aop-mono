@@ -4,6 +4,7 @@ import type {
   StepCompleteRequest,
   StepCompleteResponse,
   StepError,
+  StepResumeRequest,
   SyncRepoRequest,
   SyncTaskRequest,
   TaskReadyRequest,
@@ -40,6 +41,7 @@ export interface StepCompletePayload {
   signal?: string;
   error?: StepError;
   durationMs: number;
+  pauseContext?: string;
 }
 
 interface QueuedRequest {
@@ -51,6 +53,7 @@ interface QueuedRequest {
 
 export interface MarkReadyOptions {
   workflowName?: string;
+  retryFromStep?: string;
 }
 
 export interface ServerSync {
@@ -63,6 +66,7 @@ export interface ServerSync {
     options?: MarkReadyOptions,
   ): Promise<TaskReadyResponse>;
   completeStep(stepId: string, result: StepCompletePayload): Promise<StepCompleteResponse>;
+  resumeStep(stepId: string, input: string): Promise<StepCompleteResponse>;
   getTaskStatus(taskId: string): Promise<TaskStatusResponse>;
   isDegraded(): boolean;
   isTaskQueued(taskId: string): boolean;
@@ -174,6 +178,9 @@ class ServerSyncImpl implements ServerSync {
       if (options?.workflowName) {
         body.workflowName = options.workflowName;
       }
+      if (options?.retryFromStep) {
+        body.retryFromStep = options.retryFromStep;
+      }
       const response = await this.fetchWithRetry<TaskReadyResponse>(
         "POST",
         `/tasks/${taskId}/ready`,
@@ -209,11 +216,12 @@ class ServerSyncImpl implements ServerSync {
           signal: result.signal,
           error: result.error,
           durationMs: result.durationMs,
+          pauseContext: result.pauseContext,
         } satisfies StepCompleteRequest,
         StepCompleteResponseSchema,
       );
 
-      if (["DONE", "BLOCKED", "REMOVED"].includes(response.taskStatus)) {
+      if (["DONE", "BLOCKED", "REMOVED", "PAUSED"].includes(response.taskStatus)) {
         log.info("Task terminal state {taskStatus}, triggering queued task retry", {
           taskStatus: response.taskStatus,
         });
@@ -223,6 +231,29 @@ class ServerSyncImpl implements ServerSync {
       return response;
     } catch (err) {
       log.error("completeStep failed: {error}", { error: String(err) });
+      throw err;
+    }
+  }
+
+  async resumeStep(stepId: string, input: string): Promise<StepCompleteResponse> {
+    const log = logger.with({ stepId });
+
+    try {
+      const response = await this.fetchWithRetry<StepCompleteResponse>(
+        "POST",
+        `/steps/${stepId}/resume`,
+        { input } satisfies StepResumeRequest,
+        StepCompleteResponseSchema,
+      );
+
+      log.info("Step resumed on server, taskStatus: {taskStatus}", {
+        taskStatus: response.taskStatus,
+        hasNextStep: !!response.step,
+      });
+
+      return response;
+    } catch (err) {
+      log.error("resumeStep failed: {error}", { error: String(err) });
       throw err;
     }
   }
@@ -398,6 +429,9 @@ export const createDegradedServerSync = (): ServerSync => {
     }),
     completeStep: async () => {
       throw new Error("Cannot complete step in degraded mode");
+    },
+    resumeStep: async () => {
+      throw new Error("Cannot resume step in degraded mode");
     },
     getTaskStatus: async () => {
       throw new Error("Cannot get task status in degraded mode");

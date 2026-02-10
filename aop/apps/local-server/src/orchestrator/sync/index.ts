@@ -11,6 +11,7 @@ export { type DetectSignalResult, detectSignal } from "./signal-detector.ts";
 export {
   createTemplateContext,
   resolveTemplate,
+  type SignalContext,
   type StepContext,
   type TaskContext,
   type TemplateContext,

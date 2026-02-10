@@ -1,0 +1,29 @@
+You are implementing backend code for a task in a software project.
+
+{{> task-context}}
+
+## Instructions
+
+Implement the task defined in the change directory, **ALWAYS** working on the {{worktree.path}} path.
+Work in focused chunks of 3-5 cohesive files at a time.
+
+1. Read `tasks.md` from `{{task.changePath}}` to find the next unchecked tasks
+2. Implement each task following project conventions
+3. Write tests first (TDD) for new functions, classes, and modules
+4. Mark completed tasks in `tasks.md` by changing `- [ ]` to `- [x]`
+
+### Development Process
+
+Use the `test-driven-development` skill for new code:
+1. Write a failing test
+2. Implement the minimum code to pass
+3. Refactor if needed
+
+### Self-Check
+
+Before signaling, verify:
+- Code compiles/type-checks without errors
+- Tests pass for the changed code
+- No TODO comments left unaddressed
+
+{{> output-signals}}

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   BranchNotFoundError,
@@ -29,6 +29,50 @@ export const resolveTaskByIdentifier = async (
   return resolveTask(ctx.taskRepository, identifier);
 };
 
+export type ResumeTaskResult =
+  | { success: true; taskId: string }
+  | { success: false; error: ResumeTaskError };
+
+export type ResumeTaskError =
+  | { code: "NOT_FOUND"; identifier: string }
+  | { code: "NOT_PAUSED"; status: string }
+  | { code: "NO_STEP_EXECUTION" }
+  | { code: "RESUME_FAILED"; message: string };
+
+export const resumeTask = async (
+  ctx: LocalServerContext,
+  identifier: string,
+  input: string,
+): Promise<ResumeTaskResult> => {
+  const task = await resolveTask(ctx.taskRepository, identifier);
+  if (!task) {
+    logger.warn("Resume failed: task not found {identifier}", { identifier });
+    return { success: false, error: { code: "NOT_FOUND", identifier } };
+  }
+
+  if (task.status !== "PAUSED") {
+    logger.warn("Resume failed: task {taskId} status is {status}, expected PAUSED", {
+      taskId: task.id,
+      status: task.status,
+    });
+    return { success: false, error: { code: "NOT_PAUSED", status: task.status } };
+  }
+
+  const latestStep = await ctx.executionRepository.getLatestStepExecution(task.id);
+  if (!latestStep) {
+    logger.error("Resume failed: no step execution found for task {taskId}", { taskId: task.id });
+    return { success: false, error: { code: "NO_STEP_EXECUTION" } };
+  }
+
+  await ctx.taskRepository.update(task.id, {
+    status: "RESUMING",
+    resume_input: input,
+  });
+
+  logger.info("Task enqueued for resume {taskId}", { taskId: task.id });
+  return { success: true, taskId: task.id };
+};
+
 export type MarkTaskReadyResult =
   | { success: true; task: Task }
   | { success: false; error: MarkTaskReadyError };
@@ -37,13 +81,14 @@ export type MarkTaskReadyError =
   | { code: "NOT_FOUND"; identifier: string }
   | { code: "ALREADY_READY"; taskId: string }
   | { code: "INVALID_STATUS"; status: string }
-  | { code: "MISSING_TASKS_FILE"; changePath: string }
+  | { code: "MISSING_PROMPT_FILE"; changePath: string }
   | { code: "UPDATE_FAILED" };
 
 export interface MarkTaskReadyOptions {
   workflow?: string;
   baseBranch?: string;
   provider?: string;
+  retryFromStep?: string;
 }
 
 export const markTaskReady = async (
@@ -76,13 +121,13 @@ export const markTaskReady = async (
   }
 
   const changePath = join(aopPaths.repoDir(task.repo_id), task.change_path);
-  if (!hasTasksFile(changePath)) {
-    logger.warn("Mark ready failed: missing tasks.md at {changePath}", {
+  if (!hasMarkdownFile(changePath)) {
+    logger.warn("Mark ready failed: no .md files at {changePath}", {
       changePath: task.change_path,
     });
     return {
       success: false,
-      error: { code: "MISSING_TASKS_FILE", changePath: task.change_path },
+      error: { code: "MISSING_PROMPT_FILE", changePath: task.change_path },
     };
   }
 
@@ -92,6 +137,7 @@ export const markTaskReady = async (
     preferred_workflow: options?.workflow ?? null,
     base_branch: options?.baseBranch ?? null,
     preferred_provider: options?.provider ?? null,
+    retry_from_step: options?.retryFromStep ?? null,
   });
 
   if (!updated) {
@@ -282,10 +328,10 @@ export const applyTask = async (
   }
 };
 
-const TASKS_FILE = "tasks.md";
-
-const hasTasksFile = (changePath: string): boolean => {
-  return existsSync(join(changePath, TASKS_FILE));
+const hasMarkdownFile = (changePath: string): boolean => {
+  if (!existsSync(changePath)) return false;
+  const entries = readdirSync(changePath);
+  return entries.some((entry) => entry.endsWith(".md"));
 };
 
 const classifyApplyError = (err: unknown, taskId: string): ApplyTaskError => {

@@ -10,6 +10,9 @@ coveragePathIgnorePatterns = [
   "**/test-setup.ts",
   "**/openspec/**",
   "**/e2e-tests/**",
+  # We have code for Mac and Linux and its not possible to achieve coverage in CI
+  # TODO: refactor into two files (linxu and macos), and ignore only macos
+  "**/process-utils.ts",
   "**/*.integration.test.ts",
   # React components with hooks require DOM testing environment (happy-dom/jsdom)
   # TODO: Set up proper React component testing infrastructure

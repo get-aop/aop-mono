@@ -78,20 +78,45 @@ describe("syncWorkflows", () => {
     expect(simple?.version).toBe(2);
   });
 
-  test("preserves database-only workflows", async () => {
+  test("deactivates stale workflows not present on disk", async () => {
     await repository.create({
-      id: "db-only-id",
-      name: "db-only-workflow",
-      definition: JSON.stringify({ version: 1, name: "db-only-workflow", steps: {} }),
+      id: "stale-id",
+      name: "stale-workflow",
+      definition: JSON.stringify({ version: 1, name: "stale-workflow", steps: {} }),
     });
 
     const workflows = [createWorkflowDefinition("simple")];
 
-    await syncWorkflows(repository, workflows);
+    const result = await syncWorkflows(repository, workflows);
 
-    const dbOnly = await repository.findByName("db-only-workflow");
-    expect(dbOnly).not.toBeNull();
-    expect(dbOnly?.id).toBe("db-only-id");
+    expect(result.deactivated).toBe(1);
+
+    const stale = await repository.findByName("stale-workflow");
+    expect(stale).not.toBeNull();
+    expect(stale?.active).toBe(false);
+
+    const activeNames = await repository.listNames();
+    expect(activeNames).not.toContain("stale-workflow");
+    expect(activeNames).toContain("simple");
+  });
+
+  test("reactivates workflow when YAML file returns", async () => {
+    await repository.create({
+      id: "returning-id",
+      name: "returning-workflow",
+      definition: JSON.stringify({ version: 1, name: "returning-workflow", steps: {} }),
+    });
+
+    await syncWorkflows(repository, []);
+    const deactivated = await repository.findByName("returning-workflow");
+    expect(deactivated?.active).toBe(false);
+
+    await syncWorkflows(repository, [createWorkflowDefinition("returning-workflow")]);
+    const reactivated = await repository.findByName("returning-workflow");
+    expect(reactivated?.active).toBe(true);
+
+    const activeNames = await repository.listNames();
+    expect(activeNames).toContain("returning-workflow");
   });
 
   test("handles mix of inserts and updates", async () => {

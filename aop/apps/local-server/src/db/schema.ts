@@ -20,13 +20,15 @@ export interface TasksTable {
   repo_id: string;
   change_path: string;
   worktree_path: string | null;
-  status: "DRAFT" | "READY" | "WORKING" | "BLOCKED" | "DONE" | "REMOVED";
+  status: "DRAFT" | "READY" | "RESUMING" | "WORKING" | "PAUSED" | "BLOCKED" | "DONE" | "REMOVED";
   ready_at: string | null;
   remote_id: string | null;
   synced_at: string | null;
   preferred_workflow: string | null;
   base_branch: string | null;
   preferred_provider: string | null;
+  retry_from_step: string | null;
+  resume_input: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }
@@ -42,13 +44,19 @@ export interface ExecutionsTable {
 export interface StepExecutionsTable {
   id: string;
   execution_id: string;
+  step_id: string | null;
   step_type: string | null;
+  remote_execution_id: string | null;
   agent_pid: number | null;
   session_id: string | null;
   status: "running" | "success" | "failure" | "cancelled";
   exit_code: number | null;
   signal: string | null;
+  pause_context: string | null;
   error: string | null;
+  attempt: number | null;
+  iteration: number | null;
+  signals_json: string | null;
   started_at: string;
   ended_at: string | null;
 }

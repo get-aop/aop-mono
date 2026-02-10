@@ -5,14 +5,17 @@ import {
   blockTask,
   cleanupWorktrees,
   fetchBranches,
+  fetchExecutions,
   fetchWorkflows,
   getMetrics,
+  getPauseContext,
   getSettings,
   getStatus,
   listDirectories,
   markReady,
   registerRepo,
   removeTask,
+  resumeTask,
   updateSettings,
 } from "./client";
 
@@ -62,6 +65,7 @@ describe("getStatus", () => {
                 changePath: "changes/feat-1",
                 baseBranch: null,
                 preferredProvider: null,
+                preferredWorkflow: null,
                 createdAt: "2024-01-01T00:00:00Z",
                 updatedAt: "2024-01-01T00:00:00Z",
               },
@@ -72,6 +76,7 @@ describe("getStatus", () => {
                 changePath: "changes/feat-2",
                 baseBranch: null,
                 preferredProvider: null,
+                preferredWorkflow: null,
                 createdAt: "2024-01-01T00:00:00Z",
                 updatedAt: "2024-01-01T00:00:00Z",
               },
@@ -94,6 +99,7 @@ describe("getStatus", () => {
       changePath: "changes/feat-1",
       baseBranch: null,
       preferredProvider: null,
+      preferredWorkflow: null,
       repoPath: "/path/to/repo",
       createdAt: "2024-01-01T00:00:00Z",
       updatedAt: "2024-01-01T00:00:00Z",
@@ -206,6 +212,19 @@ describe("markReady", () => {
       }),
     );
   });
+
+  test("marks task as ready with retryFromStep", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true, taskId: "task-1" }));
+
+    await markReady("repo-1", "task-1", undefined, undefined, undefined, "full-review");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/repos/repo-1/tasks/task-1/ready",
+      expect.objectContaining({
+        body: JSON.stringify({ retryFromStep: "full-review" }),
+      }),
+    );
+  });
 });
 
 describe("removeTask", () => {
@@ -238,7 +257,16 @@ describe("removeTask", () => {
 describe("getMetrics", () => {
   const createMetrics = (total: number, done: number) => ({
     total,
-    byStatus: { DRAFT: 0, READY: 0, WORKING: 0, BLOCKED: 0, DONE: done, REMOVED: 0 },
+    byStatus: {
+      DRAFT: 0,
+      READY: 0,
+      RESUMING: 0,
+      WORKING: 0,
+      PAUSED: 0,
+      BLOCKED: 0,
+      DONE: done,
+      REMOVED: 0,
+    },
     successRate: total > 0 ? done / total : 0,
     avgDurationMs: 1000,
     avgFailedDurationMs: 500,
@@ -460,6 +488,71 @@ describe("updateSettings", () => {
   });
 });
 
+describe("getPauseContext", () => {
+  test("fetches pause context for a paused task", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        pauseContext: "INPUT_REASON: Need API key\nINPUT_TYPE: text",
+        signal: "REQUIRES_INPUT",
+      }),
+    );
+
+    const result = await getPauseContext("repo-1", "task-1");
+
+    expect(result.pauseContext).toBe("INPUT_REASON: Need API key\nINPUT_TYPE: text");
+    expect(result.signal).toBe("REQUIRES_INPUT");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/repos/repo-1/tasks/task-1/pause-context",
+      expect.any(Object),
+    );
+  });
+
+  test("returns null pauseContext and signal when no context exists", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ pauseContext: null, signal: null }));
+
+    const result = await getPauseContext("repo-1", "task-1");
+
+    expect(result.pauseContext).toBeNull();
+    expect(result.signal).toBeNull();
+  });
+
+  test("returns signal for review workflow", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ pauseContext: "Plan for implementation...", signal: "PLAN_READY" }),
+    );
+
+    const result = await getPauseContext("repo-1", "task-1");
+
+    expect(result.signal).toBe("PLAN_READY");
+    expect(result.pauseContext).toBe("Plan for implementation...");
+  });
+});
+
+describe("resumeTask", () => {
+  test("resumes a paused task with input", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ ok: true, taskId: "task-1", message: "Resume initiated" }),
+    );
+
+    const result = await resumeTask("repo-1", "task-1", "my-api-key-123");
+
+    expect(result.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/repos/repo-1/tasks/task-1/resume",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ input: "my-api-key-123" }),
+      }),
+    );
+  });
+
+  test("throws ApiError when task is not paused", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "Task is not paused" }, 409));
+
+    await expect(resumeTask("repo-1", "task-1", "input")).rejects.toThrow(ApiError);
+  });
+});
+
 describe("cleanupWorktrees", () => {
   test("cleans up worktrees", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ cleaned: 3, failed: 1 }));
@@ -472,5 +565,63 @@ describe("cleanupWorktrees", () => {
       "/api/settings/cleanup-worktrees",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+});
+
+describe("fetchExecutions", () => {
+  test("fetches executions for a task", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        executions: [
+          {
+            id: "exec-1",
+            taskId: "task-1",
+            status: "completed",
+            startedAt: "2024-01-01T00:00:00Z",
+            finishedAt: "2024-01-01T00:10:00Z",
+            steps: [
+              {
+                id: "step-exec-1",
+                stepId: "iterate",
+                stepType: "implement",
+                status: "success",
+                startedAt: "2024-01-01T00:00:00Z",
+                endedAt: "2024-01-01T00:05:00Z",
+              },
+              {
+                id: "step-exec-2",
+                stepId: "full-review",
+                stepType: "review",
+                status: "failure",
+                startedAt: "2024-01-01T00:05:00Z",
+                endedAt: "2024-01-01T00:10:00Z",
+                error: "Review failed",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const result = await fetchExecutions("repo-1", "task-1");
+
+    expect(result).toHaveLength(1);
+    const exec = result[0];
+    expect(exec?.id).toBe("exec-1");
+    expect(exec?.steps).toHaveLength(2);
+    expect(exec?.steps[0]?.stepId).toBe("iterate");
+    expect(exec?.steps[1]?.stepId).toBe("full-review");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/repos/repo-1/tasks/task-1/executions",
+      expect.any(Object),
+    );
+  });
+
+  test("returns empty array when no executions", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ executions: [] }));
+
+    const result = await fetchExecutions("repo-1", "task-1");
+
+    expect(result).toEqual([]);
   });
 });
