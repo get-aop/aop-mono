@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ElectronTitleBar } from "./components/ElectronTitleBar";
 import type { Task } from "./types";
 import { KanbanBoard } from "./views/KanbanBoard";
 import { MetricsPage } from "./views/MetricsPage";
@@ -52,23 +53,36 @@ export const App = () => {
     navigate(`/tasks/${task.id}`);
   };
 
-  if (routerState.route === "board") {
-    return <KanbanBoard onTaskClick={handleTaskClick} onNavigate={navigate} />;
-  }
+  const renderContent = () => {
+    if (routerState.route === "board") {
+      return <KanbanBoard onTaskClick={handleTaskClick} onNavigate={navigate} />;
+    }
 
-  if (routerState.route === "metrics") {
-    return <MetricsPage onNavigate={navigate} />;
-  }
+    if (routerState.route === "metrics") {
+      return <MetricsPage onNavigate={navigate} />;
+    }
 
-  if (routerState.route === "settings") {
-    return <SettingsPage onNavigate={navigate} />;
-  }
+    if (routerState.route === "settings") {
+      return <SettingsPage onNavigate={navigate} />;
+    }
 
-  if (routerState.route === "detail" && routerState.taskId) {
-    return (
-      <TaskDetail taskId={routerState.taskId} onClose={() => navigate("/")} onNavigate={navigate} />
-    );
-  }
+    if (routerState.route === "detail" && routerState.taskId) {
+      return (
+        <TaskDetail
+          taskId={routerState.taskId}
+          onClose={() => navigate("/")}
+          onNavigate={navigate}
+        />
+      );
+    }
 
-  return null;
+    return null;
+  };
+
+  return (
+    <div className="flex h-screen flex-col">
+      <ElectronTitleBar />
+      <div className="flex-1 overflow-hidden">{renderContent()}</div>
+    </div>
+  );
 };

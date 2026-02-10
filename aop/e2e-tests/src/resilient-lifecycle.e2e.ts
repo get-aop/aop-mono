@@ -151,7 +151,7 @@ const readSSEStream = async (
     const res = await fetch(url, { signal: controller.signal, headers });
     expect(res.ok).toBe(true);
 
-    if (res.body) await consumeSSEBody(res.body, result, maxEvents);
+    if (res.body) await consumeSSEBody(res.body as ReadableStream<Uint8Array>, result, maxEvents);
   } finally {
     clearTimeout(timer);
   }

@@ -152,18 +152,15 @@ interface SpawnAgentOptions {
 }
 
 const getProvider = async (ctx: LocalServerContext, task: Task) => {
-  // Use task's preferred provider if set
   if (task.preferred_provider) {
     return createProvider(task.preferred_provider);
   }
 
-  // Otherwise use global agent_provider setting
   const providerKey = await ctx.settingsRepository.get(SettingKey.AGENT_PROVIDER);
   if (providerKey) {
     return createProvider(providerKey);
   }
 
-  // Default to Claude Code
   return new ClaudeCodeProvider();
 };
 
@@ -178,9 +175,11 @@ const spawnAgentWithReaper = async (opts: SpawnAgentOptions): Promise<void> => {
     provider: explicitProvider,
   } = opts;
 
-  // Get provider from task preferences or settings if not explicitly provided
   const task = await ctx.taskRepository.get(taskId);
-  const provider = explicitProvider ?? (await getProvider(ctx, task!));
+  if (!task) {
+    throw new Error(`Task ${taskId} not found`);
+  }
+  const provider = explicitProvider ?? (await getProvider(ctx, task));
 
   const logFile = join(executorCtx.logsDir, `${stepId}.jsonl`);
   const timeoutMs = executorCtx.timeoutSecs * 1000;

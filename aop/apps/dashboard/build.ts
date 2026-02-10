@@ -16,11 +16,15 @@ const SRC_DIR = "./src";
 async function buildCSS(): Promise<void> {
   const cssPath = `${SRC_DIR}/index.css`;
 
-  const result =
-    await Bun.$`bunx tailwindcss -i ${cssPath} -o ${DIST_DIR}/index.css --minify`.quiet();
+  log.info("Building CSS with Tailwind...");
+
+  const result = await Bun.$`bunx @tailwindcss/cli -i ${cssPath} -o ${DIST_DIR}/index.css --minify`;
   if (result.exitCode !== 0) {
-    throw new Error(`Tailwind build failed: ${result.stderr.toString()}`);
+    log.error("Tailwind stderr: {stderr}", { stderr: result.stderr.toString() });
+    log.error("Tailwind stdout: {stdout}", { stdout: result.stdout.toString() });
+    throw new Error(`Tailwind build failed with exit code ${result.exitCode}`);
   }
+  log.info("CSS built successfully");
 }
 
 async function buildJS(): Promise<string | undefined> {
@@ -56,15 +60,14 @@ async function buildJS(): Promise<string | undefined> {
 async function buildHTML(jsFile?: string): Promise<void> {
   const html = readFileSync(`${SRC_DIR}/index.html`, "utf-8");
 
-  // Replace development script with production bundle
   const prodHtml = html
     .replace(
-      '<script type="module" src="/src/main.tsx"></script>',
+      /<script type=["']module["'] src=["']\/src\/main\.tsx["']><\/script>/,
       `<script type="module" src="/${jsFile ?? "main.js"}"></script>`,
     )
     .replace(
-      '<link rel="stylesheet" href="/src/index.css">',
-      '<link rel="stylesheet" href="/index.css">',
+      /<link rel=["']stylesheet["'] href=["']\/src\/index\.css["']\s*\/?>/,
+      '<link rel="stylesheet" href="/index.css" />',
     );
 
   writeFileSync(`${DIST_DIR}/index.html`, prodHtml);

@@ -1,0 +1,47 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    unzip \
+    git \
+    build-essential \
+    libgtk-3-dev \
+    libnotify-dev \
+    libnss3 \
+    libxss1 \
+    libasound2 \
+    icnsutils \
+    graphicsmagick \
+    libxtst6 \
+    libx11-xcb1 \
+    libxcb-dri3-0 \
+    libdrm2 \
+    libgbm1 \
+    libasound2 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm --version
+
+RUN git init /app && cd /app && git config user.email "docker@local" && git config user.name "Docker"
+
+COPY . /app
+
+WORKDIR /app
+
+RUN sed -i 's/"prepare": "cd .. && openspec init --tools claude 2>\/dev\/null || true && lefthook install"/"prepare": ""/g' package.json && \
+    sed -i 's/"prepare": "lefthook install"/"prepare": ""/g' package.json
+
+RUN bun install
+
+WORKDIR /app/apps/dashboard
+RUN bun run build
+
+WORKDIR /app/apps/electron
+RUN bun run make
