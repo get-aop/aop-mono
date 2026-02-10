@@ -58,6 +58,11 @@ describe("env", () => {
         "Missing required environment variable: AOP_DASHBOARD_PORT",
       );
     });
+
+    it("returns SIDECAR_PORT_START and SIDECAR_PORT_END as constants", () => {
+      expect(AOP_PORTS.SIDECAR_PORT_START).toBe(3847);
+      expect(AOP_PORTS.SIDECAR_PORT_END).toBe(3899);
+    });
   });
 
   describe("AOP_URLS", () => {

@@ -3,8 +3,8 @@ import { AOP_PORTS, AOP_URLS } from "@aop/common";
 export const getPort = (): number => AOP_PORTS.LOCAL_SERVER;
 
 export const getSidecarPortRange = () => ({
-  start: 3847,
-  end: 3899,
+  start: AOP_PORTS.SIDECAR_PORT_START,
+  end: AOP_PORTS.SIDECAR_PORT_END,
 });
 
 export const getDashboardStaticPath = (): string | undefined => process.env.DASHBOARD_STATIC_PATH;

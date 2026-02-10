@@ -14,7 +14,6 @@
   "scripts": {
     "build": "bun build ./src/run.ts --outdir ./dist --target bun",
     "build:sidecar": "bun build ./src/run.ts --compile --outfile ./dist/aop-server",
-    "compile": "bun build ./src/run.ts --compile --outfile ./dist/aop-server",
     "dev": "bun run --watch ./src/run.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

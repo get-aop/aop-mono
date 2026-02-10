@@ -25,22 +25,23 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
+        working-directory: aop
         run: bun install
 
       - name: Build local-server binary
-        working-directory: apps/local-server
+        working-directory: aop/apps/local-server
         run: bun run build:sidecar
 
       - name: Build dashboard
-        working-directory: apps/dashboard
+        working-directory: aop/apps/dashboard
         run: bun run build
 
       - name: Install Electron dependencies
-        working-directory: apps/electron
+        working-directory: aop/apps/electron
         run: bun install
 
       - name: Build Electron app
-        working-directory: apps/electron
+        working-directory: aop/apps/electron
         run: bun run make
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -53,7 +54,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-artifacts
-          path: apps/electron/out/make/**
+          path: aop/apps/electron/out/make/**
 
   build-windows:
     name: Build Windows
@@ -68,22 +69,23 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
+        working-directory: aop
         run: bun install
 
       - name: Build local-server binary (Linux for WSL)
-        working-directory: apps/local-server
+        working-directory: aop/apps/local-server
         run: bun build ./src/run.ts --compile --target=bun-linux-x64 --outfile ./dist/aop-server-linux
 
       - name: Build dashboard
-        working-directory: apps/dashboard
+        working-directory: aop/apps/dashboard
         run: bun run build
 
       - name: Install Electron dependencies
-        working-directory: apps/electron
+        working-directory: aop/apps/electron
         run: bun install
 
       - name: Build Electron app
-        working-directory: apps/electron
+        working-directory: aop/apps/electron
         run: bun run make
         env:
           CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
@@ -93,7 +95,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifacts
-          path: apps/electron/out/make/**
+          path: aop/apps/electron/out/make/**
 
   build-linux:
     name: Build Linux
@@ -108,18 +110,19 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
+        working-directory: aop
         run: bun install
 
       - name: Build local-server binary
-        working-directory: apps/local-server
+        working-directory: aop/apps/local-server
         run: bun run build:sidecar
 
       - name: Build dashboard
-        working-directory: apps/dashboard
+        working-directory: aop/apps/dashboard
         run: bun run build
 
       - name: Install Electron dependencies
-        working-directory: apps/electron
+        working-directory: aop/apps/electron
         run: bun install
 
       - name: Install Linux dependencies
@@ -128,14 +131,14 @@ jobs:
           sudo apt-get install -y icnsutils graphicsmagick
 
       - name: Build Electron app
-        working-directory: apps/electron
+        working-directory: aop/apps/electron
         run: bun run make
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-artifacts
-          path: apps/electron/out/make/**
+          path: aop/apps/electron/out/make/**
 
   release:
     name: Create Release

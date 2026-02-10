@@ -26,6 +26,9 @@ export const AOP_PORTS = {
   get DASHBOARD() {
     return requireEnvNumber("AOP_DASHBOARD_PORT");
   },
+  /** Sidecar port range for Electron (local-server embedded in app) */
+  SIDECAR_PORT_START: 3847,
+  SIDECAR_PORT_END: 3899,
 } as const;
 
 /** URLs for connecting - how to reach services (can differ from binding port in prod behind proxy) */

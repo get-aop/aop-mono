@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-/* biome-ignore-all lint/suspicious/noConsole: sidecar protocol outputs to stdout */
 import { configureLogging, getLogger, initTracing } from "@aop/infra";
 import { getPort, getSidecarPortRange } from "./config.ts";
 import { startServer } from "./server.ts";
@@ -40,6 +39,7 @@ const main = async () => {
     const availablePort = await findAvailablePort(start, end);
     if (!availablePort) {
       const errorMsg = `No available ports in range ${start}-${end}`;
+      // biome-ignore lint/suspicious/noConsole: sidecar protocol outputs to stdout
       console.log(`AOP_SERVER_ERROR=${errorMsg}`);
       logger.error(errorMsg);
       process.exit(1);
@@ -52,6 +52,7 @@ const main = async () => {
   const handle = await startServer({ port });
 
   if (sidecarMode) {
+    // biome-ignore lint/suspicious/noConsole: sidecar protocol outputs to stdout
     console.log(`AOP_SERVER_PORT=${port}`);
   }
 
@@ -67,6 +68,7 @@ const main = async () => {
 main().catch((err) => {
   const errorMsg = `Failed to start local server: ${String(err)}`;
   if (isSidecarMode()) {
+    // biome-ignore lint/suspicious/noConsole: sidecar protocol outputs to stdout
     console.log(`AOP_SERVER_ERROR=${errorMsg}`);
   }
   logger.error(errorMsg);
