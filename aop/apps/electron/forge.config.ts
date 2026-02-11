@@ -285,7 +285,9 @@ const config: ForgeConfig = {
         depends: ["libnss3", "libnspr4", "libasound2t64 | libasound2"],
       },
     }),
-    ...(process.platform === "win32" ? [{ name: "electron-forge-maker-nsis", config: {} }] : []),
+    ...(process.platform === "win32"
+      ? [{ name: "@electron-addons/electron-forge-maker-nsis", config: {} }]
+      : []),
   ],
   plugins: [
     new WebpackPlugin({
