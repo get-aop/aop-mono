@@ -1,4 +1,4 @@
-/** Symlinks bundled ~/.claude/skills and ~/.codex on first run (copy on Windows). */
+/** Merges bundled ~/.claude/skills and ~/.codex into user dir (backup, add/overwrite same names). */
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
@@ -27,24 +27,25 @@ const copyDirRecursive = (src: string, dest: string): void => {
   }
 };
 
-const isAlreadyCorrectSymlink = (targetDir: string, bundled: string): boolean => {
-  const stat = fs.lstatSync(targetDir);
-  if (!stat.isSymbolicLink()) return false;
-  const currentTarget = fs.readlinkSync(targetDir);
-  return path.resolve(currentTarget) === path.resolve(bundled);
+const backupDir = (targetDir: string): void => {
+  if (!fs.existsSync(targetDir)) return;
+  try {
+    const backupPath = `${targetDir}.backup.${Date.now()}`;
+    copyDirRecursive(targetDir, backupPath);
+  } catch {}
 };
 
-const hasExistingContent = (targetDir: string): boolean => {
-  const entries = fs.readdirSync(targetDir, { withFileTypes: true });
-  return entries.length > 0;
-};
-
-const clearTargetIfNeeded = (targetDir: string, bundled: string): boolean => {
-  if (!fs.existsSync(targetDir)) return true;
-  if (isAlreadyCorrectSymlink(targetDir, bundled)) return false;
-  if (hasExistingContent(targetDir)) return false;
-  fs.rmSync(targetDir, { recursive: true, force: true });
-  return true;
+const mergeDir = (bundled: string, targetDir: string): void => {
+  fs.mkdirSync(targetDir, { recursive: true });
+  for (const entry of fs.readdirSync(bundled, { withFileTypes: true })) {
+    const srcPath = path.join(bundled, entry.name);
+    const destPath = path.join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
 };
 
 const setupDir = (bundled: string | null, targetDir: string): void => {
@@ -57,13 +58,8 @@ const setupDir = (bundled: string | null, targetDir: string): void => {
       fs.mkdirSync(targetParent, { recursive: true });
     }
 
-    if (!clearTargetIfNeeded(targetDir, bundled)) return;
-
-    if (process.platform === "win32") {
-      copyDirRecursive(bundled, targetDir);
-    } else {
-      fs.symlinkSync(bundled, targetDir, "dir");
-    }
+    backupDir(targetDir);
+    mergeDir(bundled, targetDir);
   } catch {}
 };
 

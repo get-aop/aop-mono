@@ -157,20 +157,37 @@ export const syncResourcesToWsl = async (
   await runWslCommand(distro, `rm -rf ${wslDashboardPath}`);
   await runWslCommand(distro, `cp -r "${wslSourceDashboard}" ${wslDashboardPath}`);
 
-  const symlinkToHome = async (sourcePath: string, targetDir: string, parentDir?: string) => {
+  const mergeBundledIntoHome = async (
+    sourcePath: string,
+    targetDir: string,
+    parentDir?: string,
+  ) => {
     const wslSource = await wslPathFromWindows(distro, sourcePath);
     if (parentDir) await runWslCommand(distro, `mkdir -p ${parentDir}`);
     await runWslCommand(
       distro,
       `test -d "${wslSource}" || (echo "Dir not found: ${wslSource}" && exit 1)`,
     );
-    await runWslCommand(distro, `rm -rf ${targetDir}`);
-    await runWslCommand(distro, `ln -sf "${wslSource}" ${targetDir}`);
+    const t = targetDir;
+    const s = wslSource;
+    const mergeScript = `
+      if [ -d "${t}" ]; then
+        chmod -R u+w "${t}" 2>/dev/null || true
+        bk="${t}.backup.$(date +%Y%m%d%H%M%S)"
+        cp -r "${t}" "$bk" 2>/dev/null || true
+      fi
+      mkdir -p "${t}"
+      for item in "${s}"/*; do
+        [ -e "$item" ] || continue
+        cp -rf "$item" "${t}/"
+      done
+    `;
+    await runWslCommand(distro, mergeScript);
   };
 
   if (skillsPath)
-    await symlinkToHome(skillsPath, `${homeDir}/.claude/skills`, `${homeDir}/.claude`);
-  if (codexPath) await symlinkToHome(codexPath, `${homeDir}/.codex`);
+    await mergeBundledIntoHome(skillsPath, `${homeDir}/.claude/skills`, `${homeDir}/.claude`);
+  if (codexPath) await mergeBundledIntoHome(codexPath, `${homeDir}/.codex`);
 
   return {
     serverBinary: wslServerPath,
