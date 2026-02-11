@@ -12,7 +12,8 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "artifactName": "AOP-Setup-${version}.${ext}"
+      "artifactName": "AOP-Setup-${version}.${ext}",
+      "installerIcon": "assets/icon.ico"
     }
   },
   "scripts": {
