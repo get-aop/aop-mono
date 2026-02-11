@@ -151,7 +151,7 @@ jobs:
 
       - name: Build Electron app
         working-directory: aop/apps/electron
-        run: electron-forge make
+        run: bun run make
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
