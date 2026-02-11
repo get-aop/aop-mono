@@ -1,58 +1,27 @@
-import type { StepCompleteResponse, TaskReadyResponse, TaskStatus } from "@aop/common/protocol";
+import type { StepCompleteResponse, TaskReadyResponse } from "@aop/common/protocol";
 import { generateTypeId, getLogger } from "@aop/infra";
 import type { Kysely } from "kysely";
-import type { Client, Database, Execution, StepExecution } from "../db/schema.ts";
+import type { Client, Database } from "../db/schema.ts";
 import { createTemplateLoader } from "../prompts/template-loader.ts";
 import { createRepoRepository } from "../repos/repo-repository.ts";
 import { createTaskRepository } from "../tasks/task-repository.ts";
 import { createStepCommandGenerator } from "../workflow/step-command-generator.ts";
-import type { WorkflowStep } from "../workflow/types.ts";
 import { parseWorkflow } from "../workflow/workflow-parser.ts";
 import { createWorkflowRepository } from "../workflow/workflow-repository.ts";
-import type {
-  IterationContext,
-  StepResult,
-  StepTransitionResult,
-  TerminalTransitionResult,
-  TransitionResult,
-  WorkflowStateMachine,
-} from "../workflow/workflow-state-machine.ts";
 import { createWorkflowStateMachine } from "../workflow/workflow-state-machine.ts";
 import { createExecutionRepository } from "./execution-repository.ts";
+import { resolveRetryContext, resolveWorkflowContext } from "./iteration-tracker.ts";
 import { createStepExecutionRepository } from "./step-execution-repository.ts";
+import {
+  buildIdempotentResponse,
+  processStep,
+  validateAndLockStep,
+  validatePausedStep,
+} from "./step-processor.ts";
+import type { ProcessStepResultInput, ResumeStepInput, TransactionRepositories } from "./types.ts";
 
 const DEFAULT_WORKFLOW_NAME = "aop-default";
 const logger = getLogger("execution-service");
-
-const parseVisitedSteps = (visitedSteps: string): string[] => {
-  try {
-    const parsed = JSON.parse(visitedSteps);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-const buildIterationContext = (execution: Execution): IterationContext => ({
-  iteration: execution.iteration,
-  visitedSteps: parseVisitedSteps(execution.visited_steps),
-});
-
-export interface ProcessStepResultInput {
-  stepId: string;
-  executionId: string;
-  attempt: number;
-  status: "success" | "failure";
-  signal?: string;
-  errorCode?: string;
-  durationMs: number;
-  pauseContext?: string;
-}
-
-export interface ResumeStepInput {
-  stepId: string;
-  input: string;
-}
 
 export interface ExecutionService {
   checkConcurrency: (clientId: string, maxConcurrent: number) => Promise<boolean>;
@@ -70,55 +39,22 @@ export interface ExecutionService {
   resumeStep: (client: Client, input: ResumeStepInput) => Promise<StepCompleteResponse>;
 }
 
-interface TransactionRepositories {
-  stepExecutionRepo: ReturnType<typeof createStepExecutionRepository>;
-  executionRepo: ReturnType<typeof createExecutionRepository>;
-  taskRepo: ReturnType<typeof createTaskRepository>;
-  workflowRepo: ReturnType<typeof createWorkflowRepository>;
-}
-
 export const createExecutionService = (db: Kysely<Database>): ExecutionService => {
   const taskRepo = createTaskRepository(db);
   const workflowRepo = createWorkflowRepository(db);
   const templateLoader = createTemplateLoader();
   const stepCommandGen = createStepCommandGenerator(templateLoader);
 
+  const createTransactionRepos = (trx: Kysely<Database>): TransactionRepositories => ({
+    stepExecutionRepo: createStepExecutionRepository(trx),
+    executionRepo: createExecutionRepository(trx),
+    taskRepo: createTaskRepository(trx),
+    workflowRepo: createWorkflowRepository(trx),
+  });
+
   const checkConcurrency = async (clientId: string, maxConcurrent: number): Promise<boolean> => {
     const workingCount = await taskRepo.countWorkingByClient(clientId);
     return workingCount < maxConcurrent;
-  };
-
-  interface StartContext {
-    targetStep: WorkflowStep;
-    visitedSteps: string[];
-    iteration: number;
-  }
-
-  const resolveRetryContext = async (
-    stateMachine: WorkflowStateMachine,
-    taskId: string,
-    retryFromStep: string,
-    workflowName: string,
-  ): Promise<StartContext> => {
-    const step = stateMachine.getStep(retryFromStep);
-    if (!step) {
-      throw new Error(`Step "${retryFromStep}" not found in workflow "${workflowName}"`);
-    }
-
-    const executionRepo = createExecutionRepository(db);
-    const previousExecution = await executionRepo.findLatestByTask(taskId);
-    if (!previousExecution) {
-      return { targetStep: step, visitedSteps: [retryFromStep], iteration: 0 };
-    }
-
-    const previousVisited = parseVisitedSteps(previousExecution.visited_steps);
-    const stepIndex = previousVisited.indexOf(retryFromStep);
-    const visitedSteps =
-      stepIndex >= 0
-        ? previousVisited.slice(0, stepIndex + 1)
-        : [...previousVisited, retryFromStep];
-
-    return { targetStep: step, visitedSteps, iteration: previousExecution.iteration };
   };
 
   const startWorkflow = async (
@@ -144,7 +80,7 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
 
     const initialStep = stateMachine.getInitialStep();
     const { targetStep, visitedSteps, iteration } = retryFromStep
-      ? await resolveRetryContext(stateMachine, taskId, retryFromStep, targetWorkflowName)
+      ? await resolveRetryContext(db, stateMachine, taskId, retryFromStep, targetWorkflowName)
       : { targetStep: initialStep, visitedSteps: [initialStep.id], iteration: 0 };
 
     const executionId = generateTypeId("exec");
@@ -222,12 +158,12 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
     };
   };
 
-  const processStepResult = async (
+  const handleProcessStepResult = async (
     client: Client,
     input: ProcessStepResultInput,
   ): Promise<StepCompleteResponse> => {
     return db.transaction().execute(async (trx) => {
-      const repos = createTransactionRepositories(trx);
+      const repos = createTransactionRepos(trx);
       const lockedStep = await validateAndLockStep(repos, input.stepId, client.id);
 
       if (
@@ -238,233 +174,8 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
         return buildIdempotentResponse(repos, lockedStep);
       }
 
-      return processStep(repos, client, input);
+      return processStep(repos, client, input, stepCommandGen);
     });
-  };
-
-  const createTransactionRepositories = (trx: Kysely<Database>): TransactionRepositories => ({
-    stepExecutionRepo: createStepExecutionRepository(trx),
-    executionRepo: createExecutionRepository(trx),
-    taskRepo: createTaskRepository(trx),
-    workflowRepo: createWorkflowRepository(trx),
-  });
-
-  const validateAndLockStep = async (
-    repos: TransactionRepositories,
-    stepId: string,
-    clientId: string,
-  ): Promise<StepExecution> => {
-    const lockedStep = await repos.stepExecutionRepo.findByIdForUpdate(stepId);
-    if (!lockedStep) {
-      throw new Error(`Step execution "${stepId}" not found`);
-    }
-    if (lockedStep.client_id !== clientId) {
-      throw new Error("Step does not belong to this client");
-    }
-    return lockedStep;
-  };
-
-  const buildIdempotentResponse = async (
-    repos: TransactionRepositories,
-    step: StepExecution,
-  ): Promise<StepCompleteResponse> => {
-    const execution = await repos.executionRepo.findById(step.execution_id);
-    if (!execution) {
-      return { taskStatus: "WORKING", step: null };
-    }
-
-    const task = await repos.taskRepo.findById(execution.task_id);
-    const taskStatus: TaskStatus = task?.status ?? "WORKING";
-    return { taskStatus, step: null };
-  };
-
-  interface WorkflowContext {
-    execution: Execution;
-    stateMachine: WorkflowStateMachine;
-    iterationContext: IterationContext;
-    currentStepId: string;
-  }
-
-  const resolveWorkflowContext = async (
-    repos: TransactionRepositories,
-    executionId: string,
-  ): Promise<WorkflowContext> => {
-    const execution = await repos.executionRepo.findById(executionId);
-    if (!execution) {
-      throw new Error(`Execution "${executionId}" not found`);
-    }
-
-    const workflow = await repos.workflowRepo.findById(execution.workflow_id);
-    if (!workflow) {
-      throw new Error(`Workflow "${execution.workflow_id}" not found`);
-    }
-
-    const workflowDef = parseWorkflow(workflow.definition);
-    const stateMachine = createWorkflowStateMachine(workflowDef);
-    const iterationContext = buildIterationContext(execution);
-
-    const currentStepId = iterationContext.visitedSteps.at(-1);
-    if (!currentStepId) {
-      throw new Error(`No visited steps found for execution "${executionId}"`);
-    }
-
-    return { execution, stateMachine, iterationContext, currentStepId };
-  };
-
-  const processStep = async (
-    repos: TransactionRepositories,
-    client: Client,
-    input: ProcessStepResultInput,
-  ): Promise<StepCompleteResponse> => {
-    const ctx = await resolveWorkflowContext(repos, input.executionId);
-    const stepResult: StepResult = { status: input.status, signal: input.signal };
-    const transition = ctx.stateMachine.evaluateTransition(
-      ctx.currentStepId,
-      stepResult,
-      ctx.iterationContext,
-    );
-
-    await repos.stepExecutionRepo.update(input.stepId, {
-      status: transition.type === "paused" ? "awaiting_input" : input.status,
-      error_code: input.errorCode ?? null,
-      signal: input.signal ?? null,
-      pause_context: transition.type === "paused" ? (input.pauseContext ?? null) : null,
-      ended_at: new Date(),
-    });
-
-    return handleTransition(repos, transition, ctx.execution, client, ctx.iterationContext);
-  };
-
-  const handleTerminalTransition = async (
-    repos: TransactionRepositories,
-    transition: TerminalTransitionResult,
-    execution: Execution,
-  ): Promise<StepCompleteResponse> => {
-    if (transition.type === "done") {
-      await repos.executionRepo.update(execution.id, {
-        status: "completed",
-        completed_at: new Date(),
-      });
-      await repos.taskRepo.update(execution.task_id, { status: "DONE" });
-      logger.info("Workflow completed for task {taskId}, execution {executionId}", {
-        taskId: execution.task_id,
-        executionId: execution.id,
-      });
-      return { taskStatus: "DONE", step: null };
-    }
-
-    if (transition.type === "paused") {
-      await repos.taskRepo.update(execution.task_id, { status: "PAUSED" });
-      logger.info("Workflow paused for task {taskId}, execution {executionId}", {
-        taskId: execution.task_id,
-        executionId: execution.id,
-      });
-      return { taskStatus: "PAUSED", step: null };
-    }
-
-    await repos.executionRepo.update(execution.id, {
-      status: "failed",
-      completed_at: new Date(),
-    });
-    await repos.taskRepo.update(execution.task_id, { status: "BLOCKED" });
-    logger.warn("Workflow blocked for task {taskId}, execution {executionId}", {
-      taskId: execution.task_id,
-      executionId: execution.id,
-    });
-    return {
-      taskStatus: "BLOCKED",
-      step: null,
-      error: { code: "max_retries_exceeded", message: "Workflow blocked after step failure" },
-    };
-  };
-
-  const handleStepTransition = async (
-    repos: TransactionRepositories,
-    transition: StepTransitionResult,
-    execution: Execution,
-    client: Client,
-    iterationContext: IterationContext,
-  ): Promise<StepCompleteResponse> => {
-    const nextStep = transition.step;
-
-    // Always place the next step at the end so .at(-1) correctly tracks the current step.
-    // When looping back to a visited step, move it to the end rather than leaving it in place.
-    const updatedVisitedSteps = iterationContext.visitedSteps.includes(nextStep.id)
-      ? [...iterationContext.visitedSteps.filter((s) => s !== nextStep.id), nextStep.id]
-      : [...iterationContext.visitedSteps, nextStep.id];
-    const newIteration = transition.shouldIncrementIteration
-      ? iterationContext.iteration + 1
-      : iterationContext.iteration;
-
-    await repos.executionRepo.update(execution.id, {
-      iteration: newIteration,
-      visited_steps: JSON.stringify(updatedVisitedSteps),
-    });
-
-    const nextStepExecutionId = generateTypeId("step");
-    const stepCommand = await stepCommandGen.generate(
-      nextStep,
-      nextStepExecutionId,
-      1,
-      newIteration,
-    );
-
-    await repos.stepExecutionRepo.create({
-      id: nextStepExecutionId,
-      client_id: client.id,
-      execution_id: execution.id,
-      step_id: nextStep.id,
-      step_type: nextStep.type,
-      prompt_template: nextStep.promptTemplate,
-      status: "running",
-    });
-
-    logger.info(
-      "Step transition for task {taskId}: {stepType} (iteration {iteration}, execution {executionId})",
-      {
-        taskId: execution.task_id,
-        stepType: nextStep.type,
-        iteration: newIteration,
-        executionId: execution.id,
-      },
-    );
-
-    return {
-      taskStatus: "WORKING",
-      step: stepCommand,
-      execution: { id: execution.id, workflowId: execution.workflow_id },
-    };
-  };
-
-  const handleTransition = async (
-    repos: TransactionRepositories,
-    transition: TransitionResult,
-    execution: Execution,
-    client: Client,
-    iterationContext: IterationContext,
-  ): Promise<StepCompleteResponse> => {
-    if (transition.type !== "step") {
-      return handleTerminalTransition(repos, transition, execution);
-    }
-    return handleStepTransition(repos, transition, execution, client, iterationContext);
-  };
-
-  const validatePausedStep = async (
-    repos: TransactionRepositories,
-    stepId: string,
-    clientId: string,
-  ): Promise<StepExecution> => {
-    const pausedStep = await repos.stepExecutionRepo.findByIdForUpdate(stepId);
-    if (!pausedStep) {
-      throw new Error(`Step execution "${stepId}" not found`);
-    }
-    if (pausedStep.client_id !== clientId) {
-      throw new Error("Step does not belong to this client");
-    }
-    if (pausedStep.status !== "awaiting_input") {
-      throw new Error(`Step "${stepId}" is not awaiting input (status: ${pausedStep.status})`);
-    }
-    return pausedStep;
   };
 
   const resumeStep = async (
@@ -472,7 +183,7 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
     input: ResumeStepInput,
   ): Promise<StepCompleteResponse> => {
     return db.transaction().execute(async (trx) => {
-      const repos = createTransactionRepositories(trx);
+      const repos = createTransactionRepos(trx);
       const pausedStep = await validatePausedStep(repos, input.stepId, client.id);
       const ctx = await resolveWorkflowContext(repos, pausedStep.execution_id);
 
@@ -516,5 +227,10 @@ export const createExecutionService = (db: Kysely<Database>): ExecutionService =
     });
   };
 
-  return { checkConcurrency, startWorkflow, processStepResult, resumeStep };
+  return {
+    checkConcurrency,
+    startWorkflow,
+    processStepResult: handleProcessStepResult,
+    resumeStep,
+  };
 };

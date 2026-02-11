@@ -1,6 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
+import { createClientRepository } from "../../clients/client-repository.ts";
+import { createClientService } from "../../clients/client-service.ts";
 import type { Client, Database } from "../../db/schema.ts";
 import {
   cleanupTestDb,
@@ -22,10 +24,12 @@ describe("POST /steps/:stepId/complete", () => {
 
   beforeAll(async () => {
     db = await createTestDb();
+    const clientRepo = createClientRepository(db);
+    const clientService = createClientService(clientRepo);
     executionService = createExecutionService(db);
 
     mock.module("../server.ts", () => ({
-      getAppContext: (): Partial<AppContext> => ({ db, executionService }),
+      getAppContext: (): Partial<AppContext> => ({ db, clientService, executionService }),
     }));
 
     app = new Hono();
@@ -113,10 +117,12 @@ describe("POST /steps/:stepId/resume", () => {
 
   beforeAll(async () => {
     db = await createTestDb();
+    const clientRepo = createClientRepository(db);
+    const clientService = createClientService(clientRepo);
     executionService = createExecutionService(db);
 
     mock.module("../server.ts", () => ({
-      getAppContext: (): Partial<AppContext> => ({ db, executionService }),
+      getAppContext: (): Partial<AppContext> => ({ db, clientService, executionService }),
     }));
 
     app = new Hono();

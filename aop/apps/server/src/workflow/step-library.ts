@@ -1,9 +1,5 @@
+import type { SignalDefinition } from "@aop/common/protocol";
 import type { StepType } from "./types.ts";
-
-export interface SignalDefinition {
-  name: string;
-  description: string;
-}
 
 export interface StepBlockDefinition {
   id: string;

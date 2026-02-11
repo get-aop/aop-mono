@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type BrainstormRequirements, deleteDraft, loadDraft, saveDraft } from "./draft.ts";
+import type { BrainstormingResult } from "./brainstorm-parser.ts";
+import { deleteDraft, loadDraft, saveDraft } from "./draft.ts";
 
 describe("create-task/draft", () => {
   let testDir: string;
@@ -16,7 +17,7 @@ describe("create-task/draft", () => {
     await rm(testDir, { recursive: true, force: true });
   });
 
-  const sampleRequirements: BrainstormRequirements = {
+  const sampleRequirements: BrainstormingResult = {
     title: "Add user authentication",
     description: "Implement OAuth2 authentication for the API",
     requirements: ["Support Google OAuth", "Support GitHub OAuth", "Store tokens securely"],

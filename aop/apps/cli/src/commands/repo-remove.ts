@@ -1,12 +1,9 @@
 import { resolve } from "node:path";
+import type { RemoveRepoOptions } from "@aop/common";
 import { getLogger } from "@aop/infra";
 import { fetchServer } from "./client.ts";
 
 const logger = getLogger("cli", "repo-remove");
-
-export interface RemoveRepoOptions {
-  force?: boolean;
-}
 
 interface RepoStatus {
   id: string;

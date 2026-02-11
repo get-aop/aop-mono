@@ -10,12 +10,15 @@ import {
   symlinkSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import type { RemoveRepoOptions } from "@aop/common";
 import { getRemoteOrigin, listLocalBranches } from "@aop/git-manager";
 import { aopPaths, generateTypeId, getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { abortTask } from "../executor/index.ts";
 import { extractRepoName } from "./repository.ts";
+
+const logger = getLogger("repos-handlers");
 
 export type InitRepoResult =
   | { success: true; repoId: string; alreadyExists: boolean }
@@ -31,10 +34,6 @@ export type RemoveRepoError =
   | { code: "NOT_FOUND"; path: string }
   | { code: "HAS_WORKING_TASKS"; count: number }
   | { code: "REMOVE_FAILED" };
-
-export interface RemoveRepoOptions {
-  force?: boolean;
-}
 
 export const initRepo = async (
   ctx: LocalServerContext,
@@ -260,8 +259,6 @@ export const getRepoById = async (ctx: LocalServerContext, repoId: string) => {
 export const getRepoTasks = async (ctx: LocalServerContext, repoId: string) => {
   return ctx.taskRepository.list({ repo_id: repoId, excludeRemoved: true });
 };
-
-const logger = getLogger("repos-handlers");
 
 const abortWorkingTasks = async (ctx: LocalServerContext, tasks: Task[]): Promise<number> => {
   let abortedCount = 0;

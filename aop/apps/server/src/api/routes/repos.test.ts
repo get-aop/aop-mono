@@ -1,6 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
+import { createClientRepository } from "../../clients/client-repository.ts";
+import { createClientService } from "../../clients/client-service.ts";
 import type { Database } from "../../db/schema.ts";
 import { cleanupTestDb, createTestClient, createTestDb } from "../../db/test-utils.ts";
 import { createRepoRepository } from "../../repos/repo-repository.ts";
@@ -17,11 +19,13 @@ describe("POST /repos/:repoId/sync", () => {
   beforeAll(async () => {
     db = await createTestDb();
 
+    const clientRepo = createClientRepository(db);
+    const clientService = createClientService(clientRepo);
     const repoRepo = createRepoRepository(db);
     const repoService = createRepoService(repoRepo);
 
     mock.module("../server.ts", () => ({
-      getAppContext: (): Partial<AppContext> => ({ db, repoService }),
+      getAppContext: (): Partial<AppContext> => ({ db, clientService, repoService }),
     }));
 
     app = new Hono();

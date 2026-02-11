@@ -13,10 +13,8 @@ export type {
   TaskStatusResponse,
 } from "./protocol";
 export {
-  AbortReason,
   AuthRequestSchema,
   AuthResponseSchema,
-  ErrorCode,
   StepCommandSchema,
   StepCompleteRequestSchema,
   StepCompleteResponseSchema,
@@ -26,6 +24,9 @@ export {
   TaskReadyResponseSchema,
   TaskStatusResponseSchema,
 } from "./protocol";
+export type { Result, ValidationError } from "./result.ts";
+export { err, isErr, isOk, ok, parseBody, safeParseJson } from "./result.ts";
+export type { RemoveRepoOptions } from "./types/repo";
 export type {
   DashboardEvent,
   DashboardHeartbeatEvent,

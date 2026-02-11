@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { createCrudHelpers } from "@aop/infra";
 import type { Kysely } from "kysely";
 import type { Database, NewRepo, Repo } from "../db/schema.ts";
 
@@ -10,42 +11,28 @@ export interface RepoRepository {
   remove: (id: string) => Promise<boolean>;
 }
 
-export const createRepoRepository = (db: Kysely<Database>): RepoRepository => ({
-  create: async (repo: NewRepo): Promise<Repo> => {
-    return db.insertInto("repos").values(repo).returningAll().executeTakeFirstOrThrow();
-  },
+export const createRepoRepository = (db: Kysely<Database>): RepoRepository => {
+  const { findById, create, listAll, deleteById } = createCrudHelpers(db, "repos");
 
-  getByPath: async (path: string): Promise<Repo | null> => {
-    const repo = await db
-      .selectFrom("repos")
-      .selectAll()
-      .where("path", "=", path)
-      .executeTakeFirst();
-    return repo ?? null;
-  },
+  return {
+    create: async (repo: NewRepo): Promise<Repo> => create(repo),
 
-  getById: async (id: string): Promise<Repo | null> => {
-    const repo = await db.selectFrom("repos").selectAll().where("id", "=", id).executeTakeFirst();
-    return repo ?? null;
-  },
+    getByPath: async (path: string): Promise<Repo | null> => {
+      const repo = await db
+        .selectFrom("repos")
+        .selectAll()
+        .where("path", "=", path)
+        .executeTakeFirst();
+      return repo ?? null;
+    },
 
-  getAll: async (): Promise<Repo[]> => {
-    return db.selectFrom("repos").selectAll().execute();
-  },
+    getById: async (id: string): Promise<Repo | null> => findById(id),
 
-  remove: async (id: string): Promise<boolean> => {
-    const existing = await db
-      .selectFrom("repos")
-      .select("id")
-      .where("id", "=", id)
-      .executeTakeFirst();
-    if (!existing) {
-      return false;
-    }
-    await db.deleteFrom("repos").where("id", "=", id).execute();
-    return true;
-  },
-});
+    getAll: async (): Promise<Repo[]> => listAll(),
+
+    remove: async (id: string): Promise<boolean> => deleteById(id),
+  };
+};
 
 export const extractRepoName = (repoPath: string): string => {
   return basename(repoPath);

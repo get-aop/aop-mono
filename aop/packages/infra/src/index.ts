@@ -17,7 +17,7 @@ export {
   type LogLevel,
   resetLogging,
 } from "./logger.ts";
-
+export { type CrudHelpers, createCrudHelpers } from "./repository-helpers.ts";
 export {
   getActiveSpanId,
   getActiveTraceId,
@@ -28,7 +28,6 @@ export {
   resetTracing,
   runWithSpan,
 } from "./tracing.ts";
-
 export {
   generateTypeId,
   getTypeIdPrefix,

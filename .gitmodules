@@ -16,3 +16,9 @@
 [submodule "external/claude-code-viewer"]
 	path = external/claude-code-viewer
 	url = https://github.com/d-kimuson/claude-code-viewer
+[submodule "external/marketingskills"]
+	path = external/marketingskills
+	url = https://github.com/coreyhaines31/marketingskills.git
+[submodule "external/claude-bootstrap"]
+	path = external/claude-bootstrap
+	url = https://github.com/alinaqi/claude-bootstrap.git

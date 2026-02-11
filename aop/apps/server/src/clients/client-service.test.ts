@@ -49,8 +49,8 @@ describe("ClientService", () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.response.clientId).toBe(id);
-        expect(result.response.effectiveMaxConcurrentTasks).toBe(5);
+        expect(result.response.authResponse.clientId).toBe(id);
+        expect(result.response.authResponse.effectiveMaxConcurrentTasks).toBe(5);
       }
     });
 
@@ -61,7 +61,7 @@ describe("ClientService", () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.response.effectiveMaxConcurrentTasks).toBe(10);
+        expect(result.response.authResponse.effectiveMaxConcurrentTasks).toBe(10);
       }
     });
 
@@ -72,7 +72,7 @@ describe("ClientService", () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.response.effectiveMaxConcurrentTasks).toBe(3);
+        expect(result.response.authResponse.effectiveMaxConcurrentTasks).toBe(3);
       }
     });
 
@@ -83,7 +83,7 @@ describe("ClientService", () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.response.effectiveMaxConcurrentTasks).toBe(5);
+        expect(result.response.authResponse.effectiveMaxConcurrentTasks).toBe(5);
       }
     });
 

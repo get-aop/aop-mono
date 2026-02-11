@@ -1,3 +1,5 @@
+import type { Result } from "@aop/common";
+import { err, ok } from "@aop/common";
 import type { TaskStatus, TaskStatusResponse } from "@aop/common/protocol";
 import { getLogger } from "@aop/infra";
 import type { ExecutionRepository } from "../executions/execution-repository.ts";
@@ -6,17 +8,7 @@ import type { TaskRepository } from "./task-repository.ts";
 
 const logger = getLogger("task-service");
 
-export interface TaskNotFoundError {
-  success: false;
-  error: "task_not_found";
-}
-
-export interface TaskStatusResult {
-  success: true;
-  response: TaskStatusResponse;
-}
-
-export type GetTaskStatusResult = TaskStatusResult | TaskNotFoundError;
+export type GetTaskStatusResult = Result<TaskStatusResponse, "task_not_found">;
 
 export interface TaskService {
   syncTask: (
@@ -56,22 +48,19 @@ export const createTaskService = (
   getTaskStatus: async (clientId, taskId) => {
     const task = await taskRepo.findById(taskId);
     if (!task || task.client_id !== clientId) {
-      return { success: false, error: "task_not_found" };
+      return err("task_not_found");
     }
 
     const activeExecution = await executionRepo.findActiveByTask(taskId);
 
-    return {
-      success: true,
-      response: {
-        status: task.status,
-        execution: activeExecution
-          ? {
-              id: activeExecution.id,
-              awaitingResult: true,
-            }
-          : undefined,
-      },
-    };
+    return ok({
+      status: task.status,
+      execution: activeExecution
+        ? {
+            id: activeExecution.id,
+            awaitingResult: true,
+          }
+        : undefined,
+    });
   },
 });

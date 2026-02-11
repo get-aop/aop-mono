@@ -1,6 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { Kysely } from "kysely";
+import { createClientRepository } from "../../clients/client-repository.ts";
+import { createClientService } from "../../clients/client-service.ts";
 import type { Database } from "../../db/schema.ts";
 import { cleanupTestDb, createTestClient, createTestDb } from "../../db/test-utils.ts";
 import type { AppContext } from "../server.ts";
@@ -13,8 +15,11 @@ describe("authMiddleware", () => {
   beforeAll(async () => {
     db = await createTestDb();
 
+    const clientRepo = createClientRepository(db);
+    const clientService = createClientService(clientRepo);
+
     mock.module("../server.ts", () => ({
-      getAppContext: (): Partial<AppContext> => ({ db }),
+      getAppContext: (): Partial<AppContext> => ({ clientService }),
     }));
 
     app = new Hono();

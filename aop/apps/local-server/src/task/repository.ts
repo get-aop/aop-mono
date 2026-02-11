@@ -85,10 +85,11 @@ export const createTaskRepository = (
 
   return {
     create: async (task: NewTask): Promise<Task> => {
+      await db.insertInto("tasks").values(task).execute();
       const created = await db
-        .insertInto("tasks")
-        .values(task)
-        .returningAll()
+        .selectFrom("tasks")
+        .selectAll()
+        .where("id", "=", task.id)
         .executeTakeFirstOrThrow();
       emitTaskCreated(created);
       return created;
@@ -106,13 +107,19 @@ export const createTaskRepository = (
         return existing;
       }
 
-      const result = await db
+      await db
         .insertInto("tasks")
         .values(task)
         .onConflict((oc) =>
           oc.columns(["repo_id", "change_path"]).doUpdateSet({ repo_id: task.repo_id }),
         )
-        .returningAll()
+        .execute();
+
+      const result = await db
+        .selectFrom("tasks")
+        .selectAll()
+        .where("repo_id", "=", task.repo_id)
+        .where("change_path", "=", task.change_path)
         .executeTakeFirst();
 
       if (result && result.id === task.id) {
@@ -239,80 +246,11 @@ export const createTaskRepository = (
       return result.count;
     },
 
-    getNextExecutable: async (limits: ConcurrencyLimits): Promise<Task | null> => {
-      const globalWorking = await db
-        .selectFrom("tasks")
-        .select((eb) => eb.fn.countAll<number>().as("count"))
-        .where("status", "=", "WORKING")
-        .executeTakeFirstOrThrow();
+    getNextExecutable: (limits: ConcurrencyLimits) =>
+      getNextTask(db, limits, "READY", "tasks.ready_at"),
 
-      if (globalWorking.count >= limits.globalMax) {
-        return null;
-      }
-
-      // Join with repos to exclude orphaned tasks whose repo was deleted
-      const readyTasks = await db
-        .selectFrom("tasks")
-        .innerJoin("repos", "tasks.repo_id", "repos.id")
-        .selectAll("tasks")
-        .where("tasks.status", "=", "READY")
-        .orderBy("tasks.ready_at", "asc")
-        .execute();
-
-      for (const task of readyTasks) {
-        const repoWorking = await db
-          .selectFrom("tasks")
-          .select((eb) => eb.fn.countAll<number>().as("count"))
-          .where("status", "=", "WORKING")
-          .where("repo_id", "=", task.repo_id)
-          .executeTakeFirstOrThrow();
-
-        const repoMax = await limits.getRepoMax(task.repo_id);
-
-        if (repoWorking.count < repoMax) {
-          return task;
-        }
-      }
-
-      return null;
-    },
-
-    getNextResumable: async (limits: ConcurrencyLimits): Promise<Task | null> => {
-      const globalWorking = await db
-        .selectFrom("tasks")
-        .select((eb) => eb.fn.countAll<number>().as("count"))
-        .where("status", "=", "WORKING")
-        .executeTakeFirstOrThrow();
-
-      if (globalWorking.count >= limits.globalMax) {
-        return null;
-      }
-
-      const resumingTasks = await db
-        .selectFrom("tasks")
-        .innerJoin("repos", "tasks.repo_id", "repos.id")
-        .selectAll("tasks")
-        .where("tasks.status", "=", "RESUMING")
-        .orderBy("tasks.updated_at", "asc")
-        .execute();
-
-      for (const task of resumingTasks) {
-        const repoWorking = await db
-          .selectFrom("tasks")
-          .select((eb) => eb.fn.countAll<number>().as("count"))
-          .where("status", "=", "WORKING")
-          .where("repo_id", "=", task.repo_id)
-          .executeTakeFirstOrThrow();
-
-        const repoMax = await limits.getRepoMax(task.repo_id);
-
-        if (repoWorking.count < repoMax) {
-          return task;
-        }
-      }
-
-      return null;
-    },
+    getNextResumable: (limits: ConcurrencyLimits) =>
+      getNextTask(db, limits, "RESUMING", "tasks.updated_at"),
 
     resetStaleWorkingTasks: async (): Promise<number> => {
       const workingTasks = await db
@@ -411,4 +349,48 @@ export const createTaskRepository = (
       };
     },
   };
+};
+
+/** Shared concurrency-aware task picker for both executable and resumable flows */
+const getNextTask = async (
+  db: Kysely<Database>,
+  limits: ConcurrencyLimits,
+  status: "READY" | "RESUMING",
+  orderByColumn: "tasks.ready_at" | "tasks.updated_at",
+): Promise<Task | null> => {
+  const globalWorking = await db
+    .selectFrom("tasks")
+    .select((eb) => eb.fn.countAll<number>().as("count"))
+    .where("status", "=", "WORKING")
+    .executeTakeFirstOrThrow();
+
+  if (globalWorking.count >= limits.globalMax) {
+    return null;
+  }
+
+  // Join with repos to exclude orphaned tasks whose repo was deleted
+  const candidateTasks = await db
+    .selectFrom("tasks")
+    .innerJoin("repos", "tasks.repo_id", "repos.id")
+    .selectAll("tasks")
+    .where("tasks.status", "=", status)
+    .orderBy(orderByColumn, "asc")
+    .execute();
+
+  for (const task of candidateTasks) {
+    const repoWorking = await db
+      .selectFrom("tasks")
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("status", "=", "WORKING")
+      .where("repo_id", "=", task.repo_id)
+      .executeTakeFirstOrThrow();
+
+    const repoMax = await limits.getRepoMax(task.repo_id);
+
+    if (repoWorking.count < repoMax) {
+      return task;
+    }
+  }
+
+  return null;
 };

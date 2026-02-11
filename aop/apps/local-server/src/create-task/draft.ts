@@ -1,19 +1,16 @@
 import { mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { getLogger } from "@aop/infra";
+import type { BrainstormingResult } from "./brainstorm-parser.ts";
 
 const logger = getLogger("create-task-draft");
 
-export interface BrainstormRequirements {
-  title: string;
-  description: string;
-  requirements: string[];
-  acceptanceCriteria: string[];
-}
+/** @deprecated Use `BrainstormingResult` from brainstorm-parser.ts */
+export type BrainstormRequirements = BrainstormingResult;
 
 export interface DraftFile {
   path: string;
-  requirements: BrainstormRequirements;
+  requirements: BrainstormingResult;
   createdAt: string;
 }
 
@@ -22,7 +19,7 @@ const getDraftsDir = (repoRoot: string): string => join(repoRoot, "openspec", "c
 export const saveDraft = async (
   repoRoot: string,
   changeName: string,
-  requirements: BrainstormRequirements,
+  requirements: BrainstormingResult,
 ): Promise<string> => {
   const draftsDir = getDraftsDir(repoRoot);
   await mkdir(draftsDir, { recursive: true });
