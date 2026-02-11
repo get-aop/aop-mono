@@ -50,7 +50,7 @@ jobs:
         run: bun run typecheck
 
       - name: Build
-        run: bun run build
+        run: bun run --sequential --filter '!@aop/electron' build
 
       - name: Build Electron app
         run: bun run --filter @aop/electron build

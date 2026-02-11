@@ -20,9 +20,20 @@ on:
         required: true
         default: "0.1.0"
         type: string
+      platform:
+        description: "Platform to build"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - macos
+          - linux
+          - windows
 
 jobs:
   build-macos:
+    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +61,7 @@ jobs:
           retention-days: 1
 
   build-linux:
+    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -81,9 +93,45 @@ jobs:
           path: aop/apps/electron/out/make/deb/**/*.deb
           retention-days: 1
 
+  build-windows:
+    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: aop
+        run: bun install
+
+      - name: Build Linux sidecar for WSL
+        working-directory: aop/apps/electron
+        run: bun run build:sidecar-linux
+
+      - name: Build dashboard
+        working-directory: aop/apps/electron
+        run: bun run build:dashboard
+
+      - name: Build Electron app
+        working-directory: aop/apps/electron
+        run: electron-forge make
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: aop/apps/electron/out/make/**/*.exe
+          retention-days: 1
+
   release:
-    if: github.event_name == 'workflow_dispatch'
-    needs: [build-macos, build-linux]
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == '')
+    needs: [build-macos, build-linux, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -104,11 +152,18 @@ jobs:
           name: linux-artifacts
           path: artifacts/linux
 
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts/windows
+
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
           find artifacts -name "*.dmg" -exec cp {} release-assets/ \;
           find artifacts -name "*.deb" -exec cp {} release-assets/ \;
+          find artifacts -name "*.exe" -exec cp {} release-assets/ \;
           ls -la release-assets/
 
       - name: Create tag
@@ -129,6 +184,7 @@ jobs:
             ### Downloads
             - **macOS**: `AOP Desktop.dmg`
             - **Linux (Debian/Ubuntu)**: `aop-electron_*.deb`
+            - **Windows**: `AOP-Setup-*.exe`
           files: release-assets/*
           draft: false
           prerelease: false

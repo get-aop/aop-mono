@@ -1,6 +1,7 @@
 /* biome-ignore-all lint/suspicious/noConsole: WSL setup logging */
 import { type ChildProcess, spawn } from "node:child_process";
 import { dialog } from "electron";
+import { buildWslCommand } from "./wsl-command";
 
 export interface WslPaths {
   serverBinary: string;
@@ -100,12 +101,19 @@ export const wslPathFromWindows = async (distro: string, windowsPath: string): P
   });
 };
 
+export interface SyncResourcesOptions {
+  skillsPath?: string;
+  codexPath?: string;
+}
+
 export const syncResourcesToWsl = async (
   distro: string,
   serverBinaryPath: string,
   dashboardPath: string,
+  options?: SyncResourcesOptions,
 ): Promise<WslPaths> => {
-  // Get the actual home directory in WSL (not using ~ which may not expand properly)
+  const { skillsPath, codexPath } = options ?? {};
+
   const homeDir = await getWslHomeDir(distro);
   const wslTargetDir = `${homeDir}/.aop`;
   const wslServerPath = `${wslTargetDir}/aop-server`;
@@ -116,15 +124,14 @@ export const syncResourcesToWsl = async (
   const wslSourceServer = await wslPathFromWindows(distro, serverBinaryPath);
   const wslSourceDashboard = await wslPathFromWindows(distro, dashboardPath);
 
-  // Create target directory
   await runWslCommand(distro, `mkdir -p ${wslTargetDir}`);
 
-  // Check if source files exist in WSL before copying
   await runWslCommand(
     distro,
     `test -f "${wslSourceServer}" || (echo "File not found: ${wslSourceServer}" && exit 1)`,
   );
 
+  await runWslCommand(distro, `rm -f ${wslServerPath}`); // avoids "Text file busy" if prior instance running
   await runWslCommand(distro, `cp "${wslSourceServer}" ${wslServerPath}`);
   await runWslCommand(distro, `chmod +x ${wslServerPath}`);
 
@@ -149,6 +156,21 @@ export const syncResourcesToWsl = async (
 
   await runWslCommand(distro, `rm -rf ${wslDashboardPath}`);
   await runWslCommand(distro, `cp -r "${wslSourceDashboard}" ${wslDashboardPath}`);
+
+  const symlinkToHome = async (sourcePath: string, targetDir: string, parentDir?: string) => {
+    const wslSource = await wslPathFromWindows(distro, sourcePath);
+    if (parentDir) await runWslCommand(distro, `mkdir -p ${parentDir}`);
+    await runWslCommand(
+      distro,
+      `test -d "${wslSource}" || (echo "Dir not found: ${wslSource}" && exit 1)`,
+    );
+    await runWslCommand(distro, `rm -rf ${targetDir}`);
+    await runWslCommand(distro, `ln -sf "${wslSource}" ${targetDir}`);
+  };
+
+  if (skillsPath)
+    await symlinkToHome(skillsPath, `${homeDir}/.claude/skills`, `${homeDir}/.claude`);
+  if (codexPath) await symlinkToHome(codexPath, `${homeDir}/.codex`);
 
   return {
     serverBinary: wslServerPath,
@@ -186,14 +208,8 @@ export const spawnInWsl = (
   command: string,
   env: Record<string, string>,
 ): ChildProcess => {
-  // Build env vars for the command
-  const envArgs = Object.entries(env)
-    .map(([key, value]) => `${key}="${value}"`)
-    .join(" ");
+  const fullCommand = buildWslCommand(command, env);
 
-  const fullCommand = `${envArgs} ${command}`;
-
-  // Use sh instead of bash (more universally available)
   return spawn("wsl.exe", ["-d", distro, "-e", "sh", "-c", fullCommand], {
     windowsHide: true,
     detached: false,

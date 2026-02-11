@@ -9,6 +9,7 @@ RELEASES_BASE_URL="${AOP_RELEASES_URL:-https://getaop.com}"
 main() {
   parse_args "$@"
   detect_platform
+  install_linux_deps
   resolve_version
   resolve_install_dir
   check_existing_installation
@@ -78,6 +79,31 @@ detect_platform() {
 
   BINARY_NAME="aop-${OS}-${ARCH}"
   echo "Detected platform: ${OS}-${ARCH}"
+}
+
+# --- Linux Dependencies (required for Electron/WebView on Linux) ---
+
+install_linux_deps() {
+  if [ "$OS" != "linux" ]; then
+    return
+  fi
+
+  if ! command -v apt-get >/dev/null 2>&1; then
+    echo "Note: apt-get not found. If the app fails to start, install libnss3, libnspr4, libasound2t64" >&2
+    return
+  fi
+
+  echo "Ensuring Linux dependencies (libnss3, libnspr4, libasound2t64)..."
+  run_apt() {
+    if [ "$(id -u)" = 0 ]; then
+      apt-get update -qq
+      apt-get install -y --no-install-recommends "$@" || apt --fix-broken install -y
+    else
+      sudo apt-get update -qq
+      sudo apt-get install -y --no-install-recommends "$@" || sudo apt --fix-broken install -y
+    fi
+  }
+  run_apt libnss3 libnspr4 libasound2t64 2>/dev/null || run_apt libnss3 libnspr4 libasound2 2>/dev/null || true
 }
 
 # --- Version Resolution ---

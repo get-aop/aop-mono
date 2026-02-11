@@ -3,6 +3,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { setupSkillsOnFirstRun } from "./skills-setup.js";
 import {
   createTray,
   destroyTray,
@@ -26,14 +27,6 @@ if (process.platform === "linux" && (process.env.WSL_DISTRO_NAME || process.env.
   app.disableHardwareAcceleration();
 }
 
-// Handle Squirrel.Windows startup events
-if (process.platform === "win32") {
-  const squirrelCommand = process.argv[1];
-  if (squirrelCommand?.startsWith("--squirrel-")) {
-    app.quit();
-  }
-}
-
 app.setName("AOP");
 app.setAppUserModelId("com.aop.desktop");
 
@@ -45,13 +38,10 @@ const FORCE_KILL_TIMEOUT_MS = 10000;
 const isWindows = process.platform === "win32";
 
 const getServerPath = (): string => {
+  const binaryName = isWindows ? "aop-server-linux" : "aop-server";
   if (app.isPackaged) {
-    // On Windows, use Linux binary for WSL
-    const binaryName = isWindows ? "aop-server-linux" : "aop-server";
     return path.join(process.resourcesPath, binaryName);
   }
-  // In dev mode, server is in sibling directory
-  const binaryName = isWindows ? "aop-server-linux" : "aop-server";
   return path.join(__dirname, "..", "..", "local-server", "dist", binaryName);
 };
 
@@ -60,6 +50,16 @@ const getDashboardPath = (): string => {
     return path.join(process.resourcesPath, "dashboard");
   }
   return path.join(__dirname, "..", "..", "dashboard", "dist");
+};
+
+const getBundledResourcePath = (
+  packagedDir: string,
+  ...devRelPath: string[]
+): string | undefined => {
+  const p = app.isPackaged
+    ? path.join(process.resourcesPath, packagedDir)
+    : path.join(__dirname, "..", "..", "..", ...devRelPath);
+  return fs.existsSync(p) ? p : undefined;
 };
 
 const spawnServerWithEnv = (
@@ -209,6 +209,8 @@ const spawnServerWindows = async (): Promise<number> => {
   mainWindow?.webContents.send("status-update", "Copying resources to WSL...");
   const serverPath = getServerPath();
   const dashboardPath = getDashboardPath();
+  const skillsPath = getBundledResourcePath("claude-skills", ".claude", "skills");
+  const codexPath = getBundledResourcePath("codex", ".codex");
 
   if (!fs.existsSync(serverPath)) {
     throw new Error(`Server binary not found at: ${serverPath}`);
@@ -217,7 +219,10 @@ const spawnServerWindows = async (): Promise<number> => {
     throw new Error(`Dashboard not found at: ${dashboardPath}`);
   }
 
-  const wslPaths = await syncResourcesToWsl(distro, serverPath, dashboardPath);
+  const wslPaths = await syncResourcesToWsl(distro, serverPath, dashboardPath, {
+    skillsPath,
+    codexPath,
+  });
 
   mainWindow?.webContents.send("status-update", "Starting AOP Server in WSL...");
 
@@ -477,6 +482,7 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
+    setupSkillsOnFirstRun();
     createWindow();
 
     createTray();

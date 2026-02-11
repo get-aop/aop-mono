@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerDMG } from "@electron-forge/maker-dmg";
-import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { WebpackPlugin } from "@electron-forge/plugin-webpack";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { mainConfig } from "./webpack.main.config.js";
@@ -30,6 +29,8 @@ const copyExtraResourcesMac = async (outputPath: string) => {
     console.log(`[Forge] Replaced icon: ${iconSource} -> ${electronIconTarget}`);
   }
 
+  const skillsSource = path.join(__dirname, "..", "..", "..", ".claude", "skills");
+  const codexSource = path.join(__dirname, "..", "..", "..", ".codex");
   const filesToCopy = [
     {
       from: path.join(__dirname, "..", "local-server", "dist", "aop-server"),
@@ -39,6 +40,12 @@ const copyExtraResourcesMac = async (outputPath: string) => {
       from: path.join(__dirname, "..", "dashboard", "dist"),
       to: path.join(resourcesDir, "dashboard"),
     },
+    ...(fs.existsSync(skillsSource)
+      ? [{ from: skillsSource, to: path.join(resourcesDir, "claude-skills") }]
+      : []),
+    ...(fs.existsSync(codexSource)
+      ? [{ from: codexSource, to: path.join(resourcesDir, "codex") }]
+      : []),
     {
       from: path.join(__dirname, "assets", "tray-icon.png"),
       to: path.join(resourcesDir, "tray-icon.png"),
@@ -77,6 +84,8 @@ const copyExtraResourcesLinux = async (outputPath: string) => {
 
   console.log(`[Forge] Linux resources: ${resourcesDir}`);
 
+  const skillsSource = path.join(__dirname, "..", "..", "..", ".claude", "skills");
+  const codexSource = path.join(__dirname, "..", "..", "..", ".codex");
   const filesToCopy = [
     {
       from: path.join(__dirname, "..", "local-server", "dist", "aop-server"),
@@ -86,6 +95,12 @@ const copyExtraResourcesLinux = async (outputPath: string) => {
       from: path.join(__dirname, "..", "dashboard", "dist"),
       to: path.join(resourcesDir, "dashboard"),
     },
+    ...(fs.existsSync(skillsSource)
+      ? [{ from: skillsSource, to: path.join(resourcesDir, "claude-skills") }]
+      : []),
+    ...(fs.existsSync(codexSource)
+      ? [{ from: codexSource, to: path.join(resourcesDir, "codex") }]
+      : []),
     {
       from: path.join(__dirname, "assets", "tray-icon.png"),
       to: path.join(resourcesDir, "tray-icon.png"),
@@ -132,6 +147,8 @@ const copyExtraResourcesWindows = async (outputPath: string) => {
 
   console.log(`[Forge] Windows resources: ${resourcesDir}`);
 
+  const skillsSource = path.join(__dirname, "..", "..", "..", ".claude", "skills");
+  const codexSource = path.join(__dirname, "..", "..", "..", ".codex");
   const filesToCopy = [
     {
       from: path.join(__dirname, "..", "local-server", "dist", "aop-server-linux"),
@@ -141,6 +158,12 @@ const copyExtraResourcesWindows = async (outputPath: string) => {
       from: path.join(__dirname, "..", "dashboard", "dist"),
       to: path.join(resourcesDir, "dashboard"),
     },
+    ...(fs.existsSync(skillsSource)
+      ? [{ from: skillsSource, to: path.join(resourcesDir, "claude-skills") }]
+      : []),
+    ...(fs.existsSync(codexSource)
+      ? [{ from: codexSource, to: path.join(resourcesDir, "codex") }]
+      : []),
     {
       from: path.join(__dirname, "assets", "tray-icon.png"),
       to: path.join(resourcesDir, "tray-icon.png"),
@@ -178,7 +201,11 @@ const copyExtraResources = async (_config: ForgeConfig, buildResult: BuildResult
 
   if (outputPath.includes("darwin") || outputPath.includes("AOP.app")) {
     await copyExtraResourcesMac(outputPath);
-  } else if (outputPath.includes("win32") || outputPath.includes("squirrel.windows")) {
+  } else if (
+    outputPath.includes("win32") ||
+    outputPath.includes("nsis") ||
+    outputPath.includes("squirrel.windows")
+  ) {
     await copyExtraResourcesWindows(outputPath);
   } else {
     await copyExtraResourcesLinux(outputPath);
@@ -190,14 +217,35 @@ const config: ForgeConfig = {
     asar: false,
     executableName: "aop",
     extraResources: [
-      {
-        from: path.join(__dirname, "..", "local-server", "dist", "aop-server"),
-        to: "aop-server",
-      },
+      process.platform === "win32"
+        ? {
+            from: path.join(__dirname, "..", "local-server", "dist", "aop-server-linux"),
+            to: "aop-server-linux",
+          }
+        : {
+            from: path.join(__dirname, "..", "local-server", "dist", "aop-server"),
+            to: "aop-server",
+          },
       {
         from: path.join(__dirname, "..", "dashboard", "dist"),
         to: "dashboard",
       },
+      ...(fs.existsSync(path.join(__dirname, "..", "..", "..", ".claude", "skills"))
+        ? [
+            {
+              from: path.join(__dirname, "..", "..", "..", ".claude", "skills"),
+              to: "claude-skills",
+            },
+          ]
+        : []),
+      ...(fs.existsSync(path.join(__dirname, "..", "..", "..", ".codex"))
+        ? [
+            {
+              from: path.join(__dirname, "..", "..", "..", ".codex"),
+              to: "codex",
+            },
+          ]
+        : []),
       {
         from: path.join(__dirname, "assets", "tray-icon.png"),
         to: "tray-icon.png",
@@ -234,16 +282,10 @@ const config: ForgeConfig = {
         description: "AOP Desktop Application - Run agents on your repos",
         productName: "aop",
         bin: "aop",
+        depends: ["libnss3", "libnspr4", "libasound2t64 | libasound2"],
       },
     }),
-    new MakerSquirrel({
-      name: "aop-desktop",
-      setupIcon: path.join(__dirname, "assets", "icon.ico"),
-      iconUrl:
-        "https://raw.githubusercontent.com/get-aop/aop-mono/main/apps/electron/assets/icon.ico",
-      setupExe: "AOP-Desktop-Setup.exe",
-      description: "AOP Desktop - Agents Operating Platform",
-    }),
+    ...(process.platform === "win32" ? [{ name: "electron-forge-maker-nsis", config: {} }] : []),
   ],
   plugins: [
     new WebpackPlugin({

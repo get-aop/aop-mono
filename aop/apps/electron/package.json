@@ -3,6 +3,18 @@
   "productName": "AOP",
   "version": "0.1.0",
   "main": ".webpack/main",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/get-aop/aop-mono.git"
+  },
+  "build": {
+    "appId": "com.aop.desktop",
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "AOP-Setup-${version}.${ext}"
+    }
+  },
   "scripts": {
     "start": "bun run build:deps && electron-forge start",
     "package": "bun run build:deps && electron-forge package",
@@ -19,7 +31,7 @@
     "@electron-forge/cli": "^7.4.0",
     "@electron-forge/maker-deb": "^7.4.0",
     "@electron-forge/maker-dmg": "^7.4.0",
-    "@electron-forge/maker-squirrel": "^7.4.0",
+    "electron-forge-maker-nsis": "^26.0.0",
     "@electron-forge/plugin-auto-unpack-natives": "^7.4.0",
     "@electron-forge/plugin-webpack": "^7.4.0",
     "@vercel/webpack-asset-relocator-loader": "^1.7.3",
