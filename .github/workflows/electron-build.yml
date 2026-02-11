@@ -93,9 +93,9 @@ jobs:
           path: aop/apps/electron/out/make/deb/**/*.deb
           retention-days: 1
 
-  build-windows:
+  build-linux-sidecar:
     if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows'
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -113,6 +113,37 @@ jobs:
       - name: Build Linux sidecar for WSL
         working-directory: aop/apps/electron
         run: bun run build:sidecar-linux
+
+      - name: Upload Linux sidecar
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-sidecar
+          path: aop/apps/local-server/dist/aop-server-linux
+          retention-days: 1
+
+  build-windows:
+    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows'
+    needs: [build-linux-sidecar]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: aop
+        run: bun install
+
+      - name: Download Linux sidecar
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-sidecar
+          path: aop/apps/local-server/dist
 
       - name: Build dashboard
         working-directory: aop/apps/electron

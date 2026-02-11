@@ -209,7 +209,6 @@ export const spawnInWsl = (
   env: Record<string, string>,
 ): ChildProcess => {
   const fullCommand = buildWslCommand(command, env);
-
   return spawn("wsl.exe", ["-d", distro, "-e", "sh", "-c", fullCommand], {
     windowsHide: true,
     detached: false,

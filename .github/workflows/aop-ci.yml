@@ -52,9 +52,6 @@ jobs:
       - name: Build
         run: bun run --sequential --filter '!@aop/electron' build
 
-      - name: Build Electron app
-        run: bun run --filter @aop/electron build
-
       - name: Prepare environment
         run: cp .env.example .env
 
