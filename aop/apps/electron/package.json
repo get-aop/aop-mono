@@ -13,7 +13,8 @@
       "oneClick": true,
       "perMachine": false,
       "artifactName": "AOP-Setup-${version}.${ext}",
-      "installerIcon": "assets/icon.ico"
+      "installerIcon": "assets/icon.ico",
+      "publish": null
     }
   },
   "scripts": {
