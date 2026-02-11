@@ -1,76 +1,69 @@
 import { EventEmitter } from "node:events";
 
-export interface LogLine {
-  stream: "stdout" | "stderr";
-  content: string;
-  timestamp: string;
-}
-
 export interface LogEvent {
-  executionId: string;
-  line: LogLine;
+  stepExecutionId: string;
+  line: string;
 }
 
-export interface ExecutionCompleteEvent {
-  executionId: string;
+export interface StepCompleteEvent {
+  stepExecutionId: string;
   status: "completed" | "failed" | "cancelled";
 }
 
 const MAX_BUFFER_SIZE = 500;
 
 export interface LogBuffer {
-  push: (executionId: string, line: LogLine) => void;
-  getLines: (executionId: string) => LogLine[];
-  markComplete: (executionId: string, status: ExecutionCompleteEvent["status"]) => void;
-  isComplete: (executionId: string) => boolean;
-  getStatus: (executionId: string) => ExecutionCompleteEvent["status"] | null;
+  push: (stepExecutionId: string, rawLine: string) => void;
+  getLines: (stepExecutionId: string) => string[];
+  markComplete: (stepExecutionId: string, status: StepCompleteEvent["status"]) => void;
+  isComplete: (stepExecutionId: string) => boolean;
+  getStatus: (stepExecutionId: string) => StepCompleteEvent["status"] | null;
   subscribe: (listener: (event: LogEvent) => void) => () => void;
-  subscribeComplete: (listener: (event: ExecutionCompleteEvent) => void) => () => void;
-  clear: (executionId: string) => void;
+  subscribeComplete: (listener: (event: StepCompleteEvent) => void) => () => void;
+  clear: (stepExecutionId: string) => void;
 }
 
 export const createLogBuffer = (): LogBuffer => {
-  const buffers = new Map<string, LogLine[]>();
-  const completionStatus = new Map<string, ExecutionCompleteEvent["status"]>();
+  const buffers = new Map<string, string[]>();
+  const completionStatus = new Map<string, StepCompleteEvent["status"]>();
   const emitter = new EventEmitter();
-  // Allow concurrent log streaming connections without warnings
   emitter.setMaxListeners(50);
 
   const LOG_EVENT = "log";
   const COMPLETE_EVENT = "complete";
 
   return {
-    push: (executionId: string, line: LogLine): void => {
-      let buffer = buffers.get(executionId);
+    push: (stepExecutionId: string, rawLine: string): void => {
+      let buffer = buffers.get(stepExecutionId);
       if (!buffer) {
         buffer = [];
-        buffers.set(executionId, buffer);
+        buffers.set(stepExecutionId, buffer);
       }
 
-      buffer.push(line);
+      buffer.push(rawLine);
 
       if (buffer.length > MAX_BUFFER_SIZE) {
         buffer.shift();
       }
 
-      emitter.emit(LOG_EVENT, { executionId, line });
+      emitter.emit(LOG_EVENT, { stepExecutionId, line: rawLine });
     },
 
-    getLines: (executionId: string): LogLine[] => {
-      return buffers.get(executionId) ?? [];
+    getLines: (stepExecutionId: string): string[] => {
+      return buffers.get(stepExecutionId) ?? [];
     },
 
-    markComplete: (executionId: string, status: ExecutionCompleteEvent["status"]): void => {
-      completionStatus.set(executionId, status);
-      emitter.emit(COMPLETE_EVENT, { executionId, status });
+    markComplete: (stepExecutionId: string, status: StepCompleteEvent["status"]): void => {
+      completionStatus.set(stepExecutionId, status);
+      emitter.emit(COMPLETE_EVENT, { stepExecutionId, status });
     },
 
-    isComplete: (executionId: string): boolean => {
-      return completionStatus.has(executionId);
+    isComplete: (stepExecutionId: string): boolean => {
+      return completionStatus.has(stepExecutionId);
     },
 
-    getStatus: (executionId: string): ExecutionCompleteEvent["status"] | null => {
-      return completionStatus.get(executionId) ?? null;
+    getStatus: (stepExecutionId: string): StepCompleteEvent["status"] | null => {
+      return completionStatus.get(stepExecutionId) ?? null;
     },
 
     subscribe: (listener: (event: LogEvent) => void): (() => void) => {
@@ -78,14 +71,14 @@ export const createLogBuffer = (): LogBuffer => {
       return () => emitter.off(LOG_EVENT, listener);
     },
 
-    subscribeComplete: (listener: (event: ExecutionCompleteEvent) => void): (() => void) => {
+    subscribeComplete: (listener: (event: StepCompleteEvent) => void): (() => void) => {
       emitter.on(COMPLETE_EVENT, listener);
       return () => emitter.off(COMPLETE_EVENT, listener);
     },
 
-    clear: (executionId: string): void => {
-      buffers.delete(executionId);
-      completionStatus.delete(executionId);
+    clear: (stepExecutionId: string): void => {
+      buffers.delete(stepExecutionId);
+      completionStatus.delete(stepExecutionId);
     },
   };
 };

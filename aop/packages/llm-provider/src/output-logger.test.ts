@@ -147,6 +147,25 @@ describe("extractAssistantText", () => {
 
     expect(extractAssistantText(data)).toBe("");
   });
+
+  test("extracts text from successful result event", () => {
+    const data = {
+      type: "result",
+      subtype: "success",
+      result: "Final summary with <aop>REVIEW_PASSED</aop>",
+    };
+
+    expect(extractAssistantText(data)).toBe("Final summary with <aop>REVIEW_PASSED</aop>");
+  });
+
+  test("extracts text from OpenCode text.part.text event", () => {
+    const data = {
+      type: "text",
+      part: { text: "All set <aop>ALL_TASKS_DONE</aop>" },
+    };
+
+    expect(extractAssistantText(data)).toBe("All set <aop>ALL_TASKS_DONE</aop>");
+  });
 });
 
 describe("createOutputLogger", () => {

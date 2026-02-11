@@ -61,12 +61,11 @@ export interface StepExecutionsTable {
   ended_at: string | null;
 }
 
-export interface ExecutionLogsTable {
+export interface StepLogsTable {
   id: Generated<number>;
-  execution_id: string;
-  stream: "stdout" | "stderr";
+  step_execution_id: string;
   content: string;
-  timestamp: string;
+  created_at: string;
 }
 
 export type InteractiveSessionStatus =
@@ -105,7 +104,7 @@ export interface Database {
   tasks: TasksTable;
   executions: ExecutionsTable;
   step_executions: StepExecutionsTable;
-  execution_logs: ExecutionLogsTable;
+  step_logs: StepLogsTable;
   interactive_sessions: InteractiveSessionsTable;
   session_messages: SessionMessagesTable;
 }
@@ -129,8 +128,8 @@ export type StepExecution = Selectable<StepExecutionsTable>;
 export type NewStepExecution = Insertable<StepExecutionsTable>;
 export type StepExecutionUpdate = Updateable<StepExecutionsTable>;
 
-export type ExecutionLog = Selectable<ExecutionLogsTable>;
-export type NewExecutionLog = Insertable<ExecutionLogsTable>;
+export type StepLog = Selectable<StepLogsTable>;
+export type NewStepLog = Insertable<StepLogsTable>;
 
 export type InteractiveSession = Selectable<InteractiveSessionsTable>;
 export type NewInteractiveSession = Insertable<InteractiveSessionsTable>;

@@ -29,148 +29,57 @@ describe("log-file-tailer", () => {
       expect(result.lineCount).toBe(0);
     });
 
-    it("parses assistant text messages", () => {
-      const logFile = writeJsonl("test.jsonl", [
-        { type: "assistant", message: { content: [{ type: "text", text: "Hello world" }] } },
-      ]);
+    it("returns raw JSON lines from file", () => {
+      const entry = {
+        type: "assistant",
+        message: { content: [{ type: "text", text: "Hello world" }] },
+      };
+      const logFile = writeJsonl("test.jsonl", [entry]);
 
       const result = readLogLines(logFile);
       expect(result.lines).toHaveLength(1);
-      expect(result.lines[0]?.content).toBe("Hello world");
-      expect(result.lines[0]?.stream).toBe("stdout");
+      expect(result.lines[0]).toBe(JSON.stringify(entry));
       expect(result.lineCount).toBe(1);
     });
 
-    it("parses tool_use entries", () => {
-      const logFile = writeJsonl("test.jsonl", [
+    it("returns multiple raw lines", () => {
+      const entries = [
+        { type: "assistant", message: { content: [{ type: "text", text: "Starting" }] } },
         { type: "tool_use", tool_name: "Bash", input: { command: "ls -la" } },
-      ]);
+        { type: "result", subtype: "success", result: "ok" },
+      ];
+      const logFile = writeJsonl("test.jsonl", entries);
 
       const result = readLogLines(logFile);
-      expect(result.lines).toHaveLength(1);
-      expect(result.lines[0]?.content).toBe("[Bash] ls -la");
-      expect(result.lines[0]?.stream).toBe("stdout");
+      expect(result.lines).toHaveLength(3);
+      expect(result.lines[0]).toBe(JSON.stringify(entries[0]));
+      expect(result.lines[1]).toBe(JSON.stringify(entries[1]));
+      expect(result.lines[2]).toBe(JSON.stringify(entries[2]));
+      expect(result.lineCount).toBe(3);
     });
 
-    it("parses Cursor assistant stream-json messages", () => {
-      const logFile = writeJsonl("test.jsonl", [
-        {
-          type: "assistant",
-          message: {
-            role: "assistant",
-            content: [{ type: "text", text: "Cursor says hello" }],
-          },
-        },
-      ]);
-
-      const result = readLogLines(logFile);
-      expect(result.lines).toHaveLength(1);
-      expect(result.lines[0]?.content).toBe("Cursor says hello");
-      expect(result.lines[0]?.stream).toBe("stdout");
-    });
-
-    it("parses Cursor tool_call started events", () => {
-      const logFile = writeJsonl("test.jsonl", [
-        {
-          type: "tool_call",
-          subtype: "started",
-          tool_call: {
-            readToolCall: { args: { path: "/foo/bar.ts" } },
-          },
-        },
-      ]);
-
-      const result = readLogLines(logFile);
-      expect(result.lines).toHaveLength(1);
-      expect(result.lines[0]?.content).toBe("[Read] /foo/bar.ts");
-      expect(result.lines[0]?.stream).toBe("stdout");
-    });
-
-    it("parses Cursor tool_call completed events", () => {
-      const logFile = writeJsonl("test.jsonl", [
-        {
-          type: "tool_call",
-          subtype: "completed",
-          tool_call: {
-            readToolCall: {
-              args: { path: "/foo/bar.ts" },
-              result: { success: { content: "file contents" } },
-            },
-          },
-        },
-      ]);
-
-      const result = readLogLines(logFile);
-      expect(result.lines).toHaveLength(1);
-      expect(result.lines[0]?.content).toBe("[Read] completed");
-      expect(result.lines[0]?.stream).toBe("stdout");
-    });
-
-    it("parses Cursor function tool_call arguments", () => {
-      const logFile = writeJsonl("test.jsonl", [
-        {
-          type: "tool_call",
-          subtype: "started",
-          tool_call: {
-            function: {
-              name: "Bash",
-              arguments: JSON.stringify({ command: "ls -la" }),
-            },
-          },
-        },
-      ]);
-
-      const result = readLogLines(logFile);
-      expect(result.lines).toHaveLength(1);
-      expect(result.lines[0]?.content).toBe("[Bash] ls -la");
-      expect(result.lines[0]?.stream).toBe("stdout");
-    });
-
-    it("parses error results", () => {
-      const logFile = writeJsonl("test.jsonl", [
-        { type: "result", subtype: "error", result: "Something went wrong" },
-      ]);
-
-      const result = readLogLines(logFile);
-      expect(result.lines).toHaveLength(1);
-      expect(result.lines[0]?.content).toBe("Something went wrong");
-      expect(result.lines[0]?.stream).toBe("stderr");
-    });
-
-    it("skips non-producing entries", () => {
-      const logFile = writeJsonl("test.jsonl", [
-        { type: "system", message: "init" },
-        { type: "result", subtype: "success", result: "done" },
-      ]);
-
-      const result = readLogLines(logFile);
-      expect(result.lines).toEqual([]);
-      expect(result.lineCount).toBe(0);
-    });
-
-    it("skips invalid JSON lines", () => {
-      const path = join(testDir, "bad.jsonl");
-      writeFileSync(
-        path,
-        'not json\n{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}\n',
-      );
+    it("filters out empty lines", () => {
+      const path = join(testDir, "sparse.jsonl");
+      writeFileSync(path, '{"type":"assistant"}\n\n{"type":"result"}\n');
 
       const result = readLogLines(path);
-      expect(result.lines).toHaveLength(1);
-      expect(result.lines[0]?.content).toBe("ok");
+      expect(result.lines).toHaveLength(2);
+      expect(result.lines[0]).toBe('{"type":"assistant"}');
+      expect(result.lines[1]).toBe('{"type":"result"}');
     });
 
     it("supports offset to skip lines", () => {
-      const logFile = writeJsonl("test.jsonl", [
+      const entries = [
         { type: "assistant", message: { content: [{ type: "text", text: "line 1" }] } },
         { type: "assistant", message: { content: [{ type: "text", text: "line 2" }] } },
         { type: "assistant", message: { content: [{ type: "text", text: "line 3" }] } },
-      ]);
+      ];
+      const logFile = writeJsonl("test.jsonl", entries);
 
       const result = readLogLines(logFile, 1);
       expect(result.lines).toHaveLength(2);
-      expect(result.lines[0]?.content).toBe("line 2");
-      expect(result.lines[1]?.content).toBe("line 3");
+      expect(result.lines[0]).toBe(JSON.stringify(entries[1]));
+      expect(result.lines[1]).toBe(JSON.stringify(entries[2]));
       expect(result.lineCount).toBe(3);
     });
 
@@ -184,21 +93,14 @@ describe("log-file-tailer", () => {
       expect(result.lineCount).toBe(1);
     });
 
-    it("handles multiple content types in sequence", () => {
-      const logFile = writeJsonl("test.jsonl", [
-        { type: "assistant", message: { content: [{ type: "text", text: "Starting" }] } },
-        { type: "tool_use", tool_name: "Read", input: { file_path: "/foo/bar.ts" } },
-        { type: "tool_result", result: "file contents..." },
-        { type: "assistant", message: { content: [{ type: "text", text: "Done" }] } },
-        { type: "result", subtype: "success", result: "ok" },
-      ]);
+    it("preserves non-JSON lines as raw strings", () => {
+      const path = join(testDir, "mixed.jsonl");
+      writeFileSync(path, 'not json\n{"type":"assistant"}\n');
 
-      const result = readLogLines(logFile);
-      expect(result.lines).toHaveLength(3);
-      expect(result.lines[0]?.content).toBe("Starting");
-      expect(result.lines[1]?.content).toBe("[Read] /foo/bar.ts");
-      expect(result.lines[2]?.content).toBe("Done");
-      expect(result.lineCount).toBe(3);
+      const result = readLogLines(path);
+      expect(result.lines).toHaveLength(2);
+      expect(result.lines[0]).toBe("not json");
+      expect(result.lines[1]).toBe('{"type":"assistant"}');
     });
   });
 

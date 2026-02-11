@@ -192,6 +192,7 @@ export const createMockContext = (sessionRepository: SessionRepository): LocalSe
     sessionRepository,
     executionRepository: {} as LocalServerContext["executionRepository"],
     logBuffer: {} as LocalServerContext["logBuffer"],
+    logFlusher: {} as LocalServerContext["logFlusher"],
     repoRepository: {} as LocalServerContext["repoRepository"],
     settingsRepository: {} as LocalServerContext["settingsRepository"],
     taskEventEmitter: {} as LocalServerContext["taskEventEmitter"],

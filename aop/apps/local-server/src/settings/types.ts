@@ -36,7 +36,10 @@ export const VALID_PROVIDER_VALUES = [
   "claude-code",
   "opencode:opencode/kimi-k2.5",
   "opencode:opencode/kimi-k2.5-free",
-  "opencode:openai/gpt-5.3-codex",
+  "opencode:openai/gpt-5.3-codex/medium",
+  "opencode:openai/gpt-5.3-codex/high",
+  "opencode:openai/gpt-5.3-codex/xhigh",
+  "opencode:openai/gpt-5.3-codex/low",
   "cursor-cli:composer-1.5",
 ] as const;
 

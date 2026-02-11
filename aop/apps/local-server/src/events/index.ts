@@ -1,11 +1,10 @@
 export {
   createLogBuffer,
-  type ExecutionCompleteEvent,
   getLogBuffer,
   type LogBuffer,
   type LogEvent,
-  type LogLine,
   resetLogBuffer,
+  type StepCompleteEvent,
 } from "./log-buffer.ts";
 export { createEventsSSEHandler } from "./routes.ts";
 export {

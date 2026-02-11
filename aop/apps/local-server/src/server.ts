@@ -26,6 +26,7 @@ export const startServer = async (options?: ServerOptions): Promise<ServerHandle
   const db = createDatabase(dbPath);
   await runMigrations(db);
   const ctx = createCommandContext(db);
+  ctx.logFlusher.start();
 
   const orchestrator = createOrchestrator(ctx);
 
@@ -63,6 +64,7 @@ export const startServer = async (options?: ServerOptions): Promise<ServerHandle
   return {
     shutdown: async () => {
       logger.info("Shutting down...");
+      ctx.logFlusher.stop();
       await orchestrator.stop();
       server.stop();
       await db.destroy();

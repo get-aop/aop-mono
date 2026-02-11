@@ -2,13 +2,13 @@ import type { Kysely } from "kysely";
 import type {
   Database,
   Execution,
-  ExecutionLog,
   ExecutionUpdate,
   NewExecution,
-  NewExecutionLog,
   NewStepExecution,
+  NewStepLog,
   StepExecution,
   StepExecutionUpdate,
+  StepLog,
 } from "../db/schema.ts";
 
 export interface ExecutionRepository {
@@ -26,8 +26,10 @@ export interface ExecutionRepository {
   cancelRunningStepExecutions: () => Promise<number>;
   getRunningStepExecutions: () => Promise<(StepExecution & { task_id: string })[]>;
 
-  saveExecutionLogs: (logs: NewExecutionLog[]) => Promise<void>;
-  getExecutionLogs: (executionId: string) => Promise<ExecutionLog[]>;
+  saveStepLogs: (logs: NewStepLog[]) => Promise<void>;
+  getStepLogs: (stepExecutionId: string) => Promise<StepLog[]>;
+  getStepLogCount: (stepExecutionId: string) => Promise<number>;
+  getStepLogsByExecutionId: (executionId: string) => Promise<StepLog[]>;
 }
 
 export const createExecutionRepository = (db: Kysely<Database>): ExecutionRepository => ({
@@ -186,17 +188,36 @@ export const createExecutionRepository = (db: Kysely<Database>): ExecutionReposi
       .execute();
   },
 
-  saveExecutionLogs: async (logs: NewExecutionLog[]): Promise<void> => {
+  saveStepLogs: async (logs: NewStepLog[]): Promise<void> => {
     if (logs.length === 0) return;
-    await db.insertInto("execution_logs").values(logs).execute();
+    await db.insertInto("step_logs").values(logs).execute();
   },
 
-  getExecutionLogs: async (executionId: string): Promise<ExecutionLog[]> => {
+  getStepLogs: async (stepExecutionId: string): Promise<StepLog[]> => {
     return db
-      .selectFrom("execution_logs")
+      .selectFrom("step_logs")
       .selectAll()
-      .where("execution_id", "=", executionId)
+      .where("step_execution_id", "=", stepExecutionId)
       .orderBy("id", "asc")
+      .execute();
+  },
+
+  getStepLogCount: async (stepExecutionId: string): Promise<number> => {
+    const result = await db
+      .selectFrom("step_logs")
+      .select(db.fn.countAll<number>().as("count"))
+      .where("step_execution_id", "=", stepExecutionId)
+      .executeTakeFirstOrThrow();
+    return Number(result.count);
+  },
+
+  getStepLogsByExecutionId: async (executionId: string): Promise<StepLog[]> => {
+    return db
+      .selectFrom("step_logs")
+      .innerJoin("step_executions", "step_logs.step_execution_id", "step_executions.id")
+      .selectAll("step_logs")
+      .where("step_executions.execution_id", "=", executionId)
+      .orderBy("step_logs.id", "asc")
       .execute();
   },
 });

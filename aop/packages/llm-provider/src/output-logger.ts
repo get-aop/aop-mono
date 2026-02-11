@@ -1,4 +1,8 @@
 import { getLogger, type Logger, type OutputHandler } from "@aop/infra";
+import {
+  extractAssistantTextFromRawEvent,
+  formatToolInput as formatToolInputFromLogs,
+} from "./logs";
 
 interface ContentBlock {
   type: string;
@@ -11,24 +15,8 @@ interface AssistantMessage {
   content?: ContentBlock[];
 }
 
-type ToolFormatter = (input: Record<string, unknown>) => string;
-
-const toolFormatters: Record<string, ToolFormatter> = {
-  Bash: (i) => String(i.command ?? ""),
-  Read: (i) => String(i.file_path ?? ""),
-  Write: (i) => String(i.file_path ?? ""),
-  Edit: (i) => String(i.file_path ?? ""),
-  Glob: (i) => `${i.pattern ?? ""}${i.path ? ` in ${i.path}` : ""}`,
-  Grep: (i) => `${i.pattern ?? ""}${i.path ? ` in ${i.path}` : ""}`,
-  Skill: (i) => `${i.skill ?? ""}${i.args ? ` ${i.args}` : ""}`,
-  Task: (i) => String(i.description ?? ""),
-  WebFetch: (i) => String(i.url ?? ""),
-  WebSearch: (i) => String(i.query ?? ""),
-};
-
 export const formatToolInput = (name: string, input: Record<string, unknown>): string => {
-  const formatter = toolFormatters[name];
-  return formatter ? formatter(input) : JSON.stringify(input).slice(0, 200);
+  return formatToolInputFromLogs(name, input);
 };
 
 const logTextLines = (log: Logger, text: string, iter?: number): void => {
@@ -61,6 +49,13 @@ const logAssistantContent = (message: unknown, log: Logger, iter?: number): void
 
 const handleAssistant = (data: Record<string, unknown>, log: Logger, iter?: number): void => {
   logAssistantContent(data.message, log, iter);
+};
+
+const handleOpenCodeText = (data: Record<string, unknown>, log: Logger, iter?: number): void => {
+  const text = extractAssistantTextFromRawEvent(data);
+  if (text) {
+    logTextLines(log, text, iter);
+  }
 };
 
 const handleToolUse = (data: Record<string, unknown>, log: Logger, iter?: number): void => {
@@ -121,6 +116,7 @@ export const createOutputLogger = (options: OutputLoggerOptions): OutputHandler 
 
   const handlers: Record<string, (data: Record<string, unknown>) => void> = {
     assistant: (d) => handleAssistant(d, log, iter),
+    text: (d) => handleOpenCodeText(d, log, iter),
     tool_use: (d) => handleToolUse(d, log, iter),
     tool_result: (d) => handleToolResult(d, log, iter),
     result: (d) => handleResult(d, log, iter),
@@ -142,21 +138,5 @@ export const createOutputLogger = (options: OutputLoggerOptions): OutputHandler 
  * Extract text content from an assistant message.
  */
 export const extractAssistantText = (data: Record<string, unknown>): string => {
-  // OpenCode format
-  if (data.type === "text" && data.part) {
-    const part = data.part as Record<string, unknown>;
-    return typeof part.text === "string" ? part.text : "";
-  }
-
-  if (data.type !== "assistant") return "";
-  const message = data.message;
-  if (message && typeof message === "object") {
-    const am = message as AssistantMessage;
-    return (am.content ?? [])
-      .filter((b) => b.type === "text" && b.text)
-      .map((b) => b.text)
-      .join("\n");
-  }
-  if (typeof message === "string") return message;
-  return "";
+  return extractAssistantTextFromRawEvent(data);
 };

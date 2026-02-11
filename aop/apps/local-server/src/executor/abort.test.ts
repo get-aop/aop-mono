@@ -465,4 +465,36 @@ describe("abortTask", () => {
     const step1 = await ctx.executionRepository.getStepExecution("step-1");
     expect(step1?.status).toBe(StepExecutionStatus.SUCCESS);
   });
+
+  test("updates stale running step even when execution was already finalized", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "/test/change", "WORKING");
+
+    // Simulate race: completion handler finalized execution but not the step
+    await ctx.executionRepository.createExecution({
+      id: "exec-1",
+      task_id: "task-1",
+      status: ExecutionStatus.COMPLETED,
+      started_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+    });
+
+    await ctx.executionRepository.createStepExecution({
+      id: "step-1",
+      execution_id: "exec-1",
+      status: StepExecutionStatus.RUNNING,
+      started_at: new Date().toISOString(),
+    });
+
+    await abortTask(ctx, "task-1");
+
+    // Execution stays COMPLETED (not overwritten to ABORTED)
+    const exec1 = await ctx.executionRepository.getExecution("exec-1");
+    expect(exec1?.status).toBe(ExecutionStatus.COMPLETED);
+
+    // Step must be updated to FAILURE despite execution not being RUNNING
+    const step1 = await ctx.executionRepository.getStepExecution("step-1");
+    expect(step1?.status).toBe(StepExecutionStatus.FAILURE);
+    expect(step1?.error).toBe("Aborted");
+  });
 });

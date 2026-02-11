@@ -39,6 +39,12 @@ const parseSSEEvents = (text: string): SSEEvent[] => {
     .filter((e): e is SSEEvent => e !== null);
 };
 
+const makeRawJsonl = (text: string) =>
+  JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } });
+
+const makeRawJsonlError = (text: string) =>
+  JSON.stringify({ type: "result", subtype: "error", result: text });
+
 describe("log-routes", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
@@ -57,6 +63,27 @@ describe("log-routes", () => {
     await db.destroy();
   });
 
+  const createExecWithStep = async (
+    execId: string,
+    stepId: string,
+    execStatus = ExecutionStatus.RUNNING,
+  ) => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+    await ctx.executionRepository.createExecution({
+      id: execId,
+      task_id: "task-1",
+      status: execStatus,
+      started_at: new Date().toISOString(),
+    });
+    await ctx.executionRepository.createStepExecution({
+      id: stepId,
+      execution_id: execId,
+      status: "running",
+      started_at: new Date().toISOString(),
+    });
+  };
+
   describe("GET /api/executions/:executionId/logs", () => {
     it("returns 404 for non-existent execution", async () => {
       const res = await app.request("/api/executions/non-existent/logs");
@@ -67,21 +94,10 @@ describe("log-routes", () => {
     });
 
     it("returns SSE stream for existing execution", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
-      await ctx.executionRepository.createExecution({
-        id: "exec-1",
-        task_id: "task-1",
-        status: ExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
+      await createExecWithStep("exec-1", "step-1");
 
-      ctx.logBuffer.push("exec-1", {
-        stream: "stdout",
-        content: "Hello world",
-        timestamp: "2024-01-01T00:00:00.000Z",
-      });
-      ctx.logBuffer.markComplete("exec-1", "completed");
+      ctx.logBuffer.push("step-1", makeRawJsonl("Hello world"));
+      ctx.logBuffer.markComplete("step-1", "completed");
 
       const res = await app.request("/api/executions/exec-1/logs");
       expect(res.status).toBe(200);
@@ -103,31 +119,12 @@ describe("log-routes", () => {
     });
 
     it("replays buffered lines for late-joining clients", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
-      await ctx.executionRepository.createExecution({
-        id: "exec-1",
-        task_id: "task-1",
-        status: ExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
+      await createExecWithStep("exec-1", "step-1");
 
-      ctx.logBuffer.push("exec-1", {
-        stream: "stdout",
-        content: "line 1",
-        timestamp: "2024-01-01T00:00:01.000Z",
-      });
-      ctx.logBuffer.push("exec-1", {
-        stream: "stderr",
-        content: "error line",
-        timestamp: "2024-01-01T00:00:02.000Z",
-      });
-      ctx.logBuffer.push("exec-1", {
-        stream: "stdout",
-        content: "line 2",
-        timestamp: "2024-01-01T00:00:03.000Z",
-      });
-      ctx.logBuffer.markComplete("exec-1", "completed");
+      ctx.logBuffer.push("step-1", makeRawJsonl("line 1"));
+      ctx.logBuffer.push("step-1", makeRawJsonlError("error line"));
+      ctx.logBuffer.push("step-1", makeRawJsonl("line 2"));
+      ctx.logBuffer.markComplete("step-1", "completed");
 
       const res = await app.request("/api/executions/exec-1/logs");
       const text = await res.text();
@@ -153,8 +150,6 @@ describe("log-routes", () => {
         started_at: new Date().toISOString(),
       });
 
-      ctx.logBuffer.markComplete("exec-1", "failed");
-
       const res = await app.request("/api/executions/exec-1/logs");
       const text = await res.text();
       const events = parseSSEEvents(text);
@@ -165,30 +160,15 @@ describe("log-routes", () => {
     });
 
     it("streams live log events as they arrive", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
-      await ctx.executionRepository.createExecution({
-        id: "exec-1",
-        task_id: "task-1",
-        status: ExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
+      await createExecWithStep("exec-1", "step-1");
 
       const responsePromise = app.request("/api/executions/exec-1/logs");
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      ctx.logBuffer.push("exec-1", {
-        stream: "stdout",
-        content: "live log 1",
-        timestamp: "2024-01-01T00:00:00.000Z",
-      });
-      ctx.logBuffer.push("exec-1", {
-        stream: "stderr",
-        content: "live error",
-        timestamp: "2024-01-01T00:00:01.000Z",
-      });
-      ctx.logBuffer.markComplete("exec-1", "completed");
+      ctx.logBuffer.push("step-1", makeRawJsonl("live log 1"));
+      ctx.logBuffer.push("step-1", makeRawJsonlError("live error"));
+      ctx.logBuffer.markComplete("step-1", "completed");
 
       const res = await responsePromise;
       expect(res.status).toBe(200);
@@ -210,7 +190,7 @@ describe("log-routes", () => {
       expect(completeEvents[0].status).toBe("completed");
     });
 
-    it("filters log events by executionId", async () => {
+    it("filters log events by stepExecutionId", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
       await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "WORKING");
@@ -220,10 +200,22 @@ describe("log-routes", () => {
         status: ExecutionStatus.RUNNING,
         started_at: new Date().toISOString(),
       });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
       await ctx.executionRepository.createExecution({
         id: "exec-2",
         task_id: "task-2",
         status: ExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-2",
+        execution_id: "exec-2",
+        status: "running",
         started_at: new Date().toISOString(),
       });
 
@@ -231,17 +223,9 @@ describe("log-routes", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      ctx.logBuffer.push("exec-2", {
-        stream: "stdout",
-        content: "other execution log",
-        timestamp: "2024-01-01T00:00:00.000Z",
-      });
-      ctx.logBuffer.push("exec-1", {
-        stream: "stdout",
-        content: "my execution log",
-        timestamp: "2024-01-01T00:00:01.000Z",
-      });
-      ctx.logBuffer.markComplete("exec-1", "completed");
+      ctx.logBuffer.push("step-2", makeRawJsonl("other step log"));
+      ctx.logBuffer.push("step-1", makeRawJsonl("my step log"));
+      ctx.logBuffer.markComplete("step-1", "completed");
 
       const res = await responsePromise;
       const text = await res.text();
@@ -249,10 +233,10 @@ describe("log-routes", () => {
 
       const logEvents = events.map((e) => JSON.parse(e.data)).filter((e) => e.type === "log");
       expect(logEvents).toHaveLength(1);
-      expect(logEvents[0].content).toBe("my execution log");
+      expect(logEvents[0].content).toBe("my step log");
     });
 
-    it("filters complete events by executionId", async () => {
+    it("filters complete events by stepExecutionId", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
       await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "WORKING");
@@ -262,10 +246,22 @@ describe("log-routes", () => {
         status: ExecutionStatus.RUNNING,
         started_at: new Date().toISOString(),
       });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
       await ctx.executionRepository.createExecution({
         id: "exec-2",
         task_id: "task-2",
         status: ExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-2",
+        execution_id: "exec-2",
+        status: "running",
         started_at: new Date().toISOString(),
       });
 
@@ -273,14 +269,10 @@ describe("log-routes", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      ctx.logBuffer.markComplete("exec-2", "failed");
+      ctx.logBuffer.markComplete("step-2", "failed");
 
-      ctx.logBuffer.push("exec-1", {
-        stream: "stdout",
-        content: "log",
-        timestamp: "2024-01-01T00:00:00.000Z",
-      });
-      ctx.logBuffer.markComplete("exec-1", "completed");
+      ctx.logBuffer.push("step-1", makeRawJsonl("log"));
+      ctx.logBuffer.markComplete("step-1", "completed");
 
       const res = await responsePromise;
       const text = await res.text();
@@ -294,16 +286,9 @@ describe("log-routes", () => {
     });
 
     it("sends complete event with cancelled status", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
-      await ctx.executionRepository.createExecution({
-        id: "exec-1",
-        task_id: "task-1",
-        status: ExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
+      await createExecWithStep("exec-1", "step-1");
 
-      ctx.logBuffer.markComplete("exec-1", "cancelled");
+      ctx.logBuffer.markComplete("step-1", "cancelled");
 
       const res = await app.request("/api/executions/exec-1/logs");
       const text = await res.text();
@@ -323,8 +308,6 @@ describe("log-routes", () => {
         status: ExecutionStatus.COMPLETED,
         started_at: new Date().toISOString(),
       });
-
-      ctx.logBuffer.markComplete("exec-1", "completed");
 
       const res = await app.request("/api/executions/exec-1/logs");
       const text = await res.text();
@@ -346,25 +329,28 @@ describe("log-routes", () => {
         started_at: new Date().toISOString(),
         completed_at: new Date().toISOString(),
       });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "success",
+        started_at: new Date().toISOString(),
+      });
 
-      await ctx.executionRepository.saveExecutionLogs([
+      await ctx.executionRepository.saveStepLogs([
         {
-          execution_id: "exec-1",
-          stream: "stdout",
-          content: "persisted line 1",
-          timestamp: "2024-01-01T00:00:01Z",
+          step_execution_id: "step-1",
+          content: makeRawJsonl("persisted line 1"),
+          created_at: "2024-01-01T00:00:01Z",
         },
         {
-          execution_id: "exec-1",
-          stream: "stderr",
-          content: "persisted error",
-          timestamp: "2024-01-01T00:00:02Z",
+          step_execution_id: "step-1",
+          content: makeRawJsonlError("persisted error"),
+          created_at: "2024-01-01T00:00:02Z",
         },
         {
-          execution_id: "exec-1",
-          stream: "stdout",
-          content: "persisted line 2",
-          timestamp: "2024-01-01T00:00:03Z",
+          step_execution_id: "step-1",
+          content: makeRawJsonl("persisted line 2"),
+          created_at: "2024-01-01T00:00:03Z",
         },
       ]);
 
@@ -400,13 +386,18 @@ describe("log-routes", () => {
         started_at: new Date().toISOString(),
         completed_at: new Date().toISOString(),
       });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "failure",
+        started_at: new Date().toISOString(),
+      });
 
-      await ctx.executionRepository.saveExecutionLogs([
+      await ctx.executionRepository.saveStepLogs([
         {
-          execution_id: "exec-1",
-          stream: "stderr",
-          content: "error occurred",
-          timestamp: "2024-01-01T00:00:01Z",
+          step_execution_id: "step-1",
+          content: makeRawJsonlError("error occurred"),
+          created_at: "2024-01-01T00:00:01Z",
         },
       ]);
 
@@ -443,8 +434,6 @@ describe("log-routes", () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
 
-      // Open 15 SSE connections that complete normally - more than the default EventEmitter limit of 10
-      // If listeners aren't cleaned up, this would trigger MaxListenersExceededWarning
       for (let i = 0; i < 15; i++) {
         await ctx.executionRepository.createExecution({
           id: `exec-${i}`,
@@ -452,36 +441,28 @@ describe("log-routes", () => {
           status: ExecutionStatus.RUNNING,
           started_at: new Date().toISOString(),
         });
+        await ctx.executionRepository.createStepExecution({
+          id: `step-${i}`,
+          execution_id: `exec-${i}`,
+          status: "running",
+          started_at: new Date().toISOString(),
+        });
 
         const responsePromise = app.request(`/api/executions/exec-${i}/logs`);
         await new Promise((resolve) => setTimeout(resolve, 10));
 
-        ctx.logBuffer.push(`exec-${i}`, {
-          stream: "stdout",
-          content: "test log",
-          timestamp: "2024-01-01T00:00:00.000Z",
-        });
-        ctx.logBuffer.markComplete(`exec-${i}`, "completed");
+        ctx.logBuffer.push(`step-${i}`, makeRawJsonl("test log"));
+        ctx.logBuffer.markComplete(`step-${i}`, "completed");
 
         const res = await responsePromise;
         expect(res.status).toBe(200);
 
-        // Wait for async cleanup to complete after the response
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-
-      // If we got here without warnings, listeners are being cleaned up properly
     });
 
     it("unsubscribes from log events on abort", async () => {
-      await createTestRepo(db, "repo-1", "/test/repo");
-      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
-      await ctx.executionRepository.createExecution({
-        id: "exec-1",
-        task_id: "task-1",
-        status: ExecutionStatus.RUNNING,
-        started_at: new Date().toISOString(),
-      });
+      await createExecWithStep("exec-1", "step-1");
 
       const controller = new AbortController();
       const responsePromise = app.request("/api/executions/exec-1/logs", {
@@ -490,30 +471,20 @@ describe("log-routes", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      ctx.logBuffer.push("exec-1", {
-        stream: "stdout",
-        content: "before abort",
-        timestamp: "2024-01-01T00:00:00.000Z",
-      });
+      ctx.logBuffer.push("step-1", makeRawJsonl("before abort"));
 
       await new Promise((resolve) => setTimeout(resolve, 20));
       controller.abort();
       await new Promise((resolve) => setTimeout(resolve, 20));
 
-      ctx.logBuffer.push("exec-1", {
-        stream: "stdout",
-        content: "after abort - should not appear",
-        timestamp: "2024-01-01T00:00:01.000Z",
-      });
+      ctx.logBuffer.push("step-1", makeRawJsonl("after abort - should not appear"));
 
       try {
         await responsePromise;
       } catch {}
 
-      const lines = ctx.logBuffer.getLines("exec-1");
+      const lines = ctx.logBuffer.getLines("step-1");
       expect(lines).toHaveLength(2);
-      expect(lines[0]?.content).toBe("before abort");
-      expect(lines[1]?.content).toBe("after abort - should not appear");
     });
   });
 });
@@ -721,21 +692,16 @@ describe("log-routes file-based streaming", () => {
 
     setupFileRoute(() => false);
 
-    ctx.logBuffer.push("exec-5", {
-      stream: "stdout",
-      content: "from buffer",
-      timestamp: "2024-01-01T00:00:00.000Z",
-    });
-    ctx.logBuffer.markComplete("exec-5", "completed");
-
+    // No step execution exists, so streamFromLogBuffer is used with null stepExecutionId
+    // which sends a failed complete event
     const res = await app.request("/api/executions/exec-5/logs");
     const text = await res.text();
     const events = parseSSEEvents(text);
     const parsed = events.map((e) => JSON.parse(e.data));
 
-    const replayEvent = parsed.find((e) => e.type === "replay");
-    expect(replayEvent).toBeDefined();
-    expect(replayEvent.lines[0].content).toBe("from buffer");
+    const completeEvent = parsed.find((e) => e.type === "complete");
+    expect(completeEvent).toBeDefined();
+    expect(completeEvent.status).toBe("failed");
   });
 
   it("assigns event IDs aligned with line count", async () => {
@@ -781,18 +747,16 @@ describe("log-routes file-based streaming", () => {
       started_at: "2024-01-01T00:00:00.000Z",
       ended_at: "2024-01-01T00:08:00.000Z",
     });
-    await ctx.executionRepository.saveExecutionLogs([
+    await ctx.executionRepository.saveStepLogs([
       {
-        execution_id: "exec-multi",
-        stream: "stdout",
-        content: "step 1 output",
-        timestamp: "2024-01-01T00:01:00.000Z",
+        step_execution_id: "step-completed",
+        content: makeRawJsonl("step 1 output"),
+        created_at: "2024-01-01T00:01:00.000Z",
       },
       {
-        execution_id: "exec-multi",
-        stream: "stdout",
-        content: "step 1 done",
-        timestamp: "2024-01-01T00:07:00.000Z",
+        step_execution_id: "step-completed",
+        content: makeRawJsonl("step 1 done"),
+        created_at: "2024-01-01T00:07:00.000Z",
       },
     ]);
 

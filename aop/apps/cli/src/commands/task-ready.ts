@@ -7,6 +7,7 @@ const logger = getLogger("cli", "task-ready");
 export interface TaskReadyOptions {
   workflow?: string;
   baseBranch?: string;
+  provider?: string;
   retryFromStep?: string;
 }
 
@@ -47,6 +48,7 @@ const markTaskReady = async (task: Task, options?: TaskReadyOptions): Promise<vo
   const body: Record<string, string> = {};
   if (options?.workflow) body.workflow = options.workflow;
   if (options?.baseBranch) body.baseBranch = options.baseBranch;
+  if (options?.provider) body.provider = options.provider;
   if (options?.retryFromStep) body.retryFromStep = options.retryFromStep;
   const result = await fetchServer<TaskReadyResponse>(
     `/api/repos/${task.repoId}/tasks/${task.id}/ready`,

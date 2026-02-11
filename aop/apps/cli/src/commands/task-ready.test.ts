@@ -83,16 +83,21 @@ describe("taskReadyCommand", () => {
     expect(mockFetchServer.mock.calls.at(1)?.at(1).method).toBe("POST");
   });
 
-  test("passes workflow and baseBranch options in body", async () => {
+  test("passes workflow, baseBranch, and provider options in body", async () => {
     mockFetchServer.mockResolvedValueOnce(makeStatusWithTask()).mockResolvedValueOnce({
       ok: true,
       data: { ok: true, taskId: "task-abc-123" },
     });
 
-    await taskReadyCommand("task-abc", { workflow: "deploy", baseBranch: "develop" });
+    await taskReadyCommand("task-abc", {
+      workflow: "deploy",
+      baseBranch: "develop",
+      provider: "opencode:openai/gpt-5.3-codex",
+    });
     const body = JSON.parse(mockFetchServer.mock.calls.at(1)?.at(1).body);
     expect(body.workflow).toBe("deploy");
     expect(body.baseBranch).toBe("develop");
+    expect(body.provider).toBe("opencode:openai/gpt-5.3-codex");
   });
 
   test("sends empty body when no options provided", async () => {

@@ -431,7 +431,10 @@ const formatProviderLabel = (provider: string): string => {
   if (provider === "claude-code") return "Opus 4.6";
   if (provider === "opencode:opencode/kimi-k2.5") return "Kimi K2.5";
   if (provider === "opencode:opencode/kimi-k2.5-free") return "Kimi K2.5 Free";
-  if (provider === "opencode:openai/gpt-5.3-codex") return "GPT 5.3 Codex";
+  if (provider === "opencode:openai/gpt-5.3-codex/medium") return "GPT 5.3 Codex (Medium)";
+  if (provider === "opencode:openai/gpt-5.3-codex/high") return "GPT 5.3 Codex (High)";
+  if (provider === "opencode:openai/gpt-5.3-codex/xhigh") return "GPT 5.3 Codex (X-High)";
+  if (provider === "opencode:openai/gpt-5.3-codex/low") return "GPT 5.3 Codex (Low)";
   if (provider === "cursor-cli:composer-1.5") return "Composer 1.5";
   return provider;
 };
@@ -663,9 +666,11 @@ const ExecutionHistory = ({
     ({ running: "Running", completed: "Completed", failed: "Failed" })[status];
 
   const getStatusColor = (status: Execution["status"]) =>
-    ({ running: "text-aop-working", completed: "text-aop-success", failed: "text-aop-blocked" })[
-      status
-    ];
+    ({
+      running: "text-aop-working",
+      completed: "text-aop-success",
+      failed: "text-aop-blocked",
+    })[status];
 
   return (
     <div className="shrink-0" data-testid="execution-history">
@@ -755,7 +760,12 @@ const useStepSelection = (
 
   const isStreamingLive = isLive && (!selectedStepId || selectedStepId === runningStepId);
 
-  return { selectedStepId, expandedExecution, isStreamingLive, handleStepClick };
+  return {
+    selectedStepId,
+    expandedExecution,
+    isStreamingLive,
+    handleStepClick,
+  };
 };
 
 const getDisplayedLogs = (

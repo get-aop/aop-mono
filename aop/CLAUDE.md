@@ -1,22 +1,28 @@
 # AOP - Agents Operating Platform
 
+AOP (Agents Operating Platform) - A platform for orchestrating AI agents with CLI, server, dashboard, and local server components.
+
 ## Coding Conventions
 
 Optimize for AI agent context windows (the 40% rule).
 
 ### Size Limits
+
 - **Files**: Max 500 lines - split into focused modules if exceeded
 - **Functions**: cyclomatic complexity under 10
 
 ### Architecture
+
 - **Vertical slices**: Organize by domain, not technical layer (no `repositories/`, `services/`, `controllers/` folders)
 - **Single responsibility**: Each module does one thing well
 - **Newspaper style**: Public functions at top, private helpers below
 
 ### Data Flow (CRITICAL)
+
 ```
 thin entrypoints (routes, commands, etc.) → domain services → repositories
 ```
+
 - **Entrypoints** (routes, commands): ONLY parse input, call one service, return response
 - **Services**: Business logic, orchestration
 - **Repositories**: Data access only
@@ -24,12 +30,14 @@ thin entrypoints (routes, commands, etc.) → domain services → repositories
 Entrypoints must NEVER import repositories or contain business logic. If you're importing a repository into a route, create a service.
 
 ### Package Structure
+
 ```
 apps/           # Apps (cli, server, dashboard)
 packages/       # Shared code (common for types, infra for utilities)
 ```
 
 Within apps, organize by domain:
+
 ```
 apps/server/src/
   api/        # Routes (thin)
@@ -41,12 +49,14 @@ apps/server/src/
 ```
 
 ### DRY
+
 - **Shared types** live in `@aop/common` - never duplicate types between apps
 - **Shared utilities** live in `@aop/infra` - check before creating new ones
 - **Test helpers** go in colocated `test-utils.ts` - never copy-paste setup code
 - One field per value - don't hold same reference in multiple fields
 
 ### Code Quality
+
 - Tests colocated: `*.test.ts` next to `*.ts`
 - No dead code - delete unused functions/imports
 - Comments explain "why", not "what"
@@ -54,6 +64,7 @@ apps/server/src/
 - Never disable lint rules
 
 ### Testing
+
 - **Unit/Integration**: Real assertions on return values and state - no `expect(true).toBe(true)`
 - **E2E**: Real agents, real API calls - never mock the agent
 - **Repositories**: Integration tests with real database
@@ -68,10 +79,14 @@ apps/server/src/
 
 ## Reference
 
+- `docs/` - Technical documentation
+
 ### Bun Runtime
+
 Use Bun instead of Node.js: `bun`, `bun test`, `bun install`, `bunx`.
 
 ### Bun APIs
+
 - `Bun.serve()` for HTTP/WebSocket (not express)
 - `bun:sqlite` for SQLite (not better-sqlite3)
 - `Bun.sql` for Postgres (not pg)
@@ -79,7 +94,46 @@ Use Bun instead of Node.js: `bun`, `bun test`, `bun install`, `bunx`.
 - `Bun.$` for shell commands (not execa)
 
 ### Logging
+
 Use `@aop/infra` logger with structured logging. Use `{placeholder}` syntax with properties object, never template literals. Use `logger.with()` for persistent context in a function scope.
 
 ### Frontend
+
 Use `Bun.serve()` with HTML imports for React/CSS/Tailwind. No vite. See `node_modules/bun-types/docs/**.mdx` for details.
+
+## Key Commands
+
+```bash
+# Verify all CLI tools are working
+./scripts/verify-tooling.sh
+
+# Install dependencies
+bun install
+
+# Run tests
+bun test
+
+# Run tests with coverage
+bun test:coverage
+
+# Lint + typecheck + build
+bun check
+
+# Lint
+bun run lint
+
+# Format
+bun run format
+
+# Type check
+bun run typecheck
+
+# Build
+bun run build
+
+# Dev server
+bun run dev
+
+# E2E tests
+bun test:e2e
+```

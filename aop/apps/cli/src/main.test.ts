@@ -210,7 +210,7 @@ describe("registerCommands", () => {
     expect(optionNames).toContain("force");
   });
 
-  test("task:ready command has --workflow, --base-branch, and --resume options", () => {
+  test("task:ready command has --workflow, --base-branch, --provider, and --resume options", () => {
     const cli = cac("test-aop");
     registerCommands(cli);
 
@@ -219,6 +219,7 @@ describe("registerCommands", () => {
     const optionNames = cmd?.options.map((opt) => opt.name);
     expect(optionNames).toContain("workflow");
     expect(optionNames).toContain("baseBranch");
+    expect(optionNames).toContain("provider");
     expect(optionNames).toContain("resume");
   });
 
@@ -266,6 +267,7 @@ describe("registerCommands", () => {
     getCommandAction("task:ready")("task-123", {
       workflow: "default",
       baseBranch: "main",
+      provider: "opencode:openai/gpt-5.3-codex",
       resume: "design_brief",
     });
     getCommandAction("task:remove")("task-123", { force: false });
@@ -281,6 +283,7 @@ describe("registerCommands", () => {
     expect(handlers.taskReadyCommand).toHaveBeenCalledWith("task-123", {
       workflow: "default",
       baseBranch: "main",
+      provider: "opencode:openai/gpt-5.3-codex",
       retryFromStep: "design_brief",
     });
     expect(handlers.taskRemoveCommand).toHaveBeenCalledWith("task-123", { force: false });

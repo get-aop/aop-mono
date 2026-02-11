@@ -406,5 +406,58 @@ describe("step-launcher", () => {
       const result = readRunResultFromLog(logFile);
       expect(result.exitCode).toBe(1);
     });
+
+    test("returns exitCode 0 when result entry is multi-line JSON", () => {
+      const logFile = join(testLogsDir, "multiline-result.jsonl");
+      writeFileSync(
+        logFile,
+        '{\n  "type": "result",\n  "subtype": "success",\n  "result": "done"\n}\n',
+      );
+      const result = readRunResultFromLog(logFile);
+      expect(result.exitCode).toBe(0);
+    });
+
+    test("returns exitCode 0 for OpenCode-style streams without result entry", () => {
+      const logFile = join(testLogsDir, "opencode-success.jsonl");
+      writeFileSync(
+        logFile,
+        [
+          JSON.stringify({ type: "tool_use", part: { tool: "bash", state: { input: {} } } }),
+          JSON.stringify({
+            type: "text",
+            part: { text: "All tasks complete <aop>ALL_TASKS_DONE</aop>" },
+          }),
+        ].join("\n"),
+      );
+      const result = readRunResultFromLog(logFile);
+      expect(result.exitCode).toBe(0);
+    });
+
+    test("returns exitCode 1 when stream contains explicit error marker", () => {
+      const logFile = join(testLogsDir, "opencode-failure.jsonl");
+      writeFileSync(
+        logFile,
+        [
+          JSON.stringify({ type: "tool_use", part: { tool: "bash", state: { input: {} } } }),
+          JSON.stringify({ type: "event", level: "error", error: "tool failed" }),
+        ].join("\n"),
+      );
+      const result = readRunResultFromLog(logFile);
+      expect(result.exitCode).toBe(1);
+    });
+
+    test("returns exitCode 1 when trailing JSON line is partial", () => {
+      const logFile = join(testLogsDir, "partial-tail.jsonl");
+      writeFileSync(
+        logFile,
+        [
+          JSON.stringify({ type: "text", part: { text: "Done <aop>ALL_TASKS_DONE</aop>" } }),
+          '{"type":"result","subtype":"success"',
+        ].join("\n"),
+      );
+
+      const result = readRunResultFromLog(logFile);
+      expect(result.exitCode).toBe(1);
+    });
   });
 });

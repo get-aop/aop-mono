@@ -8,6 +8,29 @@ export type {
   StreamEvent,
 } from "./claude-session";
 export { ClaudeCodeSession } from "./claude-session";
+export type {
+  AssistantSignalText,
+  InferredRunOutcome,
+  LogProvider,
+  LogStream,
+  NormalizedLogEvent,
+  ParsedRawJsonl,
+  ParsedRawLogEntry,
+  RawProviderEvent,
+  RenderedLogLine,
+  RunOutcome,
+} from "./logs";
+export {
+  extractAssistantSignalTextFromEntries,
+  extractAssistantSignalTextFromRawJsonl,
+  extractAssistantTextFromRawEvent,
+  inferRunOutcomeFromEntries,
+  inferRunOutcomeFromRawJsonl,
+  normalizeRawEvent,
+  normalizeRawEvents,
+  parseRawJsonlContent,
+  renderCompactLogLines,
+} from "./logs";
 export { createOutputLogger, extractAssistantText, formatToolInput } from "./output-logger";
 export { createProvider } from "./provider-factory";
 export { ClaudeCodeProvider } from "./providers/claude-code";

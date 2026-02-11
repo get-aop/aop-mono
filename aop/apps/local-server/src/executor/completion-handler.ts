@@ -7,9 +7,8 @@ import type {
   TaskStatus,
 } from "@aop/common/protocol";
 import { getLogger } from "@aop/infra";
-import { extractAssistantText } from "@aop/llm-provider";
+import { extractAssistantSignalTextFromRawJsonl } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
-import { forEachJsonlEntry, parseJsonlEntry } from "../events/log-file-tailer.ts";
 import type { ServerSync, StepCompletePayload } from "../orchestrator/sync/server-sync.ts";
 import { detectSignal } from "../orchestrator/sync/signal-detector.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
@@ -24,20 +23,29 @@ export const processAgentCompletion = (
   runResult: { exitCode: number; sessionId?: string; timedOut?: boolean },
   signals: SignalDefinition[],
 ): ExecuteResult => {
-  const collectedText: string[] = [];
+  let assistantText = "";
+  let signalTextComplete = true;
 
   if (existsSync(logFile)) {
     const content = readFileSync(logFile, "utf-8");
-    forEachJsonlEntry(content, (data) => {
-      const text = extractAssistantText(data);
-      if (text) collectedText.push(text);
+    const extracted = extractAssistantSignalTextFromRawJsonl(content, {
+      requireCompleteLine: true,
     });
+    assistantText = extracted.text;
+    signalTextComplete = extracted.isComplete;
+
+    if (!extracted.isComplete) {
+      logger.warn("Skipping signal detection due to partial trailing JSONL entry", { logFile });
+    }
   }
 
   const status = runResult.timedOut ? "timeout" : runResult.exitCode === 0 ? "success" : "failure";
-  const fullOutput = collectedText.join("\n");
+  const fullOutput = assistantText;
   // Only detect signals when the agent succeeded — a crashed/timed-out agent's output is unreliable
-  const signal = status === "success" ? detectSignal(fullOutput, signals).signal : undefined;
+  const signal =
+    status === "success" && signalTextComplete
+      ? detectSignal(fullOutput, signals).signal
+      : undefined;
   const pauseContext = signal === "REQUIRES_INPUT" ? extractPauseContext(fullOutput) : undefined;
 
   return {
@@ -52,16 +60,15 @@ export const processAgentCompletion = (
 export const populateLogBuffer = (
   ctx: LocalServerContext,
   logFile: string,
-  executionId: string,
+  stepExecutionId: string,
 ): void => {
   if (!existsSync(logFile)) return;
 
   const content = readFileSync(logFile, "utf-8");
-  forEachJsonlEntry(content, (data) => {
-    for (const line of parseJsonlEntry(data)) {
-      ctx.logBuffer.push(executionId, line);
-    }
-  });
+  const lines = content.split("\n").filter((line) => line.length > 0);
+  for (const rawLine of lines) {
+    ctx.logBuffer.push(stepExecutionId, rawLine);
+  }
 };
 
 export const cleanupLogFile = (logFile: string): void => {
@@ -75,29 +82,29 @@ export const cleanupLogFile = (logFile: string): void => {
   }
 };
 
-export const persistExecutionLogs = async (
+export const persistStepLogs = async (
   ctx: LocalServerContext,
-  executionId: string,
+  stepExecutionId: string,
 ): Promise<void> => {
-  const lines = ctx.logBuffer.getLines(executionId);
+  const lines = ctx.logBuffer.getLines(stepExecutionId);
   if (lines.length === 0) return;
 
-  const logs = lines.map((line) => ({
-    execution_id: executionId,
-    stream: line.stream,
-    content: line.content,
-    timestamp: line.timestamp,
+  const now = new Date().toISOString();
+  const logs = lines.map((rawLine) => ({
+    step_execution_id: stepExecutionId,
+    content: rawLine,
+    created_at: now,
   }));
 
   try {
-    await ctx.executionRepository.saveExecutionLogs(logs);
-    logger.debug("Persisted {count} log lines for execution {executionId}", {
+    await ctx.executionRepository.saveStepLogs(logs);
+    logger.debug("Persisted {count} log lines for step execution {stepExecutionId}", {
       count: logs.length,
-      executionId,
+      stepExecutionId,
     });
   } catch (err) {
-    logger.warn("Failed to persist execution logs: {error}", {
-      executionId,
+    logger.warn("Failed to persist step logs: {error}", {
+      stepExecutionId,
       error: String(err),
     });
   }
@@ -241,7 +248,7 @@ const tryServerCompletion = async (
   return { handled: true };
 };
 
-const updateStepExecutionRecord = async (
+export const updateStepExecutionRecord = async (
   ctx: LocalServerContext,
   stepId: string,
   result: ExecuteResult,

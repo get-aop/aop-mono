@@ -1,6 +1,9 @@
 import type { LLMProvider, RunOptions, RunResult } from "../types";
 import { createWatchdog, getFileMtime, type Watchdog } from "./claude-code";
 
+// TODO: we need better model/variants, this is a hack
+const ALLOWED_VARIANTS = ["low", "medium", "high", "xhigh"];
+
 export class OpenCodeProvider implements LLMProvider {
   readonly name = "opencode";
   readonly model: string;
@@ -10,11 +13,14 @@ export class OpenCodeProvider implements LLMProvider {
   }
 
   buildCommand(options: RunOptions): string[] {
-    return ["opencode", "run", "--model", this.model, "--format", "json", options.prompt];
+    const cmd = ["opencode", "run", "--model", this.model, "--format", "json", options.prompt];
+    attachVariant(cmd, this.model);
+    return cmd;
   }
 
   async run(options: RunOptions): Promise<RunResult> {
-    const spawnEnv = options.env ? { ...process.env, ...options.env } : undefined;
+    const spawnEnv = options.env ? { ...process.env, ...options.env } : {};
+    spawnEnv.OPENCODE_PERMISSION = '{"*":"allow"}';
 
     const proc = Bun.spawn({
       cmd: this.buildCommand(options),
@@ -52,3 +58,11 @@ export class OpenCodeProvider implements LLMProvider {
     return { exitCode, pid, timedOut };
   }
 }
+
+const attachVariant = (cmd: string[], model: string): void => {
+  const maybeVariant = model.split("/")[-1] ?? "";
+
+  if (ALLOWED_VARIANTS.includes(maybeVariant)) {
+    cmd.push("--variant", maybeVariant);
+  }
+};

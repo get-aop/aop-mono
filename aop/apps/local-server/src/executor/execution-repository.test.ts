@@ -436,43 +436,38 @@ describe("ExecutionRepository", () => {
     });
   });
 
-  describe("saveExecutionLogs", () => {
-    test("saves execution logs to database", async () => {
+  describe("saveStepLogs", () => {
+    test("saves step logs to database", async () => {
       await repo.createExecution({
         id: "exec-1",
         task_id: "task-1",
         status: "running",
         started_at: "2024-01-01T00:00:00Z",
       });
+      await repo.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
 
-      await repo.saveExecutionLogs([
+      await repo.saveStepLogs([
         {
-          execution_id: "exec-1",
-          stream: "stdout",
-          content: "line 1",
-          timestamp: "2024-01-01T00:00:01Z",
+          step_execution_id: "step-1",
+          content: '{"type":"text","content":"line 1"}',
+          created_at: "2024-01-01T00:00:01Z",
         },
         {
-          execution_id: "exec-1",
-          stream: "stderr",
-          content: "error 1",
-          timestamp: "2024-01-01T00:00:02Z",
-        },
-        {
-          execution_id: "exec-1",
-          stream: "stdout",
-          content: "line 2",
-          timestamp: "2024-01-01T00:00:03Z",
+          step_execution_id: "step-1",
+          content: '{"type":"tool_use","name":"bash"}',
+          created_at: "2024-01-01T00:00:02Z",
         },
       ]);
 
-      const logs = await repo.getExecutionLogs("exec-1");
-      expect(logs).toHaveLength(3);
-      expect(logs[0]?.content).toBe("line 1");
-      expect(logs[0]?.stream).toBe("stdout");
-      expect(logs[1]?.content).toBe("error 1");
-      expect(logs[1]?.stream).toBe("stderr");
-      expect(logs[2]?.content).toBe("line 2");
+      const logs = await repo.getStepLogs("step-1");
+      expect(logs).toHaveLength(2);
+      expect(logs[0]?.content).toBe('{"type":"text","content":"line 1"}');
+      expect(logs[1]?.content).toBe('{"type":"tool_use","name":"bash"}');
     });
 
     test("does nothing when logs array is empty", async () => {
@@ -482,15 +477,21 @@ describe("ExecutionRepository", () => {
         status: "running",
         started_at: "2024-01-01T00:00:00Z",
       });
+      await repo.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
 
-      await repo.saveExecutionLogs([]);
+      await repo.saveStepLogs([]);
 
-      const logs = await repo.getExecutionLogs("exec-1");
+      const logs = await repo.getStepLogs("step-1");
       expect(logs).toEqual([]);
     });
   });
 
-  describe("getExecutionLogs", () => {
+  describe("getStepLogs", () => {
     test("returns logs in order by id", async () => {
       await repo.createExecution({
         id: "exec-1",
@@ -498,33 +499,98 @@ describe("ExecutionRepository", () => {
         status: "running",
         started_at: "2024-01-01T00:00:00Z",
       });
+      await repo.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
 
-      await repo.saveExecutionLogs([
-        {
-          execution_id: "exec-1",
-          stream: "stdout",
-          content: "first",
-          timestamp: "2024-01-01T00:00:01Z",
-        },
-        {
-          execution_id: "exec-1",
-          stream: "stdout",
-          content: "second",
-          timestamp: "2024-01-01T00:00:02Z",
-        },
+      await repo.saveStepLogs([
+        { step_execution_id: "step-1", content: "first", created_at: "2024-01-01T00:00:01Z" },
+        { step_execution_id: "step-1", content: "second", created_at: "2024-01-01T00:00:02Z" },
       ]);
 
-      const logs = await repo.getExecutionLogs("exec-1");
+      const logs = await repo.getStepLogs("step-1");
       expect(logs[0]?.content).toBe("first");
       expect(logs[1]?.content).toBe("second");
     });
 
-    test("returns empty array for unknown execution", async () => {
-      const logs = await repo.getExecutionLogs("non-existent");
+    test("returns empty array for unknown step execution", async () => {
+      const logs = await repo.getStepLogs("non-existent");
       expect(logs).toEqual([]);
     });
 
-    test("only returns logs for specified execution", async () => {
+    test("only returns logs for specified step execution", async () => {
+      await repo.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+      await repo.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "success",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+      await repo.createStepExecution({
+        id: "step-2",
+        execution_id: "exec-1",
+        status: "running",
+        started_at: "2024-01-01T01:00:00Z",
+      });
+
+      await repo.saveStepLogs([
+        { step_execution_id: "step-1", content: "step1-log", created_at: "2024-01-01T00:00:01Z" },
+        { step_execution_id: "step-2", content: "step2-log", created_at: "2024-01-01T01:00:01Z" },
+      ]);
+
+      const logs1 = await repo.getStepLogs("step-1");
+      const logs2 = await repo.getStepLogs("step-2");
+
+      expect(logs1).toHaveLength(1);
+      expect(logs1[0]?.content).toBe("step1-log");
+      expect(logs2).toHaveLength(1);
+      expect(logs2[0]?.content).toBe("step2-log");
+    });
+  });
+
+  describe("getStepLogsByExecutionId", () => {
+    test("returns logs for all steps of an execution", async () => {
+      await repo.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+      await repo.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "success",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+      await repo.createStepExecution({
+        id: "step-2",
+        execution_id: "exec-1",
+        status: "running",
+        started_at: "2024-01-01T01:00:00Z",
+      });
+
+      await repo.saveStepLogs([
+        { step_execution_id: "step-1", content: "step1-line1", created_at: "2024-01-01T00:00:01Z" },
+        { step_execution_id: "step-1", content: "step1-line2", created_at: "2024-01-01T00:00:02Z" },
+        { step_execution_id: "step-2", content: "step2-line1", created_at: "2024-01-01T01:00:01Z" },
+      ]);
+
+      const logs = await repo.getStepLogsByExecutionId("exec-1");
+      expect(logs).toHaveLength(3);
+      expect(logs[0]?.content).toBe("step1-line1");
+      expect(logs[1]?.content).toBe("step1-line2");
+      expect(logs[2]?.content).toBe("step2-line1");
+    });
+
+    test("does not include logs from other executions", async () => {
       await repo.createExecution({
         id: "exec-1",
         task_id: "task-1",
@@ -534,32 +600,35 @@ describe("ExecutionRepository", () => {
       await repo.createExecution({
         id: "exec-2",
         task_id: "task-1",
-        status: "completed",
+        status: "running",
+        started_at: "2024-01-02T00:00:00Z",
+      });
+      await repo.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "success",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+      await repo.createStepExecution({
+        id: "step-2",
+        execution_id: "exec-2",
+        status: "running",
         started_at: "2024-01-02T00:00:00Z",
       });
 
-      await repo.saveExecutionLogs([
-        {
-          execution_id: "exec-1",
-          stream: "stdout",
-          content: "exec1-log",
-          timestamp: "2024-01-01T00:00:01Z",
-        },
-        {
-          execution_id: "exec-2",
-          stream: "stdout",
-          content: "exec2-log",
-          timestamp: "2024-01-02T00:00:01Z",
-        },
+      await repo.saveStepLogs([
+        { step_execution_id: "step-1", content: "exec1-log", created_at: "2024-01-01T00:00:01Z" },
+        { step_execution_id: "step-2", content: "exec2-log", created_at: "2024-01-02T00:00:01Z" },
       ]);
 
-      const logs1 = await repo.getExecutionLogs("exec-1");
-      const logs2 = await repo.getExecutionLogs("exec-2");
+      const logs = await repo.getStepLogsByExecutionId("exec-1");
+      expect(logs).toHaveLength(1);
+      expect(logs[0]?.content).toBe("exec1-log");
+    });
 
-      expect(logs1).toHaveLength(1);
-      expect(logs1[0]?.content).toBe("exec1-log");
-      expect(logs2).toHaveLength(1);
-      expect(logs2[0]?.content).toBe("exec2-log");
+    test("returns empty array when no logs for execution", async () => {
+      const logs = await repo.getStepLogsByExecutionId("non-existent");
+      expect(logs).toEqual([]);
     });
   });
 });

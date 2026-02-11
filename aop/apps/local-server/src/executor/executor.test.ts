@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SignalDefinition } from "@aop/common/protocol";
@@ -554,7 +562,7 @@ describe("executor", () => {
           message: { content: [{ type: "text", text: "More output" }] },
         }),
       ].join("\n");
-      Bun.write(logFile, logContent);
+      writeFileSync(logFile, logContent);
 
       const result = processAgentCompletion(
         logFile,
@@ -565,6 +573,54 @@ describe("executor", () => {
       expect(result.exitCode).toBe(0);
       expect(result.status).toBe("success");
       expect(result.signal).toBe("IMPL_DONE");
+
+      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
+    });
+
+    test("detects signals from OpenCode text.part.text events", () => {
+      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
+      mkdirSync(testLogsDir, { recursive: true });
+      const logFile = join(testLogsDir, "opencode-signal.jsonl");
+
+      const logContent = [
+        JSON.stringify({
+          type: "tool_use",
+          part: { tool: "bash", state: { input: { command: "echo done" } } },
+        }),
+        JSON.stringify({
+          type: "text",
+          part: { text: "Complete <aop>ALL_TASKS_DONE</aop>" },
+        }),
+      ].join("\n");
+      writeFileSync(logFile, logContent);
+
+      const result = processAgentCompletion(logFile, { exitCode: 0, timedOut: false }, [
+        sig("ALL_TASKS_DONE"),
+      ]);
+
+      expect(result.status).toBe("success");
+      expect(result.signal).toBe("ALL_TASKS_DONE");
+
+      if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
+    });
+
+    test("does not detect signal when trailing json line is partial", () => {
+      const testLogsDir = join(tmpdir(), `aop-test-logs-${Date.now()}`);
+      mkdirSync(testLogsDir, { recursive: true });
+      const logFile = join(testLogsDir, "partial-signal.jsonl");
+
+      const logContent =
+        '{"type":"text","part":{"text":"Done <aop>ALL_TASKS_DONE</aop>"' +
+        "\n" +
+        JSON.stringify({ type: "tool_use", part: { tool: "bash", state: { input: {} } } });
+      writeFileSync(logFile, logContent);
+
+      const result = processAgentCompletion(logFile, { exitCode: 0, timedOut: false }, [
+        sig("ALL_TASKS_DONE"),
+      ]);
+
+      expect(result.status).toBe("success");
+      expect(result.signal).toBeUndefined();
 
       if (existsSync(testLogsDir)) rmSync(testLogsDir, { recursive: true });
     });
@@ -587,7 +643,7 @@ describe("executor", () => {
           },
         }),
       ].join("\n");
-      Bun.write(logFile, logContent);
+      writeFileSync(logFile, logContent);
 
       const result = processAgentCompletion(logFile, { exitCode: 0, timedOut: false }, [
         sig("REQUIRES_INPUT"),
@@ -612,7 +668,7 @@ describe("executor", () => {
           content: [{ type: "text", text: "Done <aop>IMPL_DONE</aop>" }],
         },
       });
-      Bun.write(logFile, logContent);
+      writeFileSync(logFile, logContent);
 
       const result = processAgentCompletion(logFile, { exitCode: 0, timedOut: false }, [
         sig("IMPL_DONE"),
@@ -640,7 +696,7 @@ describe("executor", () => {
           ],
         },
       });
-      Bun.write(logFile, logContent);
+      writeFileSync(logFile, logContent);
 
       const result = processAgentCompletion(logFile, { exitCode: 0, timedOut: false }, [
         sig("REQUIRES_INPUT"),
@@ -663,7 +719,7 @@ describe("executor", () => {
           content: [{ type: "text", text: "Processing <aop>IMPL_DONE</aop> then crash" }],
         },
       });
-      Bun.write(logFile, logContent);
+      writeFileSync(logFile, logContent);
 
       const result = processAgentCompletion(logFile, { exitCode: 1, timedOut: false }, [
         sig("IMPL_DONE"),
@@ -687,7 +743,7 @@ describe("executor", () => {
           content: [{ type: "text", text: "Done <aop>IMPL_DONE</aop>" }],
         },
       });
-      Bun.write(logFile, logContent);
+      writeFileSync(logFile, logContent);
 
       const result = processAgentCompletion(logFile, { exitCode: 0, timedOut: false }, [
         sig("IMPL_DONE"),
@@ -1503,7 +1559,7 @@ describe("executor", () => {
         JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "hi" }] } }),
         JSON.stringify({ type: "result", subtype: "success" }),
       ].join("\n");
-      Bun.write(logFile, content);
+      writeFileSync(logFile, content);
 
       const result = readRunResultFromLog(logFile);
 
@@ -1518,7 +1574,7 @@ describe("executor", () => {
       const logFile = join(testDir, "test.jsonl");
 
       const content = JSON.stringify({ type: "result", subtype: "error" });
-      Bun.write(logFile, content);
+      writeFileSync(logFile, content);
 
       const result = readRunResultFromLog(logFile);
 
@@ -1527,7 +1583,7 @@ describe("executor", () => {
       rmSync(testDir, { recursive: true });
     });
 
-    test("returns exitCode 1 when log has no result entry", () => {
+    test("returns exitCode 0 when parsable log has no result entry", () => {
       const testDir = join(tmpdir(), `aop-test-readlog-${Date.now()}`);
       mkdirSync(testDir, { recursive: true });
       const logFile = join(testDir, "test.jsonl");
@@ -1536,11 +1592,11 @@ describe("executor", () => {
         type: "assistant",
         message: { content: [{ type: "text", text: "output" }] },
       });
-      Bun.write(logFile, content);
+      writeFileSync(logFile, content);
 
       const result = readRunResultFromLog(logFile);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
 
       rmSync(testDir, { recursive: true });
     });
@@ -1554,7 +1610,7 @@ describe("executor", () => {
         JSON.stringify({ type: "result", subtype: "error" }),
         JSON.stringify({ type: "result", subtype: "success" }),
       ].join("\n");
-      Bun.write(logFile, content);
+      writeFileSync(logFile, content);
 
       const result = readRunResultFromLog(logFile);
 

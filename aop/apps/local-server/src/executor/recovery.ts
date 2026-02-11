@@ -2,12 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExecutionInfo, StepCommand } from "@aop/common/protocol";
 import { getLogger } from "@aop/infra";
+import { inferRunOutcomeFromRawJsonl } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
-import { forEachJsonlEntry } from "../events/log-file-tailer.ts";
+import { readLogLines } from "../events/log-file-tailer.ts";
 import type { ServerSync, StepCompletePayload } from "../orchestrator/sync/server-sync.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
-import { cleanupLogFile, persistExecutionLogs, populateLogBuffer } from "./executor.ts";
+import { cleanupLogFile, populateLogBuffer } from "./executor.ts";
 import {
   isClaudeProcess as defaultIsClaudeProcess,
   isProcessAlive as defaultIsProcessAlive,
@@ -157,9 +158,11 @@ const recoverFromLogFile = async (
     completed_at: now,
   });
 
-  populateLogBuffer(ctx, logFile, step.execution_id);
-  ctx.logBuffer.markComplete(step.execution_id, outcome === "success" ? "completed" : "failed");
-  await persistExecutionLogs(ctx, step.execution_id);
+  const flushedCount = await ctx.executionRepository.getStepLogCount(step.id);
+  await persistStepLogsFromOffset(ctx, step.id, logFile, flushedCount);
+
+  populateLogBuffer(ctx, logFile, step.id);
+  ctx.logBuffer.markComplete(step.id, outcome === "success" ? "completed" : "failed");
   cleanupLogFile(logFile);
 
   const task = await ctx.taskRepository.get(step.task_id);
@@ -251,15 +254,40 @@ const resetStaleStep = async (ctx: LocalServerContext, step: StepWithTask): Prom
   await ctx.taskRepository.update(step.task_id, { status: "READY" });
 };
 
+const persistStepLogsFromOffset = async (
+  ctx: LocalServerContext,
+  stepExecutionId: string,
+  logFile: string,
+  offset: number,
+): Promise<void> => {
+  const { lines } = readLogLines(logFile, offset);
+  if (lines.length === 0) return;
+
+  const now = new Date().toISOString();
+  const logs = lines.map((content) => ({
+    step_execution_id: stepExecutionId,
+    content,
+    created_at: now,
+  }));
+
+  try {
+    await ctx.executionRepository.saveStepLogs(logs);
+    logger.debug("Persisted {count} log lines from offset {offset} for step {stepId}", {
+      count: logs.length,
+      offset,
+      stepId: stepExecutionId,
+    });
+  } catch (err) {
+    logger.warn("Failed to persist step logs from offset: {error}", {
+      stepExecutionId,
+      offset,
+      error: String(err),
+    });
+  }
+};
+
 const determineOutcomeFromLog = (logFile: string): "success" | "failure" => {
   const content = readFileSync(logFile, "utf-8");
-  let lastResult: "success" | "failure" | null = null;
-
-  forEachJsonlEntry(content, (data) => {
-    if (data.type === "result") {
-      lastResult = data.subtype === "success" ? "success" : "failure";
-    }
-  });
-
-  return lastResult ?? "failure";
+  const inferred = inferRunOutcomeFromRawJsonl(content, { requireCompleteLine: true });
+  return inferred.outcome === "success" ? "success" : "failure";
 };

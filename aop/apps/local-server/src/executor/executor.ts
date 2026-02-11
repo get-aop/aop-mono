@@ -13,10 +13,10 @@ import {
   ensureDir,
   finalizeExecutionAndGetNextStep,
   finalizeExecutionRecord,
-  persistExecutionLogs,
   populateLogBuffer,
   processAgentCompletion,
   syncTaskStatus,
+  updateStepExecutionRecord,
 } from "./completion-handler.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import type { SpawnAgentOptions } from "./step-launcher.ts";
@@ -31,7 +31,7 @@ export {
   extractPauseContext,
   finalizeExecutionAndGetNextStep,
   finalizeExecutionRecord,
-  persistExecutionLogs,
+  persistStepLogs,
   populateLogBuffer,
   processAgentCompletion,
   type ServerStepInfo,
@@ -136,12 +136,13 @@ export const handleAgentCompletion = async (
     signal: result.signal,
   });
 
-  populateLogBuffer(ctx, logFile, executionId);
+  await ctx.logFlusher.finalFlush(stepId);
+
+  populateLogBuffer(ctx, logFile, stepId);
 
   const completionStatus = result.status === "success" ? "completed" : "failed";
-  ctx.logBuffer.markComplete(executionId, completionStatus);
+  ctx.logBuffer.markComplete(stepId, completionStatus);
 
-  await persistExecutionLogs(ctx, executionId);
   cleanupLogFile(logFile);
 
   const currentTask = await ctx.taskRepository.get(taskId);
@@ -150,6 +151,7 @@ export const handleAgentCompletion = async (
       taskId,
       status: currentTask.status,
     });
+    await updateStepExecutionRecord(ctx, stepId, result);
     await finalizeExecutionRecord(ctx, executionId, result);
     return;
   }

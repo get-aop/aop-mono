@@ -7,10 +7,24 @@ You MUST follow ALL the instructions and emit the REQUIRED SIGNALS at the bottom
 ## Instructions
 
 Implement the task defined in the change directory, **ALWAYS** working on the {{worktree.path}} path.
-Work in focused chunks of 3-5 cohesive files at a time.
-- It's fine to tackle the next comingled tasks in the same session if needed, but don't do too much;
-  - **NEVER work on more than one task section at a time.**
-  - Stop when you feel you've done enough cohesive work and it's good to pause. (like you were working on a pomodoro 20min session)
+
+### Pacing (MANDATORY)
+
+Complete **ONE section** from the task file, then STOP and signal.
+
+**One section = one `## Section N` heading.** Not two. Not "just one more related section."
+
+After completing a section:
+1. Mark its checkboxes as `[x]` in the task file
+2. Run the self-check (below)
+3. Signal completion — do NOT continue to the next section
+
+**No exceptions:**
+- "The next section is closely related" — Stop anyway. That's the next session.
+- "Stopping here leaves type errors" — That's expected. The next session fixes them.
+- "I'm making good progress" — Good. Stop while it's good.
+- "It's all one domain/refactoring" — Sections exist to break domains into sessions.
+- "It's a small section, I can squeeze one more" — No. Signal and stop.
 
 ### Implementation Process
 
@@ -64,32 +78,27 @@ If a change path or name is provided, use it. Otherwise: Infer from conversation
 **Output During Implementation**
 
 ```
-## Implementing: <change-name> (schema: <schema-name>)
+## Implementing: <change-name> — Section N: <section-title>
 
-Working on task 3/7: <task description>
-[...implementation happening...]
-✓ Task complete
-
-Working on task 4/7: <task description>
+Working on task: <task description>
 [...implementation happening...]
 ✓ Task complete
 ```
 
-**Output On Completion**
+**Output On Session Complete (after ONE section)**
 
 ```
-## Implementation Complete
+## Session Complete
 
 **Change:** <change-name>
-**Schema:** <schema-name>
-**Progress:** 7/7 tasks complete ✓
+**Section completed:** Section N: <section-title>
+**Overall progress:** 4/7 sections complete
 
 ### Completed This Session
-- [x] Task 1
-- [x] Task 2
-...
+- [x] Task from this section
+- [x] Another task from this section
 
-All tasks complete! Ready to archive this change.
+Stopping here. Next session: Section N+1.
 ```
 
 ### Tracking Progress
@@ -116,9 +125,21 @@ After completing each task, update `tasks.md` in the change directory (`{{task.c
 
 4. Verify the chunk works before proceeding
 
+### Red Flags — STOP Immediately
+
+If you catch yourself thinking any of these, you are about to violate pacing:
+
+- "Let me just finish this related section too"
+- "These two sections are really one logical unit"
+- "It would be cleaner to do both together"
+- "I'm already in the zone, why stop?"
+- "The next section is trivial, it'll take 2 minutes"
+
+**All of these mean: Signal completion NOW. The next section is the next session.**
+
 ### Self-Check Before Signaling
 
-Before signaling completion of a chunk, verify:
+Before signaling completion of a section, verify:
 
 - [ ] Code compiles/type-checks without errors
 - [ ] New functionality is wired up and callable

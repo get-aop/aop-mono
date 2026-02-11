@@ -3,10 +3,14 @@ import { join } from "node:path";
 import type { ExecutionInfo, SignalDefinition, StepCommand } from "@aop/common/protocol";
 import type { WorktreeInfo } from "@aop/git-manager";
 import { getLogger } from "@aop/infra";
-import { ClaudeCodeProvider, createProvider, type LLMProvider } from "@aop/llm-provider";
+import {
+  ClaudeCodeProvider,
+  createProvider,
+  inferRunOutcomeFromRawJsonl,
+  type LLMProvider,
+} from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
-import { forEachJsonlEntry } from "../events/log-file-tailer.ts";
 import type { ServerSync } from "../orchestrator/sync/server-sync.ts";
 import { SettingKey } from "../settings/types.ts";
 import { isAgentRunning } from "./process-utils.ts";
@@ -38,23 +42,17 @@ export type HandleAgentCompletionFn = (
 ) => Promise<void>;
 
 export const REAPER_POLL_INTERVAL_MS = 2000;
+const PROVIDER_RUN_GRACE_MS = 1500;
 
-/** Reads the JSONL log file to determine exit code from the result entry. */
+/** Reads JSONL log file and infers process outcome from shared log semantics. */
 export const readRunResultFromLog = (logFile: string): { exitCode: number; timedOut?: boolean } => {
   if (!existsSync(logFile)) {
     return { exitCode: 1 };
   }
 
   const content = readFileSync(logFile, "utf-8");
-  let lastResult: "success" | "failure" | null = null;
-
-  forEachJsonlEntry(content, (data) => {
-    if (data.type === "result") {
-      lastResult = data.subtype === "success" ? "success" : "failure";
-    }
-  });
-
-  return { exitCode: lastResult === "success" ? 0 : 1 };
+  const inferred = inferRunOutcomeFromRawJsonl(content, { requireCompleteLine: true });
+  return { exitCode: inferred.outcome === "success" ? 0 : 1 };
 };
 
 export const getProvider = async (ctx: LocalServerContext, task: Task): Promise<LLMProvider> => {
@@ -146,12 +144,13 @@ export const reattachToRunningAgent = async (
   const executorCtx = await buildContextFn(ctx, task);
   const worktreeInfo = await createWorktreeFn(executorCtx);
 
+  const logFile = join(executorCtx.logsDir, `${step.id}.jsonl`);
+  ctx.logFlusher.track(step.id, logFile);
+
   const pid = step.agent_pid;
   if (pid) {
     await pollForProcessExit(pid);
   }
-
-  const logFile = join(executorCtx.logsDir, `${step.id}.jsonl`);
   const runResult = readRunResultFromLog(logFile);
   const signals = step.signals_json ? JSON.parse(step.signals_json) : [];
 
@@ -211,7 +210,9 @@ const spawnAndReap = (
 ): Promise<RunResultLike> => {
   return new Promise<RunResultLike>((resolve, reject) => {
     let settled = false;
+    let reaping = false;
     let pollInterval: Timer | undefined;
+    let providerRunPromise: Promise<RunResultLike> | null = null;
 
     const settle = (result: RunResultLike) => {
       if (settled) return;
@@ -220,32 +221,41 @@ const spawnAndReap = (
       resolve(result);
     };
 
-    provider
-      .run({
-        prompt: opts.prompt,
-        cwd: opts.cwd,
-        logFilePath: opts.logFilePath,
-        env: opts.env,
-        onSpawn: async (pid) => {
-          await ctx.executionRepository.updateStepExecution(opts.stepId, {
-            agent_pid: pid,
-          });
-          logger.info("Agent spawned with PID {pid}", { pid, stepId: opts.stepId });
+    const settleFromPollPath = async () => {
+      if (settled || reaping) return;
+      reaping = true;
+      const providerResult = await waitForProviderRun(providerRunPromise, PROVIDER_RUN_GRACE_MS);
+      settle(providerResult ?? readRunResultFromLog(logFile));
+    };
 
-          // Start PID polling — the primary completion mechanism for detached agents
+    providerRunPromise = provider.run({
+      prompt: opts.prompt,
+      cwd: opts.cwd,
+      logFilePath: opts.logFilePath,
+      env: opts.env,
+      onSpawn: async (pid) => {
+        await ctx.executionRepository.updateStepExecution(opts.stepId, {
+          agent_pid: pid,
+        });
+        ctx.logFlusher.track(opts.stepId, logFile);
+        logger.info("Agent spawned with PID {pid}", { pid, stepId: opts.stepId });
+
+        // Start PID polling — the primary completion mechanism for detached agents
+        if (!isAgentRunning(pid)) {
+          void settleFromPollPath();
+          return;
+        }
+        pollInterval = setInterval(() => {
           if (!isAgentRunning(pid)) {
-            settle(readRunResultFromLog(logFile));
-            return;
+            void settleFromPollPath();
           }
-          pollInterval = setInterval(() => {
-            if (!isAgentRunning(pid)) {
-              settle(readRunResultFromLog(logFile));
-            }
-          }, REAPER_POLL_INTERVAL_MS);
-        },
-        inactivityTimeoutMs: opts.inactivityTimeoutMs,
-        fastMode: opts.fastMode,
-      })
+        }, REAPER_POLL_INTERVAL_MS);
+      },
+      inactivityTimeoutMs: opts.inactivityTimeoutMs,
+      fastMode: opts.fastMode,
+    });
+
+    providerRunPromise
       .then((runResult) => {
         // provider.run() resolved — use its result directly (mock providers, or proc.exited worked)
         settle(runResult);
@@ -254,4 +264,21 @@ const spawnAndReap = (
         if (!settled) reject(err);
       });
   });
+};
+
+const waitForProviderRun = async (
+  providerRunPromise: Promise<RunResultLike> | null,
+  timeoutMs: number,
+): Promise<RunResultLike | null> => {
+  if (!providerRunPromise) return null;
+
+  const timeout = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([providerRunPromise, timeout]);
+  } catch {
+    return null;
+  }
 };

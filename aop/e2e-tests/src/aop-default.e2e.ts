@@ -76,7 +76,7 @@ describe("aop-default workflow execution", () => {
       expect(taskId).toStartWith("task_");
 
       const { exitCode: readyExit } = await runAopCommand(
-        ["task:ready", taskId, "--workflow", "aop-default"],
+        ["task:ready", taskId, "--workflow", "aop-default", "--provider", "claude-code"],
         undefined,
         ctx.env,
       );

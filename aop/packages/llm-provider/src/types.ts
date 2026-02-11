@@ -31,3 +31,16 @@ export interface LLMProvider {
   readonly name: string;
   run(options: RunOptions): Promise<RunResult>;
 }
+
+export type {
+  AssistantSignalText,
+  InferredRunOutcome,
+  LogProvider,
+  LogStream,
+  NormalizedLogEvent,
+  ParsedRawJsonl,
+  ParsedRawLogEntry,
+  RawProviderEvent,
+  RenderedLogLine,
+  RunOutcome,
+} from "./logs";

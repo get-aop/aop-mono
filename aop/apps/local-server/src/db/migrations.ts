@@ -22,6 +22,7 @@ export const runMigrations = async (db: Kysely<Database>): Promise<void> => {
   await addStepExecutionRemoteExecutionId(db);
   await addStepExecutionCommandData(db);
   await createExecutionLogsTable(db);
+  await createStepLogsTable(db);
   await createInteractiveSessionsTable(db);
   await createSessionMessagesTable(db);
 };
@@ -269,6 +270,26 @@ const createExecutionLogsTable = async (db: Kysely<Database>): Promise<void> => 
     .ifNotExists()
     .on("execution_logs")
     .column("execution_id")
+    .execute();
+};
+
+const createStepLogsTable = async (db: Kysely<Database>): Promise<void> => {
+  await sql`DROP TABLE IF EXISTS execution_logs`.execute(db);
+
+  await db.schema
+    .createTable("step_logs")
+    .ifNotExists()
+    .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+    .addColumn("step_execution_id", "text", (col) => col.notNull().references("step_executions.id"))
+    .addColumn("content", "text", (col) => col.notNull())
+    .addColumn("created_at", "text", (col) => col.notNull())
+    .execute();
+
+  await db.schema
+    .createIndex("idx_step_logs_step_execution_id")
+    .ifNotExists()
+    .on("step_logs")
+    .column("step_execution_id")
     .execute();
 };
 

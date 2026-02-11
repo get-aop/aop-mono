@@ -162,16 +162,18 @@ const updateExecutionStatus = async (ctx: LocalServerContext, taskId: string): P
         status: ExecutionStatus.ABORTED,
         completed_at: now,
       });
+    }
 
-      const steps = await ctx.executionRepository.getStepExecutionsByExecutionId(execution.id);
-      for (const step of steps) {
-        if (step.status === StepExecutionStatus.RUNNING) {
-          await ctx.executionRepository.updateStepExecution(step.id, {
-            status: StepExecutionStatus.FAILURE,
-            ended_at: now,
-            error: "Aborted",
-          });
-        }
+    // Update stale steps regardless of execution status — the completion handler
+    // may have finalized the execution before we got here (race condition)
+    const steps = await ctx.executionRepository.getStepExecutionsByExecutionId(execution.id);
+    for (const step of steps) {
+      if (step.status === StepExecutionStatus.RUNNING) {
+        await ctx.executionRepository.updateStepExecution(step.id, {
+          status: StepExecutionStatus.FAILURE,
+          ended_at: now,
+          error: "Aborted",
+        });
       }
     }
   }

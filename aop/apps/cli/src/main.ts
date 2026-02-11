@@ -150,11 +150,13 @@ export const registerCommands = (
     .command("task:ready <identifier>", "Mark task as READY")
     .option("--workflow <name>", "Workflow name")
     .option("--base-branch <branch>", "Base branch for worktree creation")
+    .option("--provider <provider>", "LLM provider (e.g. opencode:openai/gpt-5.3-codex)")
     .option("--resume [stepId]", "Retry from last step, or a specific step")
     .action((identifier, options) =>
       commands.taskReadyCommand(identifier, {
         workflow: options.workflow,
         baseBranch: options.baseBranch,
+        provider: options.provider,
         retryFromStep: options.resume === true ? "last" : options.resume || undefined,
       }),
     );
