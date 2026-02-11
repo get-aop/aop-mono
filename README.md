@@ -3,7 +3,7 @@
 If you want to leverage this config in your Claude globally for all projects:
 
 ```sh
-## BACKUP YOUR ~/.claude FIRST !!!
+## BACKUP YOUR ~/.claude FIRST !!
 cp -R ~/.claude .claude-bkp
 
 # Remove existing targets (symlinks or directories) before linking
