@@ -11,6 +11,8 @@ export interface TaskEventsState {
   initialized: boolean;
 }
 
+const WORKING_STATUS_POLL_INTERVAL_MS = 2000;
+
 export const useTaskEvents = () => {
   const [state, setState] = useState<TaskEventsState>({
     tasks: [],
@@ -112,6 +114,20 @@ export const useTaskEvents = () => {
       repos: status.repos,
     }));
   }, []);
+
+  const hasWorkingTasks = state.tasks.some((task) => task.status === "WORKING");
+  useEffect(() => {
+    if (!hasWorkingTasks) return;
+
+    // Task progress is derived from files and can change while status remains WORKING.
+    const interval = setInterval(() => {
+      refresh().catch(() => {});
+    }, WORKING_STATUS_POLL_INTERVAL_MS);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [hasWorkingTasks, refresh]);
 
   return { ...state, refresh };
 };

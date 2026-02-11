@@ -18,7 +18,7 @@ import {
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { forEachJsonlEntry, parseJsonlEntry } from "../events/log-file-tailer.ts";
-import type { ServerSync } from "../orchestrator/sync/server-sync.ts";
+import type { ServerSync, StepCompletePayload } from "../orchestrator/sync/server-sync.ts";
 import { detectSignal } from "../orchestrator/sync/signal-detector.ts";
 import { createTemplateContext, resolveTemplate } from "../orchestrator/sync/template-resolver.ts";
 import { SettingKey } from "../settings/types.ts";
@@ -27,6 +27,8 @@ import { isAgentRunning } from "./process-utils.ts";
 import type { ExecuteResult, ExecutorContext, StepWithTask } from "./types.ts";
 
 const logger = getLogger("executor");
+const COMPLETE_STEP_MAX_ATTEMPTS = 3;
+const COMPLETE_STEP_RETRY_BASE_DELAY_MS = 500;
 
 export interface ExecuteTaskOptions {
   ctx: LocalServerContext;
@@ -853,6 +855,8 @@ const finalizeExecutionRecord = async (
   });
 };
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 const completeStepOnServer = async (
   serverSync: ServerSync,
   stepId: string,
@@ -860,41 +864,98 @@ const completeStepOnServer = async (
   attempt: number,
   result: ExecuteResult,
 ): Promise<StepCompleteResponse | null> => {
-  try {
-    const stepResult = {
-      executionId,
-      attempt,
-      status: result.status === "success" ? ("success" as const) : ("failure" as const),
-      signal: result.signal,
-      error:
-        result.status === "timeout"
-          ? { code: "agent_timeout" as const, message: "Agent timed out" }
-          : result.status === "failure"
-            ? {
-                code: "agent_crash" as const,
-                message: `Agent exited with code ${result.exitCode}`,
-              }
-            : undefined,
-      durationMs: 0,
-      pauseContext: result.pauseContext,
-    };
+  const stepResult = buildStepCompletePayload(executionId, attempt, result);
 
-    const response = await serverSync.completeStep(stepId, stepResult);
-    logger.info("Step completed on server, taskStatus: {taskStatus}", {
-      stepId,
-      taskStatus: response.taskStatus,
-      hasNextStep: !!response.step,
-      signal: result.signal,
-    });
+  for (let tryIndex = 1; tryIndex <= COMPLETE_STEP_MAX_ATTEMPTS; tryIndex++) {
+    try {
+      const response = await serverSync.completeStep(stepId, stepResult);
+      logStepCompletedOnServer(stepId, response, result.signal);
+      return response;
+    } catch (err) {
+      if (tryIndex >= COMPLETE_STEP_MAX_ATTEMPTS) {
+        logStepCompletionRetriesExhausted(stepId, tryIndex, err);
+        return null;
+      }
 
-    return response;
-  } catch (err) {
-    logger.warn("Failed to complete step on server: {error}", {
-      stepId,
-      error: String(err),
-    });
-    return null;
+      const retryDelayMs = getCompleteStepRetryDelayMs(tryIndex);
+      logStepCompletionRetry(stepId, tryIndex, retryDelayMs, err);
+      await sleep(retryDelayMs);
+    }
   }
+
+  return null;
+};
+
+const buildStepCompletePayload = (
+  executionId: string,
+  attempt: number,
+  result: ExecuteResult,
+): StepCompletePayload => ({
+  executionId,
+  attempt,
+  status: result.status === "success" ? "success" : "failure",
+  signal: result.signal,
+  error: buildStepCompleteError(result),
+  durationMs: 0,
+  pauseContext: result.pauseContext,
+});
+
+const buildStepCompleteError = (result: ExecuteResult): StepCompletePayload["error"] => {
+  if (result.status === "timeout") {
+    return { code: "agent_timeout", message: "Agent timed out" };
+  }
+  if (result.status === "failure") {
+    return {
+      code: "agent_crash",
+      message: `Agent exited with code ${result.exitCode}`,
+    };
+  }
+  return undefined;
+};
+
+const logStepCompletedOnServer = (
+  stepId: string,
+  response: StepCompleteResponse,
+  signal: string | undefined,
+): void => {
+  logger.info("Step completed on server, taskStatus: {taskStatus}", {
+    stepId,
+    taskStatus: response.taskStatus,
+    hasNextStep: !!response.step,
+    signal,
+  });
+};
+
+const logStepCompletionRetriesExhausted = (
+  stepId: string,
+  attempts: number,
+  err: unknown,
+): void => {
+  logger.warn("Failed to complete step on server after retries: {error}", {
+    stepId,
+    attempts,
+    error: String(err),
+  });
+};
+
+const getCompleteStepRetryDelayMs = (attempt: number): number =>
+  COMPLETE_STEP_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+
+const logStepCompletionRetry = (
+  stepId: string,
+  attempt: number,
+  delay: number,
+  err: unknown,
+): void => {
+  logger.warn(
+    "Failed to complete step on server (attempt {attempt}), retrying in {delay}ms: {error}",
+    {
+      stepId,
+      attempt,
+      delay,
+      error: String(err),
+    },
+  );
 };
 
 export const extractPauseContext = (output: string): string | undefined => {

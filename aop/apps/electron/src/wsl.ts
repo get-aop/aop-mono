@@ -170,18 +170,12 @@ export const syncResourcesToWsl = async (
     );
     const t = targetDir;
     const s = wslSource;
-    const mergeScript = `
-      if [ -d "${t}" ]; then
-        chmod -R u+w "${t}" 2>/dev/null || true
-        bk="${t}.backup.$(date +%Y%m%d%H%M%S)"
-        cp -r "${t}" "$bk" 2>/dev/null || true
-      fi
-      mkdir -p "${t}"
-      for item in "${s}"/*; do
-        [ -e "$item" ] || continue
-        cp -rf "$item" "${t}/"
-      done
-    `;
+    // mv renames the dir (needs parent write only); avoids rm/cp permission issues on Zone.Identifier
+    const mergeScript = [
+      `if [ -d "${t}" ]; then bk="${t}.backup.$(date +%Y%m%d%H%M%S)"; mv "${t}" "$bk" 2>/dev/null || true; fi`,
+      `mkdir -p "${t}"`,
+      `for item in "${s}"/*; do [ -e "$item" ] || continue; cp -rf "$item" "${t}/"; done`,
+    ].join(" && ");
     await runWslCommand(distro, mergeScript);
   };
 

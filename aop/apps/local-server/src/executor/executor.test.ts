@@ -1076,6 +1076,59 @@ describe("executor", () => {
       expect(task?.status).toBe("BLOCKED");
     });
 
+    test("retries transient completeStep failure before blocking", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: ExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: StepExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+
+      let attempts = 0;
+      const mockServerSync = {
+        syncTask: mock(() => Promise.resolve()),
+        completeStep: mock(() => {
+          attempts++;
+          if (attempts === 1) {
+            return Promise.reject(new Error("Temporary network error"));
+          }
+          return Promise.resolve({ taskStatus: "DONE" });
+        }),
+      };
+
+      const result = await finalizeExecutionAndGetNextStep(
+        ctx,
+        "task-1",
+        "exec-1",
+        "step-1",
+        {
+          exitCode: 0,
+          status: "success",
+        },
+        mockServerSync as never,
+        {
+          serverStepId: "server-step-1",
+          serverExecutionId: "server-exec-1",
+          attempt: 1,
+        },
+      );
+
+      expect(result).toBeNull();
+      expect(mockServerSync.completeStep).toHaveBeenCalledTimes(2);
+      expect(mockServerSync.syncTask).not.toHaveBeenCalled();
+
+      const task = await ctx.taskRepository.get("task-1");
+      expect(task?.status).toBe("DONE");
+    });
+
     test("uses default attempt value when not provided in serverStepInfo", async () => {
       await createTestRepo(db, "repo-1", "/test/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");

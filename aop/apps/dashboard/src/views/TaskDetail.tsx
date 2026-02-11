@@ -629,7 +629,18 @@ const ExecutionHistory = ({
   onStepClick,
 }: ExecutionHistoryProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [, setTick] = useState(0);
   const ascending = useMemo(() => [...executions].reverse(), [executions]);
+  const hasRunningExecution = useMemo(
+    () => executions.some((execution) => execution.status === "running" && !execution.finishedAt),
+    [executions],
+  );
+
+  useEffect(() => {
+    if (!hasRunningExecution) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [hasRunningExecution]);
 
   // Scroll to bottom on mount so latest execution is visible
   useEffect(() => {

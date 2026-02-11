@@ -109,6 +109,9 @@ const spawnServerNative = (): Promise<number> => {
         serverProcess = spawnServerWithEnv(serverPath, dashboardPath, dashboardUrl);
         _serverPort = discoveredPort;
 
+        // Keep stdout drained in sidecar mode to avoid pipe backpressure freezing the server.
+        serverProcess.stdout?.on("data", (_data: Buffer) => {});
+
         serverProcess.stderr?.on("data", (data: Buffer) => {
           console.error("Server stderr:", data.toString());
         });
@@ -263,6 +266,9 @@ const spawnServerWindows = async (): Promise<number> => {
           AOP_DASHBOARD_URL: dashboardUrl,
         });
         _serverPort = discoveredPort;
+
+        // Keep stdout drained in sidecar mode to avoid pipe backpressure freezing the server.
+        serverProcess.stdout?.on("data", (_data: Buffer) => {});
 
         serverProcess.stderr?.on("data", (data: Buffer) => {
           console.error("[Electron/Windows] Server stderr:", data.toString());
