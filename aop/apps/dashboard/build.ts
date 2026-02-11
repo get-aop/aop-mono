@@ -35,7 +35,9 @@ async function buildJS(): Promise<string | undefined> {
     format: "esm",
     minify: true,
     sourcemap: "external",
-    splitting: true,
+    // Disabled due to Bun 1.3.6 bundler bug (cross-chunk exports resolve to undefined)
+    // Re-enable after upgrading Bun and verifying mdast-util-phrasing/unist-util-is work
+    splitting: false,
     naming: "[name]-[hash].[ext]",
     define: {
       "process.env.NODE_ENV": '"production"',
