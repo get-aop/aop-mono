@@ -86,6 +86,26 @@ jobs:
         working-directory: aop/apps/electron
         run: bun run make
 
+      - name: Normalize Linux artifact filename
+        working-directory: aop/apps/electron
+        run: |
+          deb_file="$(find out/make/deb -name "*.deb" -print -quit)"
+          if [ -z "${deb_file}" ]; then
+            echo "No .deb artifact found"
+            exit 1
+          fi
+
+          deb_dir="$(dirname "${deb_file}")"
+          deb_arch="$(basename "${deb_file}" | sed -E 's/^.*_([^_]+)\.deb$/\1/')"
+          if [ -z "${deb_arch}" ]; then
+            echo "Failed to detect Debian package architecture from ${deb_file}"
+            exit 1
+          fi
+
+          normalized_file="${deb_dir}/aop_${deb_arch}.deb"
+          mv "${deb_file}" "${normalized_file}"
+          echo "Normalized Linux artifact: ${normalized_file}"
+
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -214,8 +234,8 @@ jobs:
 
             ### Downloads
             - **macOS**: `AOP Desktop.dmg`
-            - **Linux (Debian/Ubuntu)**: `aop-electron_*.deb`
-            - **Windows**: `AOP-Setup-*.exe`
+            - **Linux (Debian/Ubuntu)**: `aop_<arch>.deb`
+            - **Windows**: `AOP-Setup.exe`
           files: release-assets/*
           draft: false
           prerelease: false
