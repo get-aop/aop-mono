@@ -156,7 +156,7 @@ describe("run", () => {
     expect(env.AOP_TASK_ID).toBe("task-42");
   });
 
-  test("does not set env when no env option provided", async () => {
+  test("sets env with PATH when no env option provided", async () => {
     const mockProc = {
       pid: 22222,
       exited: Promise.resolve(0),
@@ -172,7 +172,8 @@ describe("run", () => {
     await provider.run({ prompt: "test", logFilePath: "/tmp/log.txt" });
 
     const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(spawnArgs.env).toBeUndefined();
+    const env = spawnArgs.env as Record<string, string>;
+    expect(env.PATH).toContain("/usr/local/bin");
   });
 
   test("passes cwd to spawn", async () => {

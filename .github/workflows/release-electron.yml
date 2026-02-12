@@ -32,6 +32,26 @@ jobs:
         working-directory: aop
         run: bun install
 
+      - name: Validate macOS signing secrets
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          missing=()
+          for key in APPLE_ID APPLE_ID_PASSWORD APPLE_TEAM_ID CSC_LINK CSC_KEY_PASSWORD; do
+            if [ -z "${!key}" ]; then
+              missing+=("$key")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required macOS signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
       - name: Prepare clean Electron release build
         working-directory: aop
         run: bun run ./scripts/release/prepare-electron-build.ts

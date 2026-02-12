@@ -1,5 +1,6 @@
 import type { LLMProvider, RunOptions, RunResult } from "../types";
 import { createWatchdog, getFileMtime, type Watchdog } from "./claude-code";
+import { buildSpawnEnv } from "./spawn-env";
 
 export class CursorCliProvider implements LLMProvider {
   readonly name = "cursor-cli";
@@ -23,7 +24,7 @@ export class CursorCliProvider implements LLMProvider {
   }
 
   async run(options: RunOptions): Promise<RunResult> {
-    const spawnEnv = options.env ? { ...process.env, ...options.env } : undefined;
+    const spawnEnv = buildSpawnEnv(options.env);
 
     const proc = Bun.spawn({
       cmd: this.buildCommand(options),
@@ -32,7 +33,7 @@ export class CursorCliProvider implements LLMProvider {
       stdin: "ignore",
       cwd: options.cwd,
       detached: true,
-      ...(spawnEnv && { env: spawnEnv }),
+      env: spawnEnv,
     });
 
     proc.unref();

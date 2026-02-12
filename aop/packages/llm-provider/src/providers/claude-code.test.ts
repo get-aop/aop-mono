@@ -277,7 +277,7 @@ describe("run", () => {
     expect(env.AOP_STEP_ID).toBe("step-1");
   });
 
-  test("does not set env when no env option provided", async () => {
+  test("sets env with PATH when no env option provided", async () => {
     const mockProc = createMockProcess([]);
     spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
       mockProc as unknown as ReturnType<typeof Bun.spawn>,
@@ -287,7 +287,8 @@ describe("run", () => {
     await provider.run({ prompt: "test" });
 
     const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(spawnArgs.env).toBeUndefined();
+    const env = spawnArgs.env as Record<string, string>;
+    expect(env.PATH).toContain("/usr/local/bin");
   });
 
   test("extracts session ID from stream", async () => {
@@ -633,7 +634,7 @@ describe("run with logFilePath (file-based output)", () => {
     expect(spawnSpy).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/some/work/dir" }));
   });
 
-  test("does not set env when no env option in file mode", async () => {
+  test("sets env with PATH when no env option in file mode", async () => {
     const mockProc = {
       pid: 22222,
       exited: Promise.resolve(0),
@@ -652,7 +653,8 @@ describe("run with logFilePath (file-based output)", () => {
     });
 
     const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(spawnArgs.env).toBeUndefined();
+    const env = spawnArgs.env as Record<string, string>;
+    expect(env.PATH).toContain("/usr/local/bin");
   });
 
   test("returns non-zero exit code in file mode", async () => {

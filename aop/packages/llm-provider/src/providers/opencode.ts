@@ -1,5 +1,6 @@
 import type { LLMProvider, RunOptions, RunResult } from "../types";
 import { createWatchdog, getFileMtime, type Watchdog } from "./claude-code";
+import { buildSpawnEnv } from "./spawn-env";
 
 // TODO: we need better model/variants, this is a hack
 const ALLOWED_VARIANTS = ["low", "medium", "high", "xhigh"];
@@ -13,13 +14,16 @@ export class OpenCodeProvider implements LLMProvider {
   }
 
   buildCommand(options: RunOptions): string[] {
-    const cmd = ["opencode", "run", "--model", this.model, "--format", "json", options.prompt];
-    attachVariant(cmd, this.model);
+    const { baseModel, variant } = splitModelAndVariant(this.model);
+    const cmd = ["opencode", "run", "--model", baseModel, "--format", "json", options.prompt];
+    if (variant) {
+      cmd.push("--variant", variant);
+    }
     return cmd;
   }
 
   async run(options: RunOptions): Promise<RunResult> {
-    const spawnEnv = options.env ? { ...process.env, ...options.env } : {};
+    const spawnEnv = buildSpawnEnv(options.env);
     spawnEnv.OPENCODE_PERMISSION = '{"*":"allow"}';
 
     const proc = Bun.spawn({
@@ -29,7 +33,7 @@ export class OpenCodeProvider implements LLMProvider {
       stdin: "ignore",
       cwd: options.cwd,
       detached: true,
-      ...(spawnEnv && { env: spawnEnv }),
+      env: spawnEnv,
     });
 
     proc.unref();
@@ -59,10 +63,13 @@ export class OpenCodeProvider implements LLMProvider {
   }
 }
 
-const attachVariant = (cmd: string[], model: string): void => {
-  const maybeVariant = model.split("/")[-1] ?? "";
-
-  if (ALLOWED_VARIANTS.includes(maybeVariant)) {
-    cmd.push("--variant", maybeVariant);
+const splitModelAndVariant = (rawModel: string): { baseModel: string; variant?: string } => {
+  const parts = rawModel.split("/");
+  const lastPart = parts.at(-1) ?? "";
+  if (!ALLOWED_VARIANTS.includes(lastPart)) {
+    return { baseModel: rawModel };
   }
+
+  const baseModel = parts.slice(0, -1).join("/");
+  return { baseModel, variant: lastPart };
 };

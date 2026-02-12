@@ -68,6 +68,42 @@ describe("buildCommand", () => {
       "test",
     ]);
   });
+
+  test("splits known variant suffix into --model and --variant", () => {
+    const provider = new OpenCodeProvider("openai/gpt-5.3-codex/xhigh");
+    const cmd = provider.buildCommand({
+      prompt: "do something",
+      logFilePath: "/tmp/out.txt",
+    });
+    expect(cmd).toEqual([
+      "opencode",
+      "run",
+      "--model",
+      "openai/gpt-5.3-codex",
+      "--format",
+      "json",
+      "do something",
+      "--variant",
+      "xhigh",
+    ]);
+  });
+
+  test("keeps unknown suffix as part of model", () => {
+    const provider = new OpenCodeProvider("openai/gpt-5.3-codex/experimental");
+    const cmd = provider.buildCommand({
+      prompt: "do something",
+      logFilePath: "/tmp/out.txt",
+    });
+    expect(cmd).toEqual([
+      "opencode",
+      "run",
+      "--model",
+      "openai/gpt-5.3-codex/experimental",
+      "--format",
+      "json",
+      "do something",
+    ]);
+  });
 });
 
 describe("run", () => {

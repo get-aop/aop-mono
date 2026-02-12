@@ -1,5 +1,6 @@
 import { statSync } from "node:fs";
 import type { LLMProvider, RunOptions, RunResult } from "../types";
+import { buildSpawnEnv } from "./spawn-env";
 
 interface StreamContext {
   sessionId?: string;
@@ -84,7 +85,7 @@ export class ClaudeCodeProvider implements LLMProvider {
   }
 
   private async runWithFileOutput(options: RunOptions, logFilePath: string): Promise<RunResult> {
-    const spawnEnv = options.env ? { ...process.env, ...options.env } : undefined;
+    const spawnEnv = buildSpawnEnv(options.env);
 
     const proc = Bun.spawn({
       cmd: this.buildCommand(options),
@@ -93,7 +94,7 @@ export class ClaudeCodeProvider implements LLMProvider {
       stdin: "ignore",
       cwd: options.cwd,
       detached: true,
-      ...(spawnEnv && { env: spawnEnv }),
+      env: spawnEnv,
     });
 
     proc.unref();
@@ -122,7 +123,7 @@ export class ClaudeCodeProvider implements LLMProvider {
   }
 
   private async runWithPipeOutput(options: RunOptions): Promise<RunResult> {
-    const spawnEnv = options.env ? { ...process.env, ...options.env } : undefined;
+    const spawnEnv = buildSpawnEnv(options.env);
 
     const proc = Bun.spawn({
       cmd: this.buildCommand(options),
@@ -130,7 +131,7 @@ export class ClaudeCodeProvider implements LLMProvider {
       stderr: "inherit",
       stdin: "inherit",
       cwd: options.cwd,
-      ...(spawnEnv && { env: spawnEnv }),
+      env: spawnEnv,
     });
 
     const pid = proc.pid;
