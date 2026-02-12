@@ -22,6 +22,37 @@ const shouldNotarizeMac =
   Boolean(process.env.APPLE_ID_PASSWORD) &&
   Boolean(process.env.APPLE_TEAM_ID);
 
+const pathExists = (targetPath: string): boolean => {
+  try {
+    fs.lstatSync(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const resolveSourcePath = (sourcePath: string): string => {
+  if (!pathExists(sourcePath)) {
+    return sourcePath;
+  }
+
+  try {
+    return fs.realpathSync(sourcePath);
+  } catch {
+    return sourcePath;
+  }
+};
+
+const copyResourcePath = (from: string, to: string): void => {
+  const resolvedFrom = resolveSourcePath(from);
+
+  if (pathExists(to)) {
+    fs.rmSync(to, { recursive: true, force: true });
+  }
+
+  fs.cpSync(resolvedFrom, to, { recursive: true, force: true, dereference: true });
+};
+
 const resolveResourcesDir = (outputPath: string): string => {
   // macOS packaged app path
   const macAppResources = path.join(outputPath, "Contents", "Resources");
@@ -103,7 +134,7 @@ const copyExtraResourcesLinux = async (outputPath: string) => {
 
   for (const { from, to } of filesToCopy) {
     if (fs.existsSync(from)) {
-      fs.cpSync(from, to, { recursive: true, force: true });
+      copyResourcePath(from, to);
       console.log(`[Forge] Copied ${from} -> ${to}`);
     } else {
       console.error(`[Forge] Source not found: ${from}`);
@@ -158,7 +189,7 @@ const copyExtraResourcesWindows = async (outputPath: string) => {
 
   for (const { from, to } of filesToCopy) {
     if (fs.existsSync(from)) {
-      fs.cpSync(from, to, { recursive: true, force: true });
+      copyResourcePath(from, to);
       console.log(`[Forge] Copied ${from} -> ${to}`);
     } else {
       console.error(`[Forge] Source not found: ${from}`);
@@ -221,7 +252,7 @@ const config: ForgeConfig = {
       ...(fs.existsSync(path.join(__dirname, "..", "..", "..", ".claude", "skills"))
         ? [
             {
-              from: path.join(__dirname, "..", "..", "..", ".claude", "skills"),
+              from: resolveSourcePath(path.join(__dirname, "..", "..", "..", ".claude", "skills")),
               to: "claude-skills",
             },
           ]
@@ -229,7 +260,7 @@ const config: ForgeConfig = {
       ...(fs.existsSync(path.join(__dirname, "..", "..", "..", ".codex"))
         ? [
             {
-              from: path.join(__dirname, "..", "..", "..", ".codex"),
+              from: resolveSourcePath(path.join(__dirname, "..", "..", "..", ".codex")),
               to: "codex",
             },
           ]
