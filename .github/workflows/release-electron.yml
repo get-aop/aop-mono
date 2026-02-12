@@ -32,7 +32,7 @@ jobs:
         working-directory: aop
         run: bun install
 
-      - name: Validate macOS signing secrets
+      - name: Check macOS signing secrets (optional)
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
@@ -48,10 +48,9 @@ jobs:
           done
 
           if [ "${#missing[@]}" -gt 0 ]; then
-            echo "::error::Missing required macOS signing secrets: ${missing[*]}"
-            exit 1
+            echo "::warning::Missing macOS signing secrets: ${missing[*]}"
+            echo "::warning::Continuing with unsigned / non-notarized macOS build."
           fi
-
       - name: Prepare clean Electron release build
         working-directory: aop
         run: bun run ./scripts/release/prepare-electron-build.ts
