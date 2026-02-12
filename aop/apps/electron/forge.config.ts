@@ -12,67 +12,15 @@ interface BuildResult {
   outputPaths?: string[];
 }
 
-const copyExtraResourcesMac = async (outputPath: string) => {
-  const resourcesDir = path.join(outputPath, "AOP.app", "Contents", "Resources");
+const shouldSignMac =
+  process.platform === "darwin" &&
+  (Boolean(process.env.CSC_LINK) || Boolean(process.env.APPLE_SIGNING_IDENTITY));
 
-  if (!fs.existsSync(resourcesDir)) {
-    console.log(`[Forge] macOS resources not found at ${resourcesDir}`);
-    return;
-  }
-
-  console.log(`[Forge] macOS resources: ${resourcesDir}`);
-
-  const iconSource = path.join(__dirname, "assets", "icon.icns");
-  const electronIconTarget = path.join(resourcesDir, "electron.icns");
-  if (fs.existsSync(iconSource)) {
-    fs.cpSync(iconSource, electronIconTarget, { force: true });
-    console.log(`[Forge] Replaced icon: ${iconSource} -> ${electronIconTarget}`);
-  }
-
-  const skillsSource = path.join(__dirname, "..", "..", "..", ".claude", "skills");
-  const codexSource = path.join(__dirname, "..", "..", "..", ".codex");
-  const filesToCopy = [
-    {
-      from: path.join(__dirname, "..", "local-server", "dist", "aop-server"),
-      to: path.join(resourcesDir, "aop-server"),
-    },
-    {
-      from: path.join(__dirname, "..", "dashboard", "dist"),
-      to: path.join(resourcesDir, "dashboard"),
-    },
-    ...(fs.existsSync(skillsSource)
-      ? [{ from: skillsSource, to: path.join(resourcesDir, "claude-skills") }]
-      : []),
-    ...(fs.existsSync(codexSource)
-      ? [{ from: codexSource, to: path.join(resourcesDir, "codex") }]
-      : []),
-    {
-      from: path.join(__dirname, "assets", "tray-icon.png"),
-      to: path.join(resourcesDir, "tray-icon.png"),
-    },
-    {
-      from: path.join(__dirname, "assets", "tray-iconTemplate.png"),
-      to: path.join(resourcesDir, "tray-iconTemplate.png"),
-    },
-    {
-      from: path.join(__dirname, "assets", "tray-iconTemplate@2x.png"),
-      to: path.join(resourcesDir, "tray-iconTemplate@2x.png"),
-    },
-    {
-      from: path.join(__dirname, "assets", "icon.png"),
-      to: path.join(resourcesDir, "icon.png"),
-    },
-  ];
-
-  for (const { from, to } of filesToCopy) {
-    if (fs.existsSync(from)) {
-      fs.cpSync(from, to, { recursive: true, force: true });
-      console.log(`[Forge] Copied ${from} -> ${to}`);
-    } else {
-      console.error(`[Forge] Source not found: ${from}`);
-    }
-  }
-};
+const shouldNotarizeMac =
+  process.platform === "darwin" &&
+  Boolean(process.env.APPLE_ID) &&
+  Boolean(process.env.APPLE_ID_PASSWORD) &&
+  Boolean(process.env.APPLE_TEAM_ID);
 
 const copyExtraResourcesLinux = async (outputPath: string) => {
   const resourcesDir = path.join(outputPath, "resources");
@@ -200,7 +148,8 @@ const copyExtraResources = async (_config: ForgeConfig, buildResult: BuildResult
   }
 
   if (outputPath.includes("darwin") || outputPath.includes("AOP.app")) {
-    await copyExtraResourcesMac(outputPath);
+    console.log("[Forge] Skipping postPackage macOS resource copy to preserve code signature");
+    return;
   } else if (
     outputPath.includes("win32") ||
     outputPath.includes("nsis") ||
@@ -216,6 +165,16 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: false,
     executableName: "aop",
+    appBundleId: "com.aop.desktop",
+    appCategoryType: "public.app-category.developer-tools",
+    osxSign: shouldSignMac ? { hardenedRuntime: true } : undefined,
+    osxNotarize: shouldNotarizeMac
+      ? {
+          appleId: process.env.APPLE_ID as string,
+          appleIdPassword: process.env.APPLE_ID_PASSWORD as string,
+          teamId: process.env.APPLE_TEAM_ID as string,
+        }
+      : undefined,
     extraResources: [
       process.platform === "win32"
         ? {
