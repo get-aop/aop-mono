@@ -15,6 +15,10 @@ jobs:
   build-macos:
     name: Build macOS
     runs-on: macos-latest
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
+      ELECTRON_CACHE: ${{ runner.temp }}/electron-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,6 +31,10 @@ jobs:
       - name: Install dependencies
         working-directory: aop
         run: bun install
+
+      - name: Prepare clean Electron release build
+        working-directory: aop
+        run: bun run ./scripts/release/prepare-electron-build.ts
 
       - name: Build local-server binary
         working-directory: aop/apps/local-server
@@ -59,6 +67,10 @@ jobs:
   build-windows:
     name: Build Windows
     runs-on: windows-latest
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
+      ELECTRON_CACHE: ${{ runner.temp }}/electron-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,6 +83,10 @@ jobs:
       - name: Install dependencies
         working-directory: aop
         run: bun install
+
+      - name: Prepare clean Electron release build
+        working-directory: aop
+        run: bun run ./scripts/release/prepare-electron-build.ts
 
       - name: Build local-server binary (Linux for WSL)
         working-directory: aop/apps/local-server
@@ -100,6 +116,10 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
+      ELECTRON_CACHE: ${{ runner.temp }}/electron-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -112,6 +132,10 @@ jobs:
       - name: Install dependencies
         working-directory: aop
         run: bun install
+
+      - name: Prepare clean Electron release build
+        working-directory: aop
+        run: bun run ./scripts/release/prepare-electron-build.ts
 
       - name: Build local-server binary
         working-directory: aop/apps/local-server
