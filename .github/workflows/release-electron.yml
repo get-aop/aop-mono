@@ -17,8 +17,8 @@ jobs:
     runs-on: macos-latest
     env:
       RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
-      ELECTRON_CACHE: ${{ runner.temp }}/electron-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
-      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+      ELECTRON_CACHE: ${{ github.workspace }}/.tmp/electron-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.tmp/electron-builder-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,8 +69,8 @@ jobs:
     runs-on: windows-latest
     env:
       RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
-      ELECTRON_CACHE: ${{ runner.temp }}/electron-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
-      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+      ELECTRON_CACHE: ${{ github.workspace }}/.tmp/electron-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.tmp/electron-builder-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -118,8 +118,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
-      ELECTRON_CACHE: ${{ runner.temp }}/electron-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
-      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+      ELECTRON_CACHE: ${{ github.workspace }}/.tmp/electron-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.tmp/electron-builder-cache-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
