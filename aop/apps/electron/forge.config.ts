@@ -22,8 +22,34 @@ const shouldNotarizeMac =
   Boolean(process.env.APPLE_ID_PASSWORD) &&
   Boolean(process.env.APPLE_TEAM_ID);
 
+const resolveResourcesDir = (outputPath: string): string => {
+  // macOS packaged app path
+  const macAppResources = path.join(outputPath, "Contents", "Resources");
+  if (fs.existsSync(macAppResources)) {
+    return macAppResources;
+  }
+
+  // linux/windows packaged path
+  const standardResources = path.join(outputPath, "resources");
+  if (fs.existsSync(standardResources)) {
+    return standardResources;
+  }
+
+  // macOS folder that contains *.app (e.g. out/AOP-darwin-arm64)
+  if (fs.existsSync(outputPath)) {
+    const appBundle = fs
+      .readdirSync(outputPath)
+      .find((entry) => entry.endsWith(".app") && fs.existsSync(path.join(outputPath, entry)));
+    if (appBundle) {
+      return path.join(outputPath, appBundle, "Contents", "Resources");
+    }
+  }
+
+  return standardResources;
+};
+
 const copyExtraResourcesLinux = async (outputPath: string) => {
-  const resourcesDir = path.join(outputPath, "resources");
+  const resourcesDir = resolveResourcesDir(outputPath);
 
   if (!fs.existsSync(resourcesDir)) {
     console.log(`[Forge] Creating resources directory at ${resourcesDir}`);
@@ -86,7 +112,7 @@ const copyExtraResourcesLinux = async (outputPath: string) => {
 };
 
 const copyExtraResourcesWindows = async (outputPath: string) => {
-  const resourcesDir = path.join(outputPath, "resources");
+  const resourcesDir = resolveResourcesDir(outputPath);
 
   if (!fs.existsSync(resourcesDir)) {
     console.log(`[Forge] Creating resources directory at ${resourcesDir}`);
@@ -148,8 +174,11 @@ const copyExtraResources = async (_config: ForgeConfig, buildResult: BuildResult
   }
 
   if (outputPath.includes("darwin") || outputPath.includes("AOP.app")) {
-    console.log("[Forge] Skipping postPackage macOS resource copy to preserve code signature");
-    return;
+    if (shouldSignMac || shouldNotarizeMac) {
+      console.log("[Forge] Skipping postPackage macOS resource copy to preserve code signature");
+      return;
+    }
+    await copyExtraResourcesLinux(outputPath);
   } else if (
     outputPath.includes("win32") ||
     outputPath.includes("nsis") ||
