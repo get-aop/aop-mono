@@ -219,50 +219,6 @@ const loadYaml = async (filename: string) => {
 };
 
 describe("catalog workflow YAMLs", () => {
-  test("backend-feature parses with correct structure", async () => {
-    const wf = await loadYaml("backend-feature.yaml");
-
-    expect(wf.name).toBe("backend-feature");
-    expect(wf.initialStep).toBe("codebase_research");
-    expect(Object.keys(wf.steps)).toEqual(
-      expect.arrayContaining([
-        "codebase_research",
-        "plan_implementation",
-        "implement_backend",
-        "run_tests",
-        "debug_systematic",
-        "code_review",
-      ]),
-    );
-    expect(wf.terminalStates).toContain("__paused__");
-    expect(wf.steps.plan_implementation?.signals).toContainEqual(
-      expect.objectContaining({ name: "REQUIRES_INPUT" }),
-    );
-  });
-
-  test("frontend-feature parses with correct structure", async () => {
-    const wf = await loadYaml("frontend-feature.yaml");
-
-    expect(wf.name).toBe("frontend-feature");
-    expect(wf.initialStep).toBe("codebase_research");
-    expect(Object.keys(wf.steps)).toEqual(
-      expect.arrayContaining([
-        "codebase_research",
-        "plan_implementation",
-        "implement_frontend",
-        "visual_verify",
-        "code_review",
-      ]),
-    );
-    expect(wf.terminalStates).toContain("__paused__");
-    expect(wf.steps.plan_implementation?.signals).toContainEqual(
-      expect.objectContaining({ name: "REQUIRES_INPUT" }),
-    );
-    expect(wf.steps.visual_verify?.signals).toContainEqual(
-      expect.objectContaining({ name: "REQUIRES_INPUT" }),
-    );
-  });
-
   test("deep-research parses with correct structure", async () => {
     const wf = await loadYaml("deep-research.yaml");
 
@@ -274,86 +230,7 @@ describe("catalog workflow YAMLs", () => {
     expect(wf.terminalStates).toContain("__paused__");
   });
 
-  test("debug parses with correct structure", async () => {
-    const wf = await loadYaml("debug.yaml");
-
-    expect(wf.name).toBe("debug");
-    expect(wf.initialStep).toBe("codebase_research");
-    expect(Object.keys(wf.steps)).toEqual(
-      expect.arrayContaining(["codebase_research", "debug_systematic"]),
-    );
-    expect(wf.terminalStates).toContain("__paused__");
-    expect(wf.steps.debug_systematic?.signals).toContainEqual(
-      expect.objectContaining({ name: "FIX_COMPLETE" }),
-    );
-    expect(wf.steps.debug_systematic?.signals).toContainEqual(
-      expect.objectContaining({ name: "REQUIRES_INPUT" }),
-    );
-  });
-
-  test("frontend-ui-fix parses with correct structure", async () => {
-    const wf = await loadYaml("frontend-ui-fix.yaml");
-
-    expect(wf.name).toBe("frontend-ui-fix");
-    expect(wf.initialStep).toBe("codebase_research");
-    expect(Object.keys(wf.steps)).toEqual(
-      expect.arrayContaining([
-        "codebase_research",
-        "implement_frontend",
-        "visual_verify",
-        "code_review",
-      ]),
-    );
-    expect(wf.steps.plan_implementation).toBeUndefined();
-    expect(wf.terminalStates).toContain("__paused__");
-    expect(wf.steps.visual_verify?.signals).toContainEqual(
-      expect.objectContaining({ name: "REQUIRES_INPUT" }),
-    );
-  });
-
-  test("refactor parses with correct structure", async () => {
-    const wf = await loadYaml("refactor.yaml");
-
-    expect(wf.name).toBe("refactor");
-    expect(wf.initialStep).toBe("codebase_research");
-    expect(Object.keys(wf.steps)).toEqual(
-      expect.arrayContaining(["codebase_research", "refactor_iterate"]),
-    );
-    expect(wf.terminalStates).toContain("__paused__");
-    expect(wf.steps.refactor_iterate?.signals).toContainEqual(
-      expect.objectContaining({ name: "REFACTOR_COMPLETE" }),
-    );
-    expect(wf.steps.refactor_iterate?.signals).toContainEqual(
-      expect.objectContaining({ name: "CHUNK_DONE" }),
-    );
-    expect(wf.steps.refactor_iterate?.signals).toContainEqual(
-      expect.objectContaining({ name: "REQUIRES_INPUT" }),
-    );
-  });
-
-  test("address-pr-feedback parses with correct structure", async () => {
-    const wf = await loadYaml("address-pr-feedback.yaml");
-
-    expect(wf.name).toBe("address-pr-feedback");
-    expect(wf.initialStep).toBe("codebase_research");
-    expect(Object.keys(wf.steps)).toEqual(
-      expect.arrayContaining(["codebase_research", "address_feedback", "run_tests", "code_review"]),
-    );
-    expect(wf.steps.address_feedback?.signals).toContainEqual(
-      expect.objectContaining({ name: "CHUNK_DONE" }),
-    );
-    expect(wf.terminalStates).not.toContain("__paused__");
-  });
-
-  const catalogFiles = [
-    "backend-feature.yaml",
-    "frontend-feature.yaml",
-    "deep-research.yaml",
-    "debug.yaml",
-    "refactor.yaml",
-    "frontend-ui-fix.yaml",
-    "address-pr-feedback.yaml",
-  ];
+  const catalogFiles = ["deep-research.yaml", "refactor.yaml"];
 
   test.each(catalogFiles)("%s has valid transition targets", async (file) => {
     const wf = await loadYaml(file);

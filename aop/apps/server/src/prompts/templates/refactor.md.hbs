@@ -1,38 +1,61 @@
-You are refactoring code in a software project.
+You are refactoring code in a software project, prioritizing discovered opportunities.
 
 {{> task-context}}
 
-## Instructions
+## Context
 
-This is iteration {{step.iteration}} of the refactoring loop. Work in focused, incremental chunks:
-- **Early iterations**: Identify the refactoring targets, plan the approach, make structural changes
-- **Middle iterations**: Apply the core transformations, update call sites, migrate usages
-- **Later iterations**: Clean up, update tests, verify no regressions
+This is iteration {{step.iteration}} of the refactoring loop.
 
-### Rules
+**Prioritized findings** from research phase are in `{{task.changePath}}/refactor-findings.md`.
+
+## Your Task
+
+1. Read `refactor-findings.md` to see the prioritized list
+2. Select the highest-priority item not yet addressed
+3. Apply the refactoring in a focused chunk
+4. Verify: build passes, tests pass
+5. Update `{{task.changePath}}/refactor-notes.md` with progress
+
+## Rules
 
 1. **Keep behavior identical** — refactoring must not change what the code does, only how it's structured
-2. **Work incrementally** — each iteration should leave the codebase in a compilable, test-passing state
-3. **Update tests** — move, rename, or adjust tests to match the new structure; add tests for any gaps
-4. **Delete dead code** — remove unused functions, imports, and files; do not leave commented-out code
+2. **Work incrementally** — each iteration leaves codebase compilable and tests passing
+3. **Update tests** — move, rename, or adjust tests to match new structure
+4. **Delete dead code** — remove unused functions, imports, files
+5. **Verify first** — run tests before and after changes to ensure no regressions
 
-### Completion criteria
+## Progress Tracking
 
-Before signaling REFACTOR_COMPLETE, you MUST:
-1. Have completed all refactoring changes described in the task
-2. Verified the build passes (no type errors, no lint errors)
-3. Run relevant tests and confirmed they pass
-4. Checked that no dead code or unused imports remain
+Update `{{task.changePath}}/refactor-notes.md` after each iteration:
 
-If there is more work to do but you've completed a meaningful chunk, signal CHUNK_DONE.
+```markdown
+# Refactoring Progress
 
-Save your progress to `{{task.changePath}}/refactor-notes.md` (create or update this file with what was changed and what remains).
+## Completed
+- [x] Finding 1: [title] - `file.ts:42`
 
-REQUIRES_INPUT is a **last resort**. You must exhaust every avenue before signaling it:
-- Try multiple approaches if the first doesn't work
-- Search the codebase thoroughly for all usages and dependencies
-- Read existing tests and patterns to understand the intended design
+## In Progress
+- [ ] Finding 2: [title]
 
-Only signal REQUIRES_INPUT when you are genuinely blocked — you need a human decision on design direction, scope boundaries, or trade-offs that you cannot resolve on your own.
+## Remaining
+- [ ] Finding 3: [title]
+```
+
+## Completion Criteria
+
+**Signal REFACTOR_COMPLETE** when:
+1. All findings in refactor-findings.md have been addressed
+2. Build passes (no type errors, no lint errors)
+3. Tests pass
+4. No dead code or unused imports remain
+
+**Signal CHUNK_DONE** when:
+- A meaningful chunk is complete
+- More findings remain in refactor-findings.md
+
+**Signal REQUIRES_INPUT** only as last resort:
+- Genuinely blocked
+- Need human decision on design direction or scope
+- Exhausted all other avenues
 
 {{> output-signals}}

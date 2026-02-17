@@ -22,3 +22,6 @@
 [submodule "external/claude-bootstrap"]
 	path = external/claude-bootstrap
 	url = https://github.com/alinaqi/claude-bootstrap.git
+[submodule "external/picoclaw"]
+	path = external/picoclaw
+	url = https://github.com/sipeed/picoclaw

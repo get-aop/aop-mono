@@ -1,51 +1,104 @@
 version: 1
 name: refactor
-initialStep: codebase_research
+initialStep: research
 steps:
-  codebase_research:
-    id: codebase_research
+  research:
+    id: research
     type: research
-    promptTemplate: codebase-research.md.hbs
+    promptTemplate: refactor-research.md.hbs
     maxAttempts: 3
     signals:
       - name: RESEARCH_COMPLETE
-        description: codebase exploration is done, findings are written
+        description: findings written to refactor-findings.md
     transitions:
       - condition: RESEARCH_COMPLETE
-        target: refactor_iterate
+        target: iterate
       - condition: __none__
-        target: refactor_iterate
+        target: iterate
       - condition: failure
         target: __blocked__
 
-  refactor_iterate:
-    id: refactor_iterate
+  iterate:
+    id: iterate
     type: iterate
     promptTemplate: refactor.md.hbs
     maxAttempts: 10
     signals:
       - name: REFACTOR_COMPLETE
-        description: all refactoring changes are done and verified with passing tests
+        description: all refactoring done, tests pass
       - name: CHUNK_DONE
-        description: completed a chunk of refactoring, more work remains
+        description: completed a chunk, more work remains
       - name: REQUIRES_INPUT
-        description: stuck, needs human input on design direction or scope
+        description: stuck, needs human input on direction or scope
     transitions:
       - condition: REFACTOR_COMPLETE
-        target: __done__
+        target: full-review
       - condition: CHUNK_DONE
-        target: refactor_iterate
+        target: iterate
         maxIterations: 8
         onMaxIterations: __blocked__
       - condition: REQUIRES_INPUT
         target: __paused__
       - condition: __none__
-        target: refactor_iterate
+        target: iterate
         maxIterations: 8
         onMaxIterations: __blocked__
       - condition: failure
         target: __blocked__
 
+  full-review:
+    id: full-review
+    type: review
+    promptTemplate: full-review.md.hbs
+    maxAttempts: 1
+    signals:
+      - name: REVIEW_PASSED
+        description: all checks pass, no issues found
+      - name: REVIEW_FAILED
+        description: issues found that need fixing
+    transitions:
+      - condition: REVIEW_PASSED
+        target: __done__
+      - condition: REVIEW_FAILED
+        target: fix-issues
+        maxIterations: 2
+        onMaxIterations: __blocked__
+      - condition: failure
+        target: __blocked__
+
+  fix-issues:
+    id: fix-issues
+    type: implement
+    promptTemplate: fix-issues.md.hbs
+    maxAttempts: 1
+    signals:
+      - name: FIX_COMPLETE
+        description: all review issues have been addressed
+    transitions:
+      - condition: FIX_COMPLETE
+        target: quick-review
+        afterIteration: 1
+        thenTarget: full-review
+      - condition: failure
+        target: __blocked__
+
+  quick-review:
+    id: quick-review
+    type: review
+    promptTemplate: quick-review.md.hbs
+    maxAttempts: 1
+    signals:
+      - name: REVIEW_PASSED
+        description: fixes verified, all checks pass
+      - name: REVIEW_FAILED
+        description: issues remain or new issues found
+    transitions:
+      - condition: REVIEW_PASSED
+        target: __done__
+      - condition: REVIEW_FAILED
+        target: fix-issues
+      - condition: failure
+        target: __blocked__
 terminalStates:
   - __done__
   - __blocked__

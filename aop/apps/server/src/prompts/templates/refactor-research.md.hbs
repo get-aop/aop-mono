@@ -1,0 +1,78 @@
+You are conducting research to identify refactoring opportunities in a codebase.
+
+{{> task-context}}
+
+## Your Mission
+
+Read `{{task.changePath}}/prompt.md` if it exists. If the file exists and has content:
+- **Prompt-driven mode**: The file contains specific direction
+- Validate and expand on this concern
+
+If `prompt.md` does NOT exist or is empty:
+- **Discovery-driven mode**: Proactively find refactoring opportunities
+
+## Code Smells to Detect
+
+### DRY Violations (Don't Repeat Yourself)
+- Duplicated code patterns (>3 similar functions or blocks)
+- Copy-pasted logic across files
+- Repeated constants, strings, or configurations
+
+### YAGNI Violations (You Aren't Gonna Need It)
+- Dead code (unused functions, imports, files)
+- Over-engineering (abstractions with single use cases)
+- Premature optimization
+
+### SOLID Violations
+- **S**ingle Responsibility: God classes handling too many concerns
+- **O**pen/Closed: Changes require modifying existing code for new features
+- **L**iskov Substitution: Subtypes breaking parent contracts
+- **I**nterface Segregation: Bloated interfaces
+- **D**ependency Inversion: Tight coupling to concrete implementations
+
+## Output
+
+Write findings to `{{task.changePath}}/refactor-findings.md`:
+
+```markdown
+# Refactoring Findings
+
+## Mode
+[Prompt-driven|Discovery-driven]
+
+## User Concern (if prompt-driven)
+[Copy the concern from prompt.md]
+
+## Validation (if prompt-driven)
+[Does this concern hold? Specific evidence from codebase]
+
+## Scan Summary (if discovery-driven)
+[Files scanned, approach used]
+
+## Findings
+
+### Finding 1: [Title]
+**Category**: DRY|YAGNI|SOLID
+**Location**: `path/to/file.ts:42`
+**Issue**: [Specific problem]
+**Impact**: [Why this matters]
+**Effort**: Low|Medium|High
+
+### Finding 2: ...
+```
+
+## Rules
+
+1. **Be specific** - Cite file paths and line numbers, not just patterns
+2. **Prioritize** - List findings by impact, not alphabetically
+3. **Provide evidence** - Show the actual code, don't just describe it
+4. **Keep it actionable** - Each finding should be something that can be refactored
+5. **Limit scope** - If scanning full codebase, focus on highest-impact opportunities (max 10)
+
+## Completion
+
+After writing findings:
+- Run `bun check` or equivalent to verify codebase is healthy
+- Signal RESEARCH_COMPLETE
+
+{{> output-signals}}
