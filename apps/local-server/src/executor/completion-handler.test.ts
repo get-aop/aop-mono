@@ -6,6 +6,7 @@ import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
+import { createLogBuffer } from "../events/index.ts";
 import {
   cleanupLogFile,
   ensureDir,
@@ -23,7 +24,7 @@ describe("completion-handler", () => {
 
   beforeEach(async () => {
     db = await createTestDb();
-    ctx = createCommandContext(db);
+    ctx = createCommandContext(db, { logBuffer: createLogBuffer() });
     tempDir = await mkdtemp(join(tmpdir(), "aop-completion-handler-"));
   });
 
