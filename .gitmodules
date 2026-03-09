@@ -1,0 +1,12 @@
+[submodule "external/superpowers"]
+	path = external/superpowers
+	url = https://github.com/obra/superpowers
+[submodule "external/skills"]
+	path = external/skills
+	url = https://github.com/anthropics/skills
+[submodule "external/claude-plugins-official"]
+	path = external/claude-plugins-official
+	url = https://github.com/anthropics/claude-plugins-official
+[submodule "external/picoclaw"]
+	path = external/picoclaw
+	url = https://github.com/sipeed/picoclaw
