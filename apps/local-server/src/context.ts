@@ -15,6 +15,7 @@ import { createRepoRepository, type RepoRepository } from "./repo/repository.ts"
 import { createSessionRepository, type SessionRepository } from "./session/repository.ts";
 import { createSettingsRepository, type SettingsRepository } from "./settings/repository.ts";
 import { createTaskRepository, type TaskRepository } from "./task/repository.ts";
+import { createWorkflowRepository, type WorkflowRepository } from "./workflow/repository.ts";
 import { createLocalWorkflowService, type LocalWorkflowService } from "./workflow/service.ts";
 
 export interface LocalServerContext {
@@ -23,6 +24,7 @@ export interface LocalServerContext {
   settingsRepository: SettingsRepository;
   executionRepository: ExecutionRepository;
   sessionRepository: SessionRepository;
+  workflowRepository: WorkflowRepository;
   taskEventEmitter: TaskEventEmitter;
   logBuffer: LogBuffer;
   logFlusher: LogFlusher;
@@ -53,6 +55,7 @@ export const createCommandContext = (
     settingsRepository: createSettingsRepository(db),
     executionRepository,
     sessionRepository: createSessionRepository(db),
+    workflowRepository: createWorkflowRepository(db),
     taskEventEmitter,
     logBuffer,
     logFlusher,

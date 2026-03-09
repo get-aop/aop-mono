@@ -5,6 +5,15 @@ export interface SettingsTable {
   value: string;
 }
 
+export interface WorkflowsTable {
+  id: string;
+  name: string;
+  definition: string;
+  version: Generated<number>;
+  active: Generated<boolean>;
+  created_at: Generated<string>;
+}
+
 export interface ReposTable {
   id: string;
   path: string;
@@ -100,6 +109,7 @@ export interface SessionMessagesTable {
 
 export interface Database {
   settings: SettingsTable;
+  workflows: WorkflowsTable;
   repos: ReposTable;
   tasks: TasksTable;
   executions: ExecutionsTable;
@@ -111,6 +121,10 @@ export interface Database {
 
 export type Setting = Selectable<SettingsTable>;
 export type NewSetting = Insertable<SettingsTable>;
+
+export type Workflow = Selectable<WorkflowsTable>;
+export type NewWorkflow = Insertable<WorkflowsTable>;
+export type WorkflowUpdate = Updateable<WorkflowsTable>;
 
 export type Repo = Selectable<ReposTable>;
 export type NewRepo = Insertable<ReposTable>;

@@ -7,11 +7,13 @@ import { createTemplateLoader } from "../prompts/template-loader.ts";
 import { createStepCommandGenerator } from "../workflow-engine/step-command-generator.ts";
 import type { WorkflowDefinition, WorkflowStep } from "../workflow-engine/types.ts";
 import { loadWorkflowsFromDirectory } from "../workflow-engine/workflow-loader.ts";
+import { parseWorkflow } from "../workflow-engine/workflow-parser.ts";
 import {
   createWorkflowStateMachine,
   type TransitionResult,
   type WorkflowStateMachine,
 } from "../workflow-engine/workflow-state-machine.ts";
+import { syncWorkflows } from "./sync.ts";
 
 const DEFAULT_WORKFLOW_NAME = "aop-default";
 const logger = getLogger("local-workflow-service");
@@ -71,19 +73,32 @@ const assertUnreachable = (_value: never): never => {
 export const createLocalWorkflowService = (ctx: LocalServerContext): LocalWorkflowService => {
   const templateLoader = createTemplateLoader();
   const stepCommandGenerator = createStepCommandGenerator(templateLoader);
+  let syncPromise: Promise<void> | null = null;
 
-  const loadWorkflowMap = async (): Promise<Map<string, WorkflowDefinition>> => {
-    const workflows = await loadWorkflowsFromDirectory(WORKFLOWS_DIR);
-    return new Map(workflows.map((workflow) => [workflow.name, workflow]));
+  const ensureWorkflowsSynced = async (): Promise<void> => {
+    if (!syncPromise) {
+      syncPromise = (async () => {
+        const workflows = await loadWorkflowsFromDirectory(WORKFLOWS_DIR);
+        await syncWorkflows(ctx.workflowRepository, workflows);
+      })();
+    }
+
+    await syncPromise;
+  };
+
+  const listPersistedWorkflowNames = async (): Promise<string[]> => {
+    await ensureWorkflowsSynced();
+    return ctx.workflowRepository.listNames();
   };
 
   const getWorkflow = async (workflowName: string): Promise<WorkflowDefinition> => {
-    const workflows = await loadWorkflowMap();
-    const workflow = workflows.get(workflowName);
-    if (!workflow) {
+    await ensureWorkflowsSynced();
+    const workflow = await ctx.workflowRepository.findByName(workflowName);
+    if (!workflow || !workflow.active) {
       throw new Error(`Workflow "${workflowName}" not found`);
     }
-    return workflow;
+
+    return parseWorkflow(workflow.definition);
   };
 
   const resolveRetryStep = async (
@@ -306,8 +321,7 @@ export const createLocalWorkflowService = (ctx: LocalServerContext): LocalWorkfl
 
   return {
     listWorkflows: async () => {
-      const workflows = await loadWorkflowMap();
-      return [...workflows.keys()].sort();
+      return listPersistedWorkflowNames();
     },
 
     startTask: async (task) => {

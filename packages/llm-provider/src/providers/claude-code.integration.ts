@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, expect, test } from "bun:test";
 import { configureLogging, getLogger } from "@aop/infra";
 import { ClaudeCodeProvider } from "./claude-code";
 
@@ -9,8 +9,8 @@ beforeAll(async () => {
   await configureLogging({ level: "debug" });
 });
 
-describe.skipIf(isCI)("ClaudeCodeProvider integration", () => {
-  test("runs a basic prompt and returns result with session ID", async () => {
+if (!isCI) {
+  test("ClaudeCodeProvider integration > runs a basic prompt and returns result with session ID", async () => {
     const provider = new ClaudeCodeProvider();
     const outputs: Record<string, unknown>[] = [];
 
@@ -51,4 +51,4 @@ describe.skipIf(isCI)("ClaudeCodeProvider integration", () => {
       .join("");
     expect(allText).toContain("HELLO_TEST_123");
   }, 30_000);
-});
+}
