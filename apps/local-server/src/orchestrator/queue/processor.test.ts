@@ -15,6 +15,23 @@ describe("QueueProcessor", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
 
+  const waitFor = async (
+    predicate: () => Promise<boolean>,
+    { timeoutMs = 500, pollIntervalMs = 5 }: { timeoutMs?: number; pollIntervalMs?: number } = {},
+  ): Promise<void> => {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      if (await predicate()) {
+        return;
+      }
+
+      await Bun.sleep(pollIntervalMs);
+    }
+
+    throw new Error(`Condition not met within ${timeoutMs}ms`);
+  };
+
   beforeEach(async () => {
     db = await createTestDb();
     ctx = createCommandContext(db);
@@ -373,7 +390,7 @@ describe("QueueProcessor", () => {
     await processor.start();
     expect(processor.isRunning()).toBe(true);
 
-    await Bun.sleep(20);
+    await waitFor(async () => (await ctx.taskRepository.get("task-1"))?.status === "READY");
 
     expect((await ctx.taskRepository.get("task-1"))?.status).toBe("READY");
     expect(processor.isRunning()).toBe(true);
