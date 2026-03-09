@@ -27,16 +27,16 @@ Follow the repo guidelines to run tests, builds and correct way of verifying cha
 
 ## Repo Skills
 
-This repository vendors a small repo-owned AOP skill bundle locally so task workflows do not depend on globally installed skills.
+This repository vendors a small public-friendly skill bundle locally so task workflows do not depend on globally installed skills.
 
 Canonical skill paths:
-- `.claude/skills/aop-brainstorming/SKILL.md`
-- `.claude/skills/aop-create-task/SKILL.md`
-- `.claude/skills/aop-task-planner/SKILL.md`
-- `.claude/skills/aop-task-review/SKILL.md`
-- `.claude/skills/aop-code-review/SKILL.md`
-- `.claude/skills/aop-remove-ai-slop/SKILL.md`
-- `.claude/skills/aop-systematic-debugging/SKILL.md`
-- `.claude/skills/aop-test-driven-development/SKILL.md`
+- `.claude/skills/brainstorming/SKILL.md`
+- `.claude/skills/create-task/SKILL.md`
+- `.claude/skills/task-planner/SKILL.md`
+- `.claude/skills/task-review/SKILL.md`
+- `.claude/skills/code-review/SKILL.md`
+- `.claude/skills/remove-ai-slop/SKILL.md`
+- `.claude/skills/systematic-debugging/SKILL.md`
+- `.claude/skills/test-driven-development/SKILL.md`
 
 Matching copies also live under `.codex/skills/` for Codex-based runs.
