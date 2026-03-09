@@ -33,9 +33,17 @@ describe("run-task/service", () => {
     if (result.status !== "success") return;
 
     expect(result.changeName).toBe("my-feature");
-    expect(await Bun.file(join(repoRoot, aopPaths.relativeTaskDocs(), "my-feature", "task.md")).exists()).toBe(true);
-    expect(await Bun.file(join(repoRoot, aopPaths.relativeTaskDocs(), "my-feature", "plan.md")).exists()).toBe(true);
-    expect(await Bun.file(join(repoRoot, aopPaths.relativeTaskDocs(), "my-feature", "001-my-feature.md")).exists()).toBe(true);
+    expect(
+      await Bun.file(join(repoRoot, aopPaths.relativeTaskDocs(), "my-feature", "task.md")).exists(),
+    ).toBe(true);
+    expect(
+      await Bun.file(join(repoRoot, aopPaths.relativeTaskDocs(), "my-feature", "plan.md")).exists(),
+    ).toBe(true);
+    expect(
+      await Bun.file(
+        join(repoRoot, aopPaths.relativeTaskDocs(), "my-feature", "001-my-feature.md"),
+      ).exists(),
+    ).toBe(true);
 
     const stored = await sessionRepository.get(result.sessionId);
     expect(stored?.status).toBe("completed");

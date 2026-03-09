@@ -9,6 +9,27 @@ import type {
   StepLog,
 } from "../db/schema.ts";
 
+const withNull = <T>(value: T | null | undefined): T | null => value ?? null;
+
+const toStepExecutionRecord = (step: NewStepExecution): StepExecution => {
+  return {
+    ...step,
+    step_id: withNull(step.step_id),
+    step_type: withNull(step.step_type),
+    remote_execution_id: withNull(step.remote_execution_id),
+    agent_pid: withNull(step.agent_pid),
+    session_id: withNull(step.session_id),
+    exit_code: withNull(step.exit_code),
+    signal: withNull(step.signal),
+    pause_context: withNull(step.pause_context),
+    error: withNull(step.error),
+    attempt: withNull(step.attempt),
+    iteration: withNull(step.iteration),
+    signals_json: withNull(step.signals_json),
+    ended_at: withNull(step.ended_at),
+  };
+};
+
 export interface ExecutionRepository {
   createExecution: (execution: NewExecution) => Promise<Execution>;
   getExecution: (id: string) => Promise<Execution | null>;
@@ -61,7 +82,9 @@ export const createExecutionRepository = (_legacyDb?: unknown): ExecutionReposit
         .sort((left, right) => right.started_at.localeCompare(left.started_at)),
 
     cancelRunningExecutions: async (): Promise<number> => {
-      const running = [...executions.values()].filter((execution) => execution.status === "running");
+      const running = [...executions.values()].filter(
+        (execution) => execution.status === "running",
+      );
       const now = new Date().toISOString();
       for (const execution of running) {
         executions.set(execution.id, { ...execution, status: "cancelled", completed_at: now });
@@ -70,22 +93,7 @@ export const createExecutionRepository = (_legacyDb?: unknown): ExecutionReposit
     },
 
     createStepExecution: async (step: NewStepExecution): Promise<StepExecution> => {
-      const record: StepExecution = {
-        ...step,
-        step_id: step.step_id ?? null,
-        step_type: step.step_type ?? null,
-        remote_execution_id: step.remote_execution_id ?? null,
-        agent_pid: step.agent_pid ?? null,
-        session_id: step.session_id ?? null,
-        exit_code: step.exit_code ?? null,
-        signal: step.signal ?? null,
-        pause_context: step.pause_context ?? null,
-        error: step.error ?? null,
-        attempt: step.attempt ?? null,
-        iteration: step.iteration ?? null,
-        signals_json: step.signals_json ?? null,
-        ended_at: step.ended_at ?? null,
-      };
+      const record = toStepExecutionRecord(step);
       steps.set(record.id, record);
       return record;
     },

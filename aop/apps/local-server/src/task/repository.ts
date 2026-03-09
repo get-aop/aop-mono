@@ -4,13 +4,12 @@ import { basename, join } from "node:path";
 import { TaskStatus } from "@aop/common";
 import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
-import type { Database } from "../db/schema.ts";
+import type { Database, NewTask, Task, TaskUpdate } from "../db/schema.ts";
 import type { TaskEventEmitter } from "../events/task-events.ts";
 import { createRepoRepository, type RepoRepository } from "../repo/repository.ts";
 import { toSSETask } from "../status/handlers.ts";
 import { parseTaskDoc, updateTaskDocStatus, writeTaskDoc } from "../task-docs/task.ts";
 import type { TaskDocFrontmatter } from "../task-docs/types.ts";
-import type { NewTask, Task, TaskUpdate } from "../db/schema.ts";
 import type { TaskStatus as TaskStatusType } from "./types.ts";
 
 export interface ListFilters {
@@ -112,13 +111,63 @@ const compareNullableDate = (left: string | null, right: string | null): number 
   return left.localeCompare(right);
 };
 
+const hasTaskUpdateField = (updates: TaskUpdate, key: keyof TaskUpdate): boolean =>
+  Object.hasOwn(updates, key);
+
+const getTaskUpdateValue = <T>(updates: TaskUpdate, key: keyof TaskUpdate, current: T): T => {
+  if (!hasTaskUpdateField(updates, key)) {
+    return current;
+  }
+
+  return (updates[key] ?? null) as T;
+};
+
+const buildRuntimeStateFromTask = (task: NewTask): RuntimeTaskState => ({
+  ...DEFAULT_RUNTIME_STATE,
+  worktree_path: task.worktree_path ?? null,
+  ready_at: task.ready_at ?? null,
+  remote_id: task.remote_id ?? null,
+  synced_at: task.synced_at ?? null,
+  preferred_workflow: task.preferred_workflow ?? null,
+  base_branch: task.base_branch ?? null,
+  preferred_provider: task.preferred_provider ?? null,
+  retry_from_step: task.retry_from_step ?? null,
+  resume_input: task.resume_input ?? null,
+});
+
+const mergeRuntimeState = (state: RuntimeTaskState, updates: TaskUpdate): RuntimeTaskState => ({
+  ...state,
+  worktree_path: getTaskUpdateValue(updates, "worktree_path", state.worktree_path),
+  ready_at: getTaskUpdateValue(updates, "ready_at", state.ready_at),
+  remote_id: getTaskUpdateValue(updates, "remote_id", state.remote_id),
+  synced_at: getTaskUpdateValue(updates, "synced_at", state.synced_at),
+  preferred_workflow: getTaskUpdateValue(updates, "preferred_workflow", state.preferred_workflow),
+  base_branch: getTaskUpdateValue(updates, "base_branch", state.base_branch),
+  preferred_provider: getTaskUpdateValue(updates, "preferred_provider", state.preferred_provider),
+  retry_from_step: getTaskUpdateValue(updates, "retry_from_step", state.retry_from_step),
+  resume_input: getTaskUpdateValue(updates, "resume_input", state.resume_input),
+});
+
+const matchesFilters = (task: Task, filters?: ListFilters): boolean => {
+  if (filters?.status && task.status !== filters.status) return false;
+  if (filters?.excludeRemoved && task.status === TaskStatus.REMOVED) return false;
+  if (filters?.repo_id && task.repo_id !== filters.repo_id) return false;
+  return true;
+};
+
+const buildTaskFrontmatter = (task: NewTask, title: string): TaskDocFrontmatter => ({
+  title,
+  status: task.status ?? TaskStatus.DRAFT,
+  created: task.created_at ?? new Date().toISOString(),
+  branch: undefined,
+});
+
 export const createTaskRepository = (
   source: RepoRepository | Kysely<Database>,
   options: TaskRepositoryOptions = {},
 ): TaskRepository => {
   const { eventEmitter } = options;
-  const repoRepository =
-    "getAll" in source ? source : createRepoRepository(source);
+  const repoRepository = "getAll" in source ? source : createRepoRepository(source);
   const runtime = new Map<string, RuntimeTaskState>();
   const cache = new Map<string, Task>();
 
@@ -195,7 +244,7 @@ export const createTaskRepository = (
     return tasks;
   };
 
-  const refreshCache = async (): Promise<void> => {
+  const buildTaskSnapshot = async (): Promise<Map<string, Task>> => {
     const repos = await repoRepository.getAll();
     const next = new Map<string, Task>();
 
@@ -206,26 +255,49 @@ export const createTaskRepository = (
       }
     }
 
-    for (const [taskId, task] of next.entries()) {
-      const previous = cache.get(taskId);
-      if (!previous) {
-        emitCreated(task);
-      } else if (previous.status !== task.status) {
-        emitStatusChanged(task, previous.status as TaskStatusType);
-      }
+    return next;
+  };
+
+  const emitSnapshotTask = (taskId: string, task: Task): void => {
+    const previous = cache.get(taskId);
+    if (!previous) {
+      emitCreated(task);
+      return;
     }
 
+    if (previous.status !== task.status) {
+      emitStatusChanged(task, previous.status as TaskStatusType);
+    }
+  };
+
+  const emitRemovedSnapshotTasks = (next: Map<string, Task>): void => {
     for (const [taskId, previous] of cache.entries()) {
-      if (!next.has(taskId)) {
-        runtime.delete(taskId);
-        emitRemoved(previous);
-      }
+      if (next.has(taskId)) continue;
+
+      runtime.delete(taskId);
+      emitRemoved(previous);
+    }
+  };
+
+  const emitSnapshotChanges = (next: Map<string, Task>): void => {
+    for (const [taskId, task] of next.entries()) {
+      emitSnapshotTask(taskId, task);
     }
 
+    emitRemovedSnapshotTasks(next);
+  };
+
+  const replaceCache = (next: Map<string, Task>): void => {
     cache.clear();
     for (const [taskId, task] of next.entries()) {
       cache.set(taskId, task);
     }
+  };
+
+  const refreshCache = async (): Promise<void> => {
+    const next = await buildTaskSnapshot();
+    emitSnapshotChanges(next);
+    replaceCache(next);
   };
 
   const findTaskFolder = async (repoId: string, taskId: string): Promise<string | null> => {
@@ -252,14 +324,36 @@ export const createTaskRepository = (
 
   const filterTasks = async (filters?: ListFilters): Promise<Task[]> => {
     const tasks = await getAllTasks();
-    const filtered = tasks.filter((task) => {
-      if (filters?.status && task.status !== filters.status) return false;
-      if (filters?.excludeRemoved && task.status === TaskStatus.REMOVED) return false;
-      if (filters?.repo_id && task.repo_id !== filters.repo_id) return false;
-      return true;
-    });
+    const filtered = tasks.filter((task) => matchesFilters(task, filters));
 
     return sortTasks(filtered, filters?.orderByReadyAt);
+  };
+
+  const getWorkingCounts = async (): Promise<{
+    globalWorking: number;
+    workingByRepo: Map<string, number>;
+  }> => {
+    const workingByRepo = new Map<string, number>();
+    const workingTasks = await filterTasks({ status: TaskStatus.WORKING });
+
+    for (const task of workingTasks) {
+      workingByRepo.set(task.repo_id, (workingByRepo.get(task.repo_id) ?? 0) + 1);
+    }
+
+    return {
+      globalWorking: workingTasks.length,
+      workingByRepo,
+    };
+  };
+
+  const hasRepoCapacity = async (
+    task: Task,
+    workingByRepo: Map<string, number>,
+    limits: ConcurrencyLimits,
+  ): Promise<boolean> => {
+    const repoWorking = workingByRepo.get(task.repo_id) ?? 0;
+    const repoMax = await limits.getRepoMax(task.repo_id);
+    return repoWorking < repoMax;
   };
 
   const pickNextTask = async (
@@ -273,27 +367,29 @@ export const createTaskRepository = (
       orderByReadyAt: orderBy,
     });
 
-    const workingByRepo = new Map<string, number>();
-    let globalWorking = 0;
-
-    for (const task of await filterTasks({ status: TaskStatus.WORKING })) {
-      globalWorking++;
-      workingByRepo.set(task.repo_id, (workingByRepo.get(task.repo_id) ?? 0) + 1);
-    }
+    const { globalWorking, workingByRepo } = await getWorkingCounts();
 
     if (globalWorking >= limits.globalMax) {
       return null;
     }
 
     for (const task of tasks) {
-      const repoWorking = workingByRepo.get(task.repo_id) ?? 0;
-      const repoMax = await limits.getRepoMax(task.repo_id);
-      if (repoWorking < repoMax) {
+      if (await hasRepoCapacity(task, workingByRepo, limits)) {
         return task;
       }
     }
 
     return null;
+  };
+
+  const getTaskOrRefreshFallback = async (
+    taskId: string,
+    repoId: string,
+    repoPath: string,
+    changePath: string,
+  ): Promise<Task> => {
+    await refreshCache();
+    return cache.get(taskId) ?? (await mapTaskFromDisk(repoId, repoPath, changePath));
   };
 
   const createTaskRecord = async (task: NewTask): Promise<Task> => {
@@ -308,28 +404,20 @@ export const createTaskRepository = (
     mkdirSync(taskDir, { recursive: true });
 
     const title = basename(changePath);
-    const frontmatter: TaskDocFrontmatter = {
-      title,
-      status: task.status ?? TaskStatus.DRAFT,
-      created: task.created_at ?? new Date().toISOString(),
-      branch: undefined,
-    };
+    const frontmatter = buildTaskFrontmatter(task, title);
 
     await writeTaskDoc(join(taskDir, "task.md"), frontmatter, buildTaskBody(title));
-    runtime.set(taskId, {
-      ...DEFAULT_RUNTIME_STATE,
-      worktree_path: task.worktree_path ?? null,
-      ready_at: task.ready_at ?? null,
-      remote_id: task.remote_id ?? null,
-      synced_at: task.synced_at ?? null,
-      preferred_workflow: task.preferred_workflow ?? null,
-      base_branch: task.base_branch ?? null,
-      preferred_provider: task.preferred_provider ?? null,
-      retry_from_step: task.retry_from_step ?? null,
-      resume_input: task.resume_input ?? null,
-    });
-    await refreshCache();
-    return cache.get(taskId) ?? (await mapTaskFromDisk(task.repo_id, repo.path, changePath));
+    runtime.set(taskId, buildRuntimeStateFromTask(task));
+    return getTaskOrRefreshFallback(taskId, task.repo_id, repo.path, changePath);
+  };
+
+  const syncTaskStatusToDisk = async (task: Task, status: TaskUpdate["status"]): Promise<void> => {
+    if (!status) return;
+
+    const taskDir = await findTaskFolder(task.repo_id, task.id);
+    if (!taskDir) return;
+
+    await updateTaskDocStatus(join(taskDir, "task.md"), status as TaskStatusType);
   };
 
   const updateTaskRecord = async (id: string, updates: TaskUpdate): Promise<Task | null> => {
@@ -337,37 +425,8 @@ export const createTaskRepository = (
     const existing = cache.get(id);
     if (!existing) return null;
 
-    const state = getRuntimeState(id);
-    runtime.set(id, {
-      ...state,
-      worktree_path:
-        "worktree_path" in updates ? (updates.worktree_path ?? null) : state.worktree_path,
-      ready_at: "ready_at" in updates ? (updates.ready_at ?? null) : state.ready_at,
-      remote_id: "remote_id" in updates ? (updates.remote_id ?? null) : state.remote_id,
-      synced_at: "synced_at" in updates ? (updates.synced_at ?? null) : state.synced_at,
-      preferred_workflow:
-        "preferred_workflow" in updates
-          ? (updates.preferred_workflow ?? null)
-          : state.preferred_workflow,
-      base_branch: "base_branch" in updates ? (updates.base_branch ?? null) : state.base_branch,
-      preferred_provider:
-        "preferred_provider" in updates
-          ? (updates.preferred_provider ?? null)
-          : state.preferred_provider,
-      retry_from_step:
-        "retry_from_step" in updates
-          ? (updates.retry_from_step ?? null)
-          : state.retry_from_step,
-      resume_input:
-        "resume_input" in updates ? (updates.resume_input ?? null) : state.resume_input,
-    });
-
-    if (updates.status) {
-      const taskDir = await findTaskFolder(existing.repo_id, id);
-      if (taskDir) {
-        await updateTaskDocStatus(join(taskDir, "task.md"), updates.status as TaskStatusType);
-      }
-    }
+    runtime.set(id, mergeRuntimeState(getRuntimeState(id), updates));
+    await syncTaskStatusToDisk(existing, updates.status);
 
     await refreshCache();
     return cache.get(id) ?? null;

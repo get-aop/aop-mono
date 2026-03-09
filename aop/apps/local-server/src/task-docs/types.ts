@@ -1,4 +1,4 @@
-import { TaskStatus } from "@aop/common";
+import type { TaskStatus } from "@aop/common";
 
 export interface TaskDocFrontmatter extends Record<string, unknown> {
   title: string;

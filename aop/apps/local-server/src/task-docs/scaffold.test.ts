@@ -29,7 +29,11 @@ describe("task-docs/scaffold", () => {
     expect(result.taskPath).toBe(join(aopPaths.relativeTaskDocs(), "auth-flow"));
     expect(await Bun.file(join(repoRoot, result.taskPath, "task.md")).exists()).toBe(true);
     expect(await Bun.file(join(repoRoot, result.taskPath, "plan.md")).exists()).toBe(true);
-    expect(await Bun.file(join(repoRoot, result.taskPath, "001-build-login-handler.md")).exists()).toBe(true);
-    expect(await Bun.file(join(repoRoot, result.taskPath, "002-wire-session-storage.md")).exists()).toBe(true);
+    expect(
+      await Bun.file(join(repoRoot, result.taskPath, "001-build-login-handler.md")).exists(),
+    ).toBe(true);
+    expect(
+      await Bun.file(join(repoRoot, result.taskPath, "002-wire-session-storage.md")).exists(),
+    ).toBe(true);
   });
 });

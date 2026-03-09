@@ -11,21 +11,21 @@ export const toSSETask = (
   execution?: Pick<Execution, "id" | "started_at" | "completed_at"> | null,
   repoPath?: string,
 ): SSETask => ({
-    id: task.id,
-    repoId: task.repo_id,
-    changePath: task.change_path,
-    status: task.status,
-    baseBranch: task.base_branch ?? null,
-    preferredProvider: task.preferred_provider ?? null,
-    preferredWorkflow: task.preferred_workflow ?? null,
-    createdAt: task.created_at,
-    updatedAt: task.updated_at,
-    errorMessage: undefined,
-    currentExecutionId: execution?.id,
-    executionStartedAt: execution?.started_at ?? undefined,
-    executionCompletedAt: execution?.completed_at ?? undefined,
-    taskProgress: repoPath ? readTaskProgress(repoPath, task.change_path) : undefined,
-  });
+  id: task.id,
+  repoId: task.repo_id,
+  changePath: task.change_path,
+  status: task.status,
+  baseBranch: task.base_branch ?? null,
+  preferredProvider: task.preferred_provider ?? null,
+  preferredWorkflow: task.preferred_workflow ?? null,
+  createdAt: task.created_at,
+  updatedAt: task.updated_at,
+  errorMessage: undefined,
+  currentExecutionId: execution?.id,
+  executionStartedAt: execution?.started_at ?? undefined,
+  executionCompletedAt: execution?.completed_at ?? undefined,
+  taskProgress: repoPath ? readTaskProgress(repoPath, task.change_path) : undefined,
+});
 
 export const getServerStatus = async (ctx: LocalServerContext): Promise<ServerStatus> => {
   const globalMax = Number.parseInt(await ctx.settingsRepository.get("max_concurrent_tasks"), 10);

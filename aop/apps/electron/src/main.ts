@@ -51,16 +51,6 @@ const getDashboardPath = (): string => {
   return path.join(__dirname, "..", "..", "dashboard", "dist");
 };
 
-const getBundledResourcePath = (
-  packagedDir: string,
-  ...devRelPath: string[]
-): string | undefined => {
-  const p = app.isPackaged
-    ? path.join(process.resourcesPath, packagedDir)
-    : path.join(__dirname, "..", "..", "..", ...devRelPath);
-  return fs.existsSync(p) ? p : undefined;
-};
-
 const spawnServerWithEnv = (
   serverPath: string,
   dashboardPath: string,

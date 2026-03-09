@@ -40,7 +40,7 @@ describe("logs renderer", () => {
           tool: "bash",
           state: {
             input: {
-              command: 'cat docs/tasks/cli-greeting-command/task.md',
+              command: "cat docs/tasks/cli-greeting-command/task.md",
               description: "Read task document",
             },
           },
@@ -52,7 +52,7 @@ describe("logs renderer", () => {
           tool: "bash",
           state: {
             input: {
-              command: 'ls docs/tasks/cli-greeting-command',
+              command: "ls docs/tasks/cli-greeting-command",
               description: "List task folder files",
             },
           },

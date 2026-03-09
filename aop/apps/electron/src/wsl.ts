@@ -149,28 +149,6 @@ export const syncResourcesToWsl = async (
   await runWslCommand(distro, `rm -rf ${wslDashboardPath}`);
   await runWslCommand(distro, `cp -r "${wslSourceDashboard}" ${wslDashboardPath}`);
 
-  const mergeBundledIntoHome = async (
-    sourcePath: string,
-    targetDir: string,
-    parentDir?: string,
-  ) => {
-    const wslSource = await wslPathFromWindows(distro, sourcePath);
-    if (parentDir) await runWslCommand(distro, `mkdir -p ${parentDir}`);
-    await runWslCommand(
-      distro,
-      `test -d "${wslSource}" || (echo "Dir not found: ${wslSource}" && exit 1)`,
-    );
-    const t = targetDir;
-    const s = wslSource;
-    // mv renames the dir (needs parent write only); avoids rm/cp permission issues on Zone.Identifier
-    const mergeScript = [
-      `if [ -d "${t}" ]; then bk="${t}.backup.$(date +%Y%m%d%H%M%S)"; mv "${t}" "$bk" 2>/dev/null || true; fi`,
-      `mkdir -p "${t}"`,
-      `for item in "${s}"/*; do [ -e "$item" ] || continue; cp -rf "$item" "${t}/"; done`,
-    ].join(" && ");
-    await runWslCommand(distro, mergeScript);
-  };
-
   return {
     serverBinary: wslServerPath,
     dashboardStatic: wslDashboardPath,

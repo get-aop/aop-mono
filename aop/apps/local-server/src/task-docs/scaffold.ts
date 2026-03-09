@@ -29,7 +29,8 @@ export const toTaskSlug = (title: string): string =>
     .replace(/^-|-$/g, "")
     .slice(0, 50);
 
-export const getTaskDocsRoot = (repoRoot: string): string => join(repoRoot, aopPaths.relativeTaskDocs());
+export const getTaskDocsRoot = (repoRoot: string): string =>
+  join(repoRoot, aopPaths.relativeTaskDocs());
 
 export const getTaskDir = (repoRoot: string, taskName: string): string =>
   join(getTaskDocsRoot(repoRoot), taskName);
@@ -60,7 +61,10 @@ export const scaffoldTaskFromBrainstorm = async (
 };
 
 const buildSubtaskSeeds = (requirements: BrainstormingResult): SubtaskSeed[] => {
-  const items = requirements.requirements.length > 0 ? requirements.requirements : requirements.acceptanceCriteria;
+  const items =
+    requirements.requirements.length > 0
+      ? requirements.requirements
+      : requirements.acceptanceCriteria;
 
   if (items.length === 0) {
     return [
@@ -137,9 +141,7 @@ const writePlanFile = async (
       const number = index + 1;
       const slug = toTaskSlug(subtask.title) || `task-${number}`;
       const deps =
-        subtask.dependencies.length > 0
-          ? ` -> depends on: ${subtask.dependencies.join(", ")}`
-          : "";
+        subtask.dependencies.length > 0 ? ` -> depends on: ${subtask.dependencies.join(", ")}` : "";
       return `${number}. ${number.toString().padStart(3, "0")}-${slug} (${subtask.title})${deps}`;
     }),
     "",

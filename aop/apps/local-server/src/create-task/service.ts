@@ -1,5 +1,4 @@
-import { generateTypeId, getLogger } from "@aop/infra";
-import { aopPaths } from "@aop/infra";
+import { aopPaths, generateTypeId, getLogger } from "@aop/infra";
 import { ClaudeCodeSession, type Question } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import {
@@ -104,6 +103,12 @@ interface RuntimeSession {
 
 type ClaudeDecision = CreateTaskStepResponse | { retryPrompt: string };
 
+const isCreateTaskError = (
+  value: RuntimeSession | CreateTaskBaseError,
+): value is CreateTaskBaseError => {
+  return "code" in value;
+};
+
 interface CreateTaskService {
   start: (input: StartBrainstormInput) => Promise<CreateTaskStepResponse>;
   answer: (input: AnswerQuestionInput) => Promise<CreateTaskStepResponse>;
@@ -160,6 +165,83 @@ export const createCreateTaskService = (
   };
 
   const { runClaudeTurn } = createClaudeTurnRunner(turnTimeoutMs);
+
+  const ensureFinalizeRuntime = (sessionId: string): RuntimeSession | CreateTaskBaseError => {
+    const runtime = ensureRuntime(sessionId);
+    if (!runtime) {
+      return {
+        status: "error",
+        code: "not_found",
+        sessionId,
+        error: "Session not found",
+      };
+    }
+
+    if (!runtime.requirements) {
+      return {
+        status: "error",
+        code: "invalid_state",
+        sessionId,
+        error: "No requirements gathered",
+      };
+    }
+
+    return runtime;
+  };
+
+  const createDraftTaskForChange = async (
+    runtime: RuntimeSession,
+    changeName?: string,
+  ): Promise<void> => {
+    if (!changeName) return;
+
+    const repo = await ctx.repoRepository.getByPath(runtime.cwd);
+    if (!repo) return;
+
+    await ctx.taskRepository.createIdempotent({
+      id: generateTypeId("task"),
+      repo_id: repo.id,
+      change_path: `${aopPaths.relativeTaskDocs()}/${changeName}`,
+      status: "DRAFT",
+      worktree_path: null,
+      ready_at: null,
+    });
+  };
+
+  const finalizeBrainstorm = async (
+    runtime: RuntimeSession,
+    input: FinalizeBrainstormInput,
+  ): Promise<CreateTaskFinalizeResponse> => {
+    const requirements = runtime.requirements;
+    if (!requirements) {
+      return {
+        status: "error",
+        code: "invalid_state",
+        sessionId: runtime.sessionId,
+        error: "No requirements gathered",
+      };
+    }
+
+    if (!input.createChange) {
+      await markSessionCompleted(runtime);
+      return {
+        status: "success",
+        sessionId: runtime.sessionId,
+        requirements,
+      };
+    }
+
+    const result = await finalizeWithChange(runtime, requirements, detectQuestion);
+    await createDraftTaskForChange(runtime, result.changeName);
+    await markSessionCompleted(runtime);
+
+    return {
+      status: "success",
+      sessionId: runtime.sessionId,
+      requirements,
+      ...result,
+    };
+  };
 
   const handleQuestionResponse = async (
     runtime: RuntimeSession,
@@ -399,56 +481,12 @@ export const createCreateTaskService = (
     },
 
     finalize: async (input: FinalizeBrainstormInput): Promise<CreateTaskFinalizeResponse> => {
-      const runtime = ensureRuntime(input.sessionId);
-      if (!runtime) {
-        return {
-          status: "error",
-          code: "not_found",
-          sessionId: input.sessionId,
-          error: "Session not found",
-        };
-      }
-      if (!runtime.requirements) {
-        return {
-          status: "error",
-          code: "invalid_state",
-          sessionId: input.sessionId,
-          error: "No requirements gathered",
-        };
+      const runtime = ensureFinalizeRuntime(input.sessionId);
+      if (isCreateTaskError(runtime)) {
+        return runtime;
       }
 
-      const requirements = runtime.requirements;
-
-      if (!input.createChange) {
-        await markSessionCompleted(runtime);
-        return {
-          status: "success",
-          sessionId: runtime.sessionId,
-          requirements,
-        };
-      }
-
-      const result = await finalizeWithChange(runtime, requirements, detectQuestion);
-      if (result.changeName) {
-        const repo = await ctx.repoRepository.getByPath(runtime.cwd);
-        if (repo) {
-          await ctx.taskRepository.createIdempotent({
-            id: generateTypeId("task"),
-            repo_id: repo.id,
-            change_path: `${aopPaths.relativeTaskDocs()}/${result.changeName}`,
-            status: "DRAFT",
-            worktree_path: null,
-            ready_at: null,
-          });
-        }
-      }
-      await markSessionCompleted(runtime);
-      return {
-        status: "success",
-        sessionId: runtime.sessionId,
-        requirements,
-        ...result,
-      };
+      return finalizeBrainstorm(runtime, input);
     },
 
     cancel: async (input: CancelBrainstormInput): Promise<CreateTaskCancelResult> => {

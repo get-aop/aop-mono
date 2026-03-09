@@ -30,7 +30,8 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
     id: "plan_implementation",
     type: "iterate",
     category: "general",
-    description: "Read context files, create plan.md and numbered subtask docs, get approval before building",
+    description:
+      "Read context files, create plan.md and numbered subtask docs, get approval before building",
     signals: [
       {
         name: "PLAN_READY",

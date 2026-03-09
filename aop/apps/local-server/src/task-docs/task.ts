@@ -32,6 +32,21 @@ const normalizeTaskStatus = (value: unknown): TaskStatus => {
   }
 };
 
+const getSectionKey = (line: string): string | null => {
+  const headerMatch = line.match(/^##\s+(.+)$/);
+  const title = headerMatch?.[1];
+  return title ? title.toLowerCase().replace(/\s+/g, "_") : null;
+};
+
+const saveSection = (
+  sections: Record<string, string>,
+  section: string,
+  content: string[],
+): void => {
+  if (!section) return;
+  sections[section] = content.join("\n").trim();
+};
+
 const extractSections = (
   body: string,
 ): {
@@ -40,17 +55,14 @@ const extractSections = (
   acceptanceCriteria: string;
 } => {
   const sections: Record<string, string> = {};
-  const lines = body.split("\n");
   let currentSection = "";
   let currentContent: string[] = [];
 
-  for (const line of lines) {
-    const headerMatch = line.match(/^##\s+(.+)$/);
-    if (headerMatch) {
-      if (currentSection) {
-        sections[currentSection] = currentContent.join("\n").trim();
-      }
-      currentSection = headerMatch[1]!.toLowerCase().replace(/\s+/g, "_");
+  for (const line of body.split("\n")) {
+    const nextSection = getSectionKey(line);
+    if (nextSection) {
+      saveSection(sections, currentSection, currentContent);
+      currentSection = nextSection;
       currentContent = [];
       continue;
     }
@@ -60,9 +72,7 @@ const extractSections = (
     }
   }
 
-  if (currentSection) {
-    sections[currentSection] = currentContent.join("\n").trim();
-  }
+  saveSection(sections, currentSection, currentContent);
 
   return {
     description: sections.description || "",
@@ -71,17 +81,14 @@ const extractSections = (
   };
 };
 
-const parseAcceptanceCriteria = (
-  content: string,
-): Array<{ text: string; checked: boolean }> =>
-  content
-    .split("\n")
-    .map((line) => line.match(CHECKBOX_REGEX))
-    .filter((match): match is RegExpMatchArray => match !== null)
-    .map((match) => ({
-      text: match[2]!.trim(),
-      checked: match[1]!.toLowerCase() === "x",
-    }));
+const parseAcceptanceCriteria = (content: string): Array<{ text: string; checked: boolean }> =>
+  content.split("\n").flatMap((line) => {
+    const match = line.match(CHECKBOX_REGEX);
+    if (!match) return [];
+
+    const [, checked = "", text = ""] = match;
+    return [{ text: text.trim(), checked: checked.toLowerCase() === "x" }];
+  });
 
 export const parseTaskDoc = async (taskFilePath: string): Promise<TaskDoc> => {
   const markdown = await Bun.file(taskFilePath).text();

@@ -1,5 +1,5 @@
-import { scaffoldTaskFromBrainstorm, toTaskSlug } from "../task-docs/scaffold.ts";
 import type { BackgroundRunnerSession } from "../session/background-runner.ts";
+import { scaffoldTaskFromBrainstorm, toTaskSlug } from "../task-docs/scaffold.ts";
 import type { BrainstormingResult } from "./brainstorm-parser.ts";
 import { saveDraft } from "./draft.ts";
 
