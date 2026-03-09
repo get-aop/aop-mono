@@ -193,9 +193,48 @@ export const createMockContext = (sessionRepository: SessionRepository): LocalSe
     executionRepository: {} as LocalServerContext["executionRepository"],
     logBuffer: {} as LocalServerContext["logBuffer"],
     logFlusher: {} as LocalServerContext["logFlusher"],
-    repoRepository: {} as LocalServerContext["repoRepository"],
+    repoRepository: {
+      create: async () => {
+        throw new Error("repoRepository.create not implemented in mock context");
+      },
+      getByPath: async () => null,
+      getById: async () => null,
+      getAll: async () => [],
+      remove: async () => false,
+    },
     settingsRepository: {} as LocalServerContext["settingsRepository"],
     taskEventEmitter: {} as LocalServerContext["taskEventEmitter"],
-    taskRepository: {} as LocalServerContext["taskRepository"],
+    taskRepository: {
+      refresh: async () => {},
+      create: async () => {
+        throw new Error("taskRepository.create not implemented in mock context");
+      },
+      createIdempotent: async () => null,
+      get: async () => null,
+      getByChangePath: async () => null,
+      update: async () => null,
+      markRemoved: async () => false,
+      list: async () => [],
+      countWorking: async () => 0,
+      getNextExecutable: async () => null,
+      getNextResumable: async () => null,
+      resetStaleWorkingTasks: async () => 0,
+      getMetrics: async () => ({
+        total: 0,
+        byStatus: {
+          DRAFT: 0,
+          READY: 0,
+          RESUMING: 0,
+          WORKING: 0,
+          PAUSED: 0,
+          BLOCKED: 0,
+          DONE: 0,
+          REMOVED: 0,
+        },
+        successRate: 0,
+        avgDurationMs: 0,
+        avgFailedDurationMs: 0,
+      }),
+    },
   };
 };

@@ -56,7 +56,7 @@ describe("ralph loop workflow execution", () => {
     async () => {
       const changePath = await copyFixture("ralph-loop-test", repo.path);
 
-      await Bun.$`git add --force openspec/`.cwd(repo.path).quiet().nothrow();
+      await Bun.$`git add --force docs/`.cwd(repo.path).quiet().nothrow();
       await Bun.$`git commit -m "Add fixture" --allow-empty`.cwd(repo.path).quiet().nothrow();
 
       await triggerServerRefresh(ctx.localServerUrl);
@@ -123,7 +123,7 @@ describe("ralph loop workflow execution", () => {
     async () => {
       const changePath = await copyFixture("ralph-loop-review-test", repo.path);
 
-      await Bun.$`git add --force openspec/`.cwd(repo.path).quiet().nothrow();
+      await Bun.$`git add --force docs/`.cwd(repo.path).quiet().nothrow();
       await Bun.$`git commit -m "Add review fixture" --allow-empty`
         .cwd(repo.path)
         .quiet()

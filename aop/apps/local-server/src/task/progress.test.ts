@@ -46,28 +46,30 @@ describe("parseTaskProgress", () => {
 });
 
 describe("readTaskProgress", () => {
-  const repoId = "test-repo-progress";
-  const changePath = "openspec/changes/test-change";
-  const changeDir = join(aopPaths.repoDir(repoId), changePath);
+  const repoPath = join(process.cwd(), `tmp-progress-${Date.now()}`);
+  const changePath = join(aopPaths.relativeTaskDocs(), "test-change");
+  const changeDir = join(repoPath, changePath);
 
   beforeEach(() => {
     mkdirSync(changeDir, { recursive: true });
   });
 
   afterEach(() => {
-    rmSync(aopPaths.repoDir(repoId), { recursive: true, force: true });
+    rmSync(repoPath, { recursive: true, force: true });
   });
 
-  test("reads progress from tasks.md", () => {
-    writeFileSync(join(changeDir, "tasks.md"), "- [x] Done\n- [ ] Not done\n- [x] Also done");
-    expect(readTaskProgress(repoId, changePath)).toEqual({ completed: 2, total: 3 });
+  test("reads progress from numbered subtask files", () => {
+    writeFileSync(join(changeDir, "001-first.md"), "---\nstatus: DONE\n---\n");
+    writeFileSync(join(changeDir, "002-second.md"), "---\nstatus: PENDING\n---\n");
+    writeFileSync(join(changeDir, "003-third.md"), "---\nstatus: DONE\n---\n");
+    expect(readTaskProgress(repoPath, changePath)).toEqual({ completed: 2, total: 3 });
   });
 
-  test("returns undefined when tasks.md is missing", () => {
-    expect(readTaskProgress(repoId, changePath)).toBeUndefined();
+  test("returns undefined when no subtask files exist", () => {
+    expect(readTaskProgress(repoPath, changePath)).toBeUndefined();
   });
 
   test("returns undefined for nonexistent repo", () => {
-    expect(readTaskProgress("nonexistent-repo", changePath)).toBeUndefined();
+    expect(readTaskProgress("/nonexistent-repo", changePath)).toBeUndefined();
   });
 });

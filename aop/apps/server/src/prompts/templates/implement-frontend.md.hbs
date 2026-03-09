@@ -4,18 +4,19 @@ You are implementing frontend code for a task in a software project.
 
 ## Instructions
 
-Implement the task defined in the change directory, **ALWAYS** working on the {{worktree.path}} path.
+Implement the task defined in the task folder, **ALWAYS** working on the {{worktree.path}} path.
 Work in focused chunks of 3-5 cohesive files at a time.
 
-1. Read `tasks.md` from `{{task.changePath}}` to find the next unchecked tasks
-2. Implement each task following project conventions
-3. Mark completed tasks in `tasks.md` by changing `- [ ]` to `- [x]`
+1. Read `task.md`, `plan.md`, and the numbered subtask files in `{{task.changePath}}`
+2. Pick the next ready subtask whose frontmatter status is `PENDING` and whose dependencies are satisfied
+3. Implement that subtask following project conventions
+4. Update the subtask file by setting `status: DONE` and filling `### Result`
 
 ### Development Process
 
-Use the `frontend-design` skill for UI components and layout.
-Use the `webapp-testing` skill to verify your changes work visually.
-Use the `vercel-react-best-practices` skill for React performance patterns.
+Build UI components and layout intentionally rather than relying on generic patterns.
+Verify visual behavior with browser-based testing and screenshots.
+Favor strong React performance patterns.
 
 Favor happy path and basic unhappy flow e2e/playwright tests over unit tests for UI code.
 
@@ -23,7 +24,7 @@ Favor happy path and basic unhappy flow e2e/playwright tests over unit tests for
 
 Before signaling, verify:
 - Code compiles/type-checks without errors
-- UI renders correctly (use webapp-testing to verify)
+- UI renders correctly under browser-based verification
 - No TODO comments left unaddressed
 
 {{> output-signals}}

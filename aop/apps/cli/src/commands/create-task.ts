@@ -380,7 +380,7 @@ export const createTaskCommand = async (
     printAssistantOutput(runtime, completedStep.assistantOutput);
     const shouldCreateChange = await askConfirmation(
       rl,
-      "Create OpenSpec change from these requirements?",
+      "Create repo task documents from these requirements?",
     );
     const finalized = await finalizeCreateTask(
       runtime,

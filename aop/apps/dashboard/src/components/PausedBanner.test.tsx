@@ -26,7 +26,7 @@ const makePausedTask = (overrides: Partial<Task> = {}): Task => ({
   repoId: "repo-1",
   repoPath: "/home/user/repos/my-repo",
   status: "PAUSED",
-  changePath: "openspec/changes/my-feature",
+  changePath: "docs/tasks/my-feature",
   baseBranch: null,
   preferredProvider: null,
   preferredWorkflow: null,

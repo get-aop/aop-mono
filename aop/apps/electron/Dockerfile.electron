@@ -35,8 +35,7 @@ COPY . /app
 
 WORKDIR /app
 
-RUN sed -i 's/"prepare": "cd .. && openspec init --tools claude 2>\/dev\/null || true && lefthook install"/"prepare": ""/g' package.json && \
-    sed -i 's/"prepare": "lefthook install"/"prepare": ""/g' package.json
+RUN sed -i 's/"prepare": "lefthook install"/"prepare": ""/g' package.json
 
 RUN bun install
 

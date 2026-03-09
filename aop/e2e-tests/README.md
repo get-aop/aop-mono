@@ -34,7 +34,7 @@ Agent output streams to stdout in real-time during test execution.
 
 ## Test Fixtures
 
-Located in `fixtures/`, these provide sample OpenSpec change artifacts for testing:
+Located in `fixtures/`, these provide sample task document artifacts for testing:
 
 | Fixture | Purpose |
 |---------|---------|
@@ -47,7 +47,7 @@ Located in `fixtures/`, these provide sample OpenSpec change artifacts for testi
 
 The `src/utils.ts` module provides shared helpers:
 
-- `createTestRepo()`: Creates temporary git repository with OpenSpec structure
+- `createTestRepo()`: Creates temporary git repository with repo-local task document structure
 - `copyFixture()`: Copies fixture files into test repo
 - `runAopCommand()`: Executes CLI commands with proper environment
 - `waitForTaskStatus()`: Polls task status until condition met

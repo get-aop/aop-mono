@@ -4,8 +4,8 @@ export interface WatcherEvent {
   type: WatcherEventType;
   repoId: string;
   repoPath: string;
-  changeName: string;
-  changePath: string;
+  taskName: string;
+  taskPath: string;
 }
 
 export interface WatcherConfig {

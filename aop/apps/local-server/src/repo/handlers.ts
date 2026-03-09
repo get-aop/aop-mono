@@ -1,15 +1,5 @@
-import {
-  appendFileSync,
-  cpSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type { RemoveRepoOptions } from "@aop/common";
 import { getRemoteOrigin, listLocalBranches } from "@aop/git-manager";
 import { aopPaths, generateTypeId, getLogger } from "@aop/infra";
@@ -19,6 +9,12 @@ import { abortTask } from "../executor/index.ts";
 import { extractRepoName } from "./repository.ts";
 
 const logger = getLogger("repos-handlers");
+
+export const setupOpenspecSymlink = (repoPath: string, _repoId: string): void => {
+  if (existsSync(repoPath)) {
+    ensureTaskDocsDir(repoPath);
+  }
+};
 
 export type InitRepoResult =
   | { success: true; repoId: string; alreadyExists: boolean }
@@ -52,7 +48,7 @@ export const initRepo = async (
 
   const existing = await repoRepository.getByPath(repoPath);
   if (existing) {
-    await setupOpenspecSymlink(repoPath, existing.id);
+    ensureTaskDocsDir(repoPath);
     logger.info("Repo already registered {repoId} at {path}", {
       repoId: existing.id,
       path: repoPath,
@@ -75,7 +71,7 @@ export const initRepo = async (
   });
 
   createRepoDirs(repo.id);
-  await setupOpenspecSymlink(repoPath, repo.id);
+  ensureTaskDocsDir(repoPath);
 
   logger.info("Repo initialized {repoId} ({name}) at {path}", {
     repoId: repo.id,
@@ -153,85 +149,8 @@ const createRepoDirs = (repoId: string): void => {
   mkdirSync(aopPaths.worktreeMetadata(repoId), { recursive: true });
 };
 
-export const setupOpenspecSymlink = async (repoPath: string, repoId: string): Promise<void> => {
-  const localOpenspecPath = join(repoPath, aopPaths.relativeOpenspec());
-  const globalOpenspecPath = aopPaths.openspec(repoId);
-  const nativeOpenspec = await hasTrackedOpenspecFiles(repoPath);
-
-  if (isSymlink(localOpenspecPath) || isSymlink(globalOpenspecPath)) return;
-
-  if (nativeOpenspec) {
-    // Repo has committed openspec files — reverse symlink (global → local)
-    mkdirSync(join(localOpenspecPath, "changes"), { recursive: true });
-    mkdirSync(dirname(globalOpenspecPath), { recursive: true });
-    symlinkSync(localOpenspecPath, globalOpenspecPath);
-  } else {
-    // No committed openspec files — standard symlink (local → global)
-    mkdirSync(globalOpenspecPath, { recursive: true });
-    relocateExistingOpenspec(localOpenspecPath, globalOpenspecPath);
-    mkdirSync(join(globalOpenspecPath, "changes"), { recursive: true });
-    symlinkSync(globalOpenspecPath, localOpenspecPath);
-    addToGitExclude(repoPath, aopPaths.relativeOpenspec());
-  }
-};
-
-const hasTrackedOpenspecFiles = async (repoPath: string): Promise<boolean> => {
-  try {
-    const proc = Bun.spawn(["git", "ls-files", "openspec/"], {
-      cwd: repoPath,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const output = await new Response(proc.stdout).text();
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) return false;
-
-    const trackedFiles = output
-      .trim()
-      .split("\n")
-      .filter((f) => f && !f.startsWith("openspec/changes/"));
-    return trackedFiles.length > 0;
-  } catch {
-    return false;
-  }
-};
-
-const isSymlink = (path: string): boolean => {
-  try {
-    return lstatSync(path).isSymbolicLink();
-  } catch {
-    return false;
-  }
-};
-
-const relocateExistingOpenspec = (localPath: string, globalPath: string): void => {
-  if (!existsSync(localPath) || isSymlink(localPath)) return;
-
-  const entries = readdirSync(localPath, { withFileTypes: true });
-  for (const entry of entries) {
-    const src = join(localPath, entry.name);
-    const dest = join(globalPath, entry.name);
-    if (!existsSync(dest)) {
-      cpSync(src, dest, { recursive: true });
-    }
-  }
-
-  rmSync(localPath, { recursive: true, force: true });
-};
-
-const addToGitExclude = (repoPath: string, entry: string): void => {
-  const excludePath = join(repoPath, ".git", "info", "exclude");
-  try {
-    const content = existsSync(excludePath) ? readFileSync(excludePath, "utf-8") : "";
-    const lines = content.split("\n").map((l) => l.trim());
-    if (lines.includes(entry)) return;
-
-    mkdirSync(join(repoPath, ".git", "info"), { recursive: true });
-    const newline = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-    appendFileSync(excludePath, `${newline}${entry}\n`);
-  } catch {
-    // Non-critical: git exclude is a convenience, not a requirement
-  }
+const ensureTaskDocsDir = (repoPath: string): void => {
+  mkdirSync(join(repoPath, aopPaths.relativeTaskDocs()), { recursive: true });
 };
 
 const checkGitRepo = async (path: string): Promise<boolean> => {

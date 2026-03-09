@@ -28,7 +28,7 @@ export const createWatcherManager = (
   const debounceTimers = new Map<string, Timer>();
 
   const emitDebounced = (event: WatcherEvent) => {
-    const key = `${event.repoId}:${event.changeName}`;
+    const key = `${event.repoId}:${event.taskName}`;
     const existing = debounceTimers.get(key);
     if (existing) {
       clearTimeout(existing);
@@ -46,23 +46,23 @@ export const createWatcherManager = (
     dir: string,
     repoId: string,
     repoPath: string,
-    changesPath: string,
+    tasksPath: string,
   ): FSWatcher | null => {
     if (!existsSync(dir)) return null;
 
     try {
       return watch(dir, { recursive: true }, (_eventType, filename) => {
         if (!filename) return;
-        const changeName = extractChangeName(filename);
-        if (!changeName) return;
+        const taskName = extractTaskName(filename);
+        if (!taskName) return;
 
-        const type = determineEventType(join(changesPath, changeName));
+        const type = determineEventType(join(tasksPath, taskName));
         emitDebounced({
           type,
           repoId,
           repoPath,
-          changeName,
-          changePath: join(changesPath, changeName),
+          taskName,
+          taskPath: join(tasksPath, taskName),
         });
       });
     } catch (err) {
@@ -74,11 +74,11 @@ export const createWatcherManager = (
   const addRepo = (repoId: string, repoPath: string) => {
     if (watchers.has(repoId)) return;
 
-    const globalChangesPath = aopPaths.openspecChanges(repoId);
-    const globalWatcher = watchDir(globalChangesPath, repoId, repoPath, globalChangesPath);
+    const tasksPath = join(repoPath, aopPaths.relativeTaskDocs());
+    const globalWatcher = watchDir(tasksPath, repoId, repoPath, tasksPath);
 
     if (!globalWatcher) {
-      logger.warn("Global openspec/changes directory not found for repo {repoId}", {
+      logger.warn("Task docs directory not found for repo {repoId}", {
         repoId,
         repoPath,
       });
@@ -113,11 +113,11 @@ export const createWatcherManager = (
   return { addRepo, removeRepo, stop };
 };
 
-const extractChangeName = (filename: string): string | null => {
+const extractTaskName = (filename: string): string | null => {
   const parts = filename.split("/");
   return parts[0] ?? null;
 };
 
-const determineEventType = (changePath: string): "create" | "delete" => {
-  return existsSync(changePath) ? "create" : "delete";
+const determineEventType = (taskPath: string): "create" | "delete" => {
+  return existsSync(taskPath) ? "create" : "delete";
 };

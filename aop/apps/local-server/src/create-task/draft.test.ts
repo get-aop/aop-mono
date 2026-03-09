@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { aopPaths } from "@aop/infra";
 import type { BrainstormingResult } from "./brainstorm-parser.ts";
 import { deleteDraft, loadDraft, saveDraft } from "./draft.ts";
 
@@ -71,7 +72,7 @@ describe("create-task/draft", () => {
     });
 
     it("returns null for invalid JSON", async () => {
-      const draftsDir = join(testDir, "openspec", "changes", ".drafts");
+      const draftsDir = join(testDir, aopPaths.relativeTaskDocs(), ".drafts");
       await mkdir(draftsDir, { recursive: true });
       await Bun.write(join(draftsDir, "invalid.json"), "not valid json");
 

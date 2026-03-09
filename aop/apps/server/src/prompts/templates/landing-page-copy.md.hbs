@@ -4,12 +4,12 @@ You are writing CRO-optimized copy for a landing page.
 
 # Landing Page Copy
 
-Read the landing page outline (tasks.md), market analysis, and design brief. Write conversion-optimized copy for every section of the landing page. The copy document is the single source of truth for all text content during implementation.
+Read the landing page outline (`plan.md`), market analysis, and design brief. Write conversion-optimized copy for every section of the landing page. The copy document is the single source of truth for all text content during implementation.
 
 <EXTREMELY-IMPORTANT>
 You MUST write output to: {{task.changePath}}/copy.md
 
-This step writes copy only. Do NOT create code, modify tasks.md, or build anything.
+This step writes copy only. Do NOT create code, modify `plan.md`, or build anything.
 </EXTREMELY-IMPORTANT>
 
 ## Process
@@ -17,7 +17,7 @@ This step writes copy only. Do NOT create code, modify tasks.md, or build anythi
 ```dot
 digraph copy {
     rankdir=TB;
-    read [label="Read tasks.md,\nmarket-analysis.md,\ndesign-brief.md" shape=box];
+    read [label="Read plan.md,\nmarket-analysis.md,\ndesign-brief.md" shape=box];
     audience [label="Define voice\nand messaging angle" shape=box];
     hero [label="Write hero copy\n(most critical)" shape=box];
     sections [label="Write copy for\neach section in order" shape=box];
@@ -39,7 +39,7 @@ digraph copy {
 ### 1. Read All Context
 
 Read from `{{task.changePath}}`:
-- `tasks.md` — the landing page outline with section structure
+- `plan.md` — the landing page outline with section structure
 - `market-analysis.md` — audience language, competitor positioning, conversion patterns
 - `design-brief.md` — tone and mood to match in writing
 
@@ -66,7 +66,7 @@ The hero section determines bounce rate. Write:
 
 ### 4. Write Section Copy
 
-For each section in the outline (tasks.md), write all text content:
+For each section in the outline (`plan.md`), write all text content:
 
 **Social Proof Bar**: Logos alt text, trust badge labels, metric callouts ("10,000+ users", "99.9% uptime")
 

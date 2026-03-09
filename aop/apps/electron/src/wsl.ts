@@ -101,19 +101,11 @@ export const wslPathFromWindows = async (distro: string, windowsPath: string): P
   });
 };
 
-export interface SyncResourcesOptions {
-  skillsPath?: string;
-  codexPath?: string;
-}
-
 export const syncResourcesToWsl = async (
   distro: string,
   serverBinaryPath: string,
   dashboardPath: string,
-  options?: SyncResourcesOptions,
 ): Promise<WslPaths> => {
-  const { skillsPath, codexPath } = options ?? {};
-
   const homeDir = await getWslHomeDir(distro);
   const wslTargetDir = `${homeDir}/.aop`;
   const wslServerPath = `${wslTargetDir}/aop-server`;
@@ -178,10 +170,6 @@ export const syncResourcesToWsl = async (
     ].join(" && ");
     await runWslCommand(distro, mergeScript);
   };
-
-  if (skillsPath)
-    await mergeBundledIntoHome(skillsPath, `${homeDir}/.claude/skills`, `${homeDir}/.claude`);
-  if (codexPath) await mergeBundledIntoHome(codexPath, `${homeDir}/.codex`);
 
   return {
     serverBinary: wslServerPath,

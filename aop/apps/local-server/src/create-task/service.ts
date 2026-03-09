@@ -1,4 +1,5 @@
 import { generateTypeId, getLogger } from "@aop/infra";
+import { aopPaths } from "@aop/infra";
 import { ClaudeCodeSession, type Question } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import {
@@ -11,7 +12,6 @@ import {
   buildBrainstormingPrompt,
   buildContinuationPrompt,
   finalizeWithChange,
-  getBrainstormCommand,
   normalizeMaxQuestions,
 } from "./task-builder.ts";
 
@@ -114,7 +114,6 @@ interface CreateTaskService {
 interface CreateTaskServiceDeps {
   createClaudeSession?: (cwd: string) => ClaudeCodeSession;
   turnTimeoutMs?: number;
-  brainstormCommand?: string;
 }
 
 export const createCreateTaskService = (
@@ -122,8 +121,6 @@ export const createCreateTaskService = (
   deps: CreateTaskServiceDeps = {},
 ): CreateTaskService => {
   const runtimes = new Map<string, RuntimeSession>();
-  const envBrainstormCommand = process.env.AOP_CREATE_TASK_BRAINSTORM_COMMAND;
-  const brainstormCommand = getBrainstormCommand(deps.brainstormCommand, envBrainstormCommand);
   const envTurnTimeoutMs = Number(process.env.AOP_CREATE_TASK_TURN_TIMEOUT_MS);
   const turnTimeoutMs =
     deps.turnTimeoutMs && deps.turnTimeoutMs > 0
@@ -329,7 +326,7 @@ export const createCreateTaskService = (
   return {
     start: async (input: StartBrainstormInput): Promise<CreateTaskStepResponse> => {
       const maxQuestions = normalizeMaxQuestions(input.maxQuestions);
-      const prompt = buildBrainstormingPrompt(input.description, brainstormCommand);
+      const prompt = buildBrainstormingPrompt(input.description);
       const claudeSession =
         deps.createClaudeSession?.(input.cwd) ??
         new ClaudeCodeSession({
@@ -432,6 +429,19 @@ export const createCreateTaskService = (
       }
 
       const result = await finalizeWithChange(runtime, requirements, detectQuestion);
+      if (result.changeName) {
+        const repo = await ctx.repoRepository.getByPath(runtime.cwd);
+        if (repo) {
+          await ctx.taskRepository.createIdempotent({
+            id: generateTypeId("task"),
+            repo_id: repo.id,
+            change_path: `${aopPaths.relativeTaskDocs()}/${result.changeName}`,
+            status: "DRAFT",
+            worktree_path: null,
+            ready_at: null,
+          });
+        }
+      }
       await markSessionCompleted(runtime);
       return {
         status: "success",

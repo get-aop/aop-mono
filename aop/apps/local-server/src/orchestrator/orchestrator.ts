@@ -114,9 +114,9 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
 
     watcher = createWatcherManager(async (event) => {
       await runWithSpan("watcher-event", async () => {
-        logger.debug("Watcher event: {type} {changeName}", {
+        logger.debug("Watcher event: {type} {taskName}", {
           type: event.type,
-          changeName: event.changeName,
+          taskName: event.taskName,
           repoId: event.repoId,
         });
         const repo = await ctx.repoRepository.getById(event.repoId);

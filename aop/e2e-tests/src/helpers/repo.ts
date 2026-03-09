@@ -1,5 +1,6 @@
 import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { aopPaths } from "@aop/infra";
 import { E2E_TEST_BASE_DIR, FIXTURES_DIR, TEST_REPO_PREFIX, WORKTREES_DIR } from "./constants";
 import { runAopCommand } from "./e2e-server";
 
@@ -43,7 +44,7 @@ export const createTempRepo = async (
 
 export const copyFixture = async (fixtureName: string, repoPath: string): Promise<string> => {
   const sourcePath = join(FIXTURES_DIR, fixtureName);
-  const targetPath = join(repoPath, "openspec", "changes", fixtureName);
+  const targetPath = join(repoPath, aopPaths.relativeTaskDocs(), fixtureName);
 
   await mkdir(dirname(targetPath), { recursive: true });
   await cp(sourcePath, targetPath, { recursive: true });
@@ -52,7 +53,7 @@ export const copyFixture = async (fixtureName: string, repoPath: string): Promis
 };
 
 export const ensureChangesDir = async (repoPath: string): Promise<string> => {
-  const changesDir = join(repoPath, "openspec", "changes");
+  const changesDir = join(repoPath, aopPaths.relativeTaskDocs());
   await mkdir(changesDir, { recursive: true });
   return changesDir;
 };

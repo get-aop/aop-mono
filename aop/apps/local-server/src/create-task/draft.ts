@@ -1,6 +1,6 @@
 import { mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import { getLogger } from "@aop/infra";
+import { aopPaths, getLogger } from "@aop/infra";
 import type { BrainstormingResult } from "./brainstorm-parser.ts";
 
 const logger = getLogger("create-task-draft");
@@ -14,7 +14,8 @@ export interface DraftFile {
   createdAt: string;
 }
 
-const getDraftsDir = (repoRoot: string): string => join(repoRoot, "openspec", "changes", ".drafts");
+const getDraftsDir = (repoRoot: string): string =>
+  join(repoRoot, aopPaths.relativeTaskDocs(), ".drafts");
 
 export const saveDraft = async (
   repoRoot: string,

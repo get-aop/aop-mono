@@ -4,10 +4,10 @@ You are outlining the structure and information architecture of a landing page.
 
 # Outline Landing Page
 
-Read the market analysis and design brief, then produce a section-by-section landing page outline with information hierarchy, CTA strategy, and conversion flow. The outline becomes the implementation plan (tasks.md).
+Read the market analysis and design brief, then produce a section-by-section landing page outline with information hierarchy, CTA strategy, and conversion flow. The outline becomes the implementation plan (`plan.md`).
 
 <EXTREMELY-IMPORTANT>
-You MUST write the output to: {{task.changePath}}/tasks.md
+You MUST write the output to: {{task.changePath}}/plan.md
 
 Once you finish the outline, you MUST output one of the required signals.
 </EXTREMELY-IMPORTANT>
@@ -22,8 +22,8 @@ digraph outline {
     ask [label="Signal REQUIRES_INPUT\nfor missing info" shape=box];
     structure [label="Define section flow\nand hierarchy" shape=box];
     cta [label="Map CTA strategy\nper section" shape=box];
-    tasks [label="Convert outline\nto tasks.md" shape=box];
-    save [label="Save to\ntasks.md" shape=box];
+    tasks [label="Convert outline\nto plan.md" shape=box];
+    save [label="Save to\nplan.md" shape=box];
     present [label="Present outline\nfor approval" shape=box];
 
     read -> gate;
@@ -76,11 +76,11 @@ Use conversion patterns from the market analysis.
 
 ### 4. Convert to Implementation Tasks
 
-Transform the outline into `tasks.md` format — the implementation checklist the build step will follow.
+Transform the outline into `plan.md` format — the implementation outline the build step will follow.
 
 **Each section becomes a task group. Each task is a buildable unit.**
 
-Use the `vercel-react-best-practices` skill context: the page should be built with Next.js generating SEO-friendly static pages (SSG with `getStaticProps` or App Router with static rendering).
+Assume the page should be built with Next.js using SEO-friendly static rendering.
 
 ## Output Format (STRICT)
 
@@ -154,7 +154,7 @@ Image optimization (next/image), font loading strategy, minimize CLS, lazy load 
 
 ## Guardrails
 
-- **Always save the plan file** — The outline MUST be written to `{{task.changePath}}/tasks.md`. An outline only shown in chat is a failure.
+- **Always save the plan file** — The outline MUST be written to `{{task.changePath}}/plan.md`. An outline only shown in chat is a failure.
 - **Always present for approval** — After saving, show the file path and summary in chat. The user must approve the LP structure before copy begins.
 - **Outline, don't build** — Do NOT write code, create files, or implement anything. The outline is the deliverable.
 - **Outline, don't write copy** — Do NOT write headlines, body text, or CTA text. Use placeholder descriptions like "Content source: copy.md hero section". The copy step writes the actual text.

@@ -18,7 +18,7 @@ This step verifies and reports. Do NOT fix issues, refactor code, or make change
 digraph verify {
     rankdir=TB;
     read [label="Read design references\nfrom change path" shape=box];
-    start [label="Start app with\nwebapp-testing skill" shape=box];
+    start [label="Start app and\nverify in browser" shape=box];
     capture [label="Screenshot every\nkey view and state" shape=box];
     compare [label="Compare against\ndesign references" shape=box];
     report [label="Write visual-report.md\nwith findings" shape=box];
@@ -43,14 +43,14 @@ digraph verify {
 Read ALL files in `{{task.changePath}}`. Look for:
 - `design-brief.md` — color palette, typography, spacing, visual direction
 - `copy.md` — text content to verify against rendered text
-- `tasks.md` — what was supposed to be built
+- `task.md` and `plan.md` — what was supposed to be built
 - Any moodboard images or design mockups
 
 If no design references exist, verify against general frontend quality standards.
 
 ### 2. Start the Application
 
-Use the `webapp-testing` skill to start the application at `{{worktree.path}}`:
+Start the application at `{{worktree.path}}` and verify it in a browser:
 
 1. Identify the start command (check `package.json` scripts, `README`, or common patterns)
 2. Use `with-server.ts` to manage the server lifecycle
@@ -85,7 +85,7 @@ Save screenshots to `{{task.changePath}}/screenshots/` with descriptive names.
 For each screenshot, evaluate against the design brief:
 
 **Layout & Structure:**
-- Does the page follow the section order from `tasks.md`?
+- Does the page follow the section order from `plan.md`?
 - Is the information hierarchy clear?
 - Are sections properly spaced and aligned?
 - Does the layout work on both desktop and mobile?

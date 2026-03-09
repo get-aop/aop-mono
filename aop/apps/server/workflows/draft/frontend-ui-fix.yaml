@@ -25,9 +25,9 @@ steps:
     maxAttempts: 15
     signals:
       - name: TASK_COMPLETE
-        description: all tasks in tasks.md are complete
+        description: all numbered task docs are complete
       - name: CHUNK_DONE
-        description: completed a chunk, more tasks remain in tasks.md
+        description: completed a chunk, more numbered task docs remain
     transitions:
       - condition: TASK_COMPLETE
         target: visual_verify

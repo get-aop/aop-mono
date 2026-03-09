@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LocalServerContext } from "../context.ts";
@@ -425,24 +425,12 @@ describe("create-task/service", () => {
     }
   });
 
-  test("finalize with change runs opsx:new and opsx:ff", async () => {
-    mockClaude.queueSteps(
-      {
-        method: "run",
-        sessionId: "claude-session-1",
-        events: [{ event: "completed", args: [completeOutput("My Feature!!!")] }],
-      },
-      {
-        method: "resume",
-        sessionId: "claude-session-new",
-        events: [{ event: "completed", args: ["created change"] }],
-      },
-      {
-        method: "resume",
-        sessionId: "claude-session-ff",
-        events: [{ event: "completed", args: ["generated artifacts"] }],
-      },
-    );
+  test("finalize with createChange scaffolds task docs", async () => {
+    mockClaude.queueSteps({
+      method: "run",
+      sessionId: "claude-session-1",
+      events: [{ event: "completed", args: [completeOutput("My Feature!!!")] }],
+    });
 
     const service = createCreateTaskService(ctx, {
       createClaudeSession: () => mockClaude.session as never,
@@ -466,34 +454,15 @@ describe("create-task/service", () => {
     if (finalized.status !== "success") return;
 
     expect(finalized.changeName).toBe("my-feature");
-    const resumeInputs = mockClaude.calls
-      .filter((call) => call.method === "resume")
-      .map((call) => call.input);
-    expect(resumeInputs).toContain("/opsx:new");
-    expect(resumeInputs).toContain("/opsx:ff");
+    expect(mockClaude.calls.filter((call) => call.method === "resume")).toHaveLength(0);
   });
 
-  test("handles background question with auto-answer during finalize", async () => {
-    mockClaude.queueSteps(
-      {
-        method: "run",
-        sessionId: "claude-session-1",
-        events: [{ event: "completed", args: [completeOutput("Scoped Feature")] }],
-      },
-      {
-        method: "resume",
-        events: [{ event: "completed", args: [plainTextQuestionOutput("Confirm name?")] }],
-      },
-      {
-        method: "resume",
-        sessionId: "claude-session-2",
-        events: [{ event: "completed", args: ["created change"] }],
-      },
-      {
-        method: "resume",
-        events: [{ event: "completed", args: ["generated artifacts"] }],
-      },
-    );
+  test("finalize with createChange uses slugified task name", async () => {
+    mockClaude.queueSteps({
+      method: "run",
+      sessionId: "claude-session-1",
+      events: [{ event: "completed", args: [completeOutput("Scoped Feature")] }],
+    });
 
     const service = createCreateTaskService(ctx, {
       createClaudeSession: () => mockClaude.session as never,
@@ -517,26 +486,20 @@ describe("create-task/service", () => {
     if (finalized.status !== "success") return;
 
     expect(finalized.changeName).toBe("scoped-feature");
-    const resumeInputs = mockClaude.calls
-      .filter((call) => call.method === "resume")
-      .map((call) => call.input);
-    expect(resumeInputs).toContain("/opsx:new");
-    expect(resumeInputs).toContain("scoped-feature");
+    expect(mockClaude.calls.filter((call) => call.method === "resume")).toHaveLength(0);
   });
 
-  test("saves a draft when change creation fails", async () => {
+  test("saves a draft when task creation fails", async () => {
     const testDir = await mkdtemp(join(tmpdir(), "aop-create-task-draft-"));
     cleanupDirs.push(testDir);
+    await mkdir(join(testDir, "docs", "tasks"), { recursive: true });
+    await Bun.write(join(testDir, "docs", "tasks", "draft-feature"), "not-a-directory");
 
-    mockClaude.queueSteps(
-      {
-        method: "run",
-        sessionId: "claude-session-1",
-        events: [{ event: "completed", args: [completeOutput("Draft Feature")] }],
-      },
-      { method: "resume", events: [{ event: "error", args: [1] }] },
-      { method: "resume", events: [{ event: "error", args: [1] }] },
-    );
+    mockClaude.queueSteps({
+      method: "run",
+      sessionId: "claude-session-1",
+      events: [{ event: "completed", args: [completeOutput("Draft Feature")] }],
+    });
 
     const service = createCreateTaskService(ctx, {
       createClaudeSession: () => mockClaude.session as never,
@@ -555,27 +518,18 @@ describe("create-task/service", () => {
     expect(finalized.status).toBe("success");
     if (finalized.status !== "success") return;
 
-    expect(finalized.warning).toContain("Change creation failed after retries");
+    expect(finalized.warning).toContain("Task creation failed");
     expect(finalized.draftPath).toBeTruthy();
     expect(finalized.changeName).toBeUndefined();
     expect(await Bun.file(finalized.draftPath || "").exists()).toBe(true);
   });
 
-  test("returns warning when artifact generation fails", async () => {
-    mockClaude.queueSteps(
-      {
-        method: "run",
-        sessionId: "claude-session-1",
-        events: [{ event: "completed", args: [completeOutput("Artifact Feature")] }],
-      },
-      {
-        method: "resume",
-        sessionId: "claude-session-2",
-        events: [{ event: "completed", args: ["created change"] }],
-      },
-      { method: "resume", events: [{ event: "error", args: [1] }] },
-      { method: "resume", events: [{ event: "error", args: [1] }] },
-    );
+  test("finalize completes without artifact generation phase", async () => {
+    mockClaude.queueSteps({
+      method: "run",
+      sessionId: "claude-session-1",
+      events: [{ event: "completed", args: [completeOutput("Artifact Feature")] }],
+    });
 
     const service = createCreateTaskService(ctx, {
       createClaudeSession: () => mockClaude.session as never,
@@ -594,7 +548,7 @@ describe("create-task/service", () => {
     if (finalized.status !== "success") return;
 
     expect(finalized.changeName).toBe("artifact-feature");
-    expect(finalized.warning).toBe("Change created, but artifact generation failed.");
+    expect(finalized.warning).toBeUndefined();
   });
 
   test("cancel kills Claude session and marks session cancelled", async () => {

@@ -7,8 +7,14 @@ import { MarkdownViewer } from "./MarkdownViewer";
 const sortFilesTasksFirst = (files: string[]): string[] => {
   const sorted = [...files];
   sorted.sort((a, b) => {
-    if (a === "tasks.md") return -1;
-    if (b === "tasks.md") return 1;
+    const priority = ["task.md", "plan.md"];
+    const aPriority = priority.indexOf(a);
+    const bPriority = priority.indexOf(b);
+    if (aPriority !== -1 || bPriority !== -1) {
+      if (aPriority === -1) return 1;
+      if (bPriority === -1) return -1;
+      return aPriority - bPriority;
+    }
     return a.localeCompare(b);
   });
   return sorted;
@@ -20,16 +26,22 @@ interface SpecsTabProps {
 
 export const SpecsTab = ({ task }: SpecsTabProps) => {
   const [files, setFiles] = useState<string[]>([]);
-  const [activeFile, setActiveFile] = useState("tasks.md");
+  const [activeFile, setActiveFile] = useState("task.md");
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchChangeFiles(task.repoId, task.id)
-      .then((f) => setFiles(sortFilesTasksFirst(f)))
+      .then((f) => {
+        const nextFiles = sortFilesTasksFirst(f);
+        setFiles(nextFiles);
+        if (nextFiles.length > 0 && !nextFiles.includes(activeFile)) {
+          setActiveFile(nextFiles[0] ?? "task.md");
+        }
+      })
       .catch(() => setFiles([]));
-  }, [task.repoId, task.id]);
+  }, [activeFile, task.repoId, task.id]);
 
   const loadFile = useCallback(
     (path: string) => {

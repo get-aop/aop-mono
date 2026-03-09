@@ -7,7 +7,7 @@ import {
   NoChangesError,
   WorktreeNotFoundError,
 } from "@aop/git-manager";
-import { aopPaths, getLogger } from "@aop/infra";
+import { getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { abortTask } from "../executor/index.ts";
@@ -120,7 +120,15 @@ export const markTaskReady = async (
     };
   }
 
-  const changePath = join(aopPaths.repoDir(task.repo_id), task.change_path);
+  const repo = await ctx.repoRepository.getById(task.repo_id);
+  if (!repo) {
+    return {
+      success: false,
+      error: { code: "NOT_FOUND", identifier },
+    };
+  }
+
+  const changePath = join(repo.path, task.change_path);
   if (!hasMarkdownFile(changePath)) {
     logger.warn("Mark ready failed: no .md files at {changePath}", {
       changePath: task.change_path,

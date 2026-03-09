@@ -1,162 +1,45 @@
 You are implementing a task in a software project.
 
-You MUST follow ALL the instructions and emit the REQUIRED SIGNALS at the bottom.
+You MUST follow ALL instructions and emit the REQUIRED SIGNALS at the bottom.
 
 {{> task-context}}
 
 ## Instructions
 
-Implement the task defined in the change directory, **ALWAYS** working on the {{worktree.path}} path.
+Implement the task defined in the task folder, always working on `{{worktree.path}}`.
 
-### Pacing (MANDATORY)
+### Pacing
 
-Complete **ONE section** from the task file, then STOP and signal.
+Complete exactly one ready numbered subtask file, then stop and signal.
 
-**One section = one `## Section N` heading.** Not two. Not "just one more related section."
-
-After completing a section:
-1. Mark its checkboxes as `[x]` in the task file
-2. Run the self-check (below)
-3. Signal completion — do NOT continue to the next section
-
-**No exceptions:**
-- "The next section is closely related" — Stop anyway. That's the next session.
-- "Stopping here leaves type errors" — That's expected. The next session fixes them.
-- "I'm making good progress" — Good. Stop while it's good.
-- "It's all one domain/refactoring" — Sections exist to break domains into sessions.
-- "It's a small section, I can squeeze one more" — No. Signal and stop.
+After completing a subtask:
+1. Update its frontmatter to `status: DONE`
+2. Fill `### Result` with what changed
+3. Add any reviewer notes to `### Review` if useful
+4. Run the self-check
+5. Signal completion and stop
 
 ### Implementation Process
 
-1. Read the task specification from the change path
-2. Identify the next chunk of work (related files/functionality)
-3. Implement the chunk following project conventions
-
-Implement tasks from an OpenSpec change.
-If a change path or name is provided, use it. Otherwise: Infer from conversation context if the user mentioned a change
-
-**Check status to understand the schema**
-   ```bash
-   openspec status --change "<name>" --json
-   ```
-   Parse the JSON to understand:
-   - `schemaName`: The workflow being used (e.g., "spec-driven")
-   - Which artifact contains the tasks (typically "tasks" for spec-driven, check status for others)
-
-**Get apply instructions**
-
-   ```bash
-   openspec instructions apply --change "<name>" --json
-   ```
-
-   This returns:
-   - Context file paths (varies by schema - could be proposal/specs/design/tasks or spec/tests/implementation/docs)
-   - Progress (total, complete, remaining)
-   - Task list with status
-   - Dynamic instruction based on current state
-
-**Read context files**
-   Read the files listed in `contextFiles` from the apply instructions output.
-   The files depend on the schema being used:
-   - **spec-driven**: proposal, specs, design, tasks
-   - Other schemas: follow the contextFiles from CLI output
-
-**Show current progress**
-
-   Display:
-   - Schema being used
-   - Progress: "N/M tasks complete"
-   - Remaining tasks overview
-   - Dynamic instruction from CLI
-
-**On completion or pause, show status**
-
-   Display:
-   - Tasks completed this session
-   - Overall progress: "N/M tasks complete"
-
-**Output During Implementation**
-
-```
-## Implementing: <change-name> — Section N: <section-title>
-
-Working on task: <task description>
-[...implementation happening...]
-✓ Task complete
-```
-
-**Output On Session Complete (after ONE section)**
-
-```
-## Session Complete
-
-**Change:** <change-name>
-**Section completed:** Section N: <section-title>
-**Overall progress:** 4/7 sections complete
-
-### Completed This Session
-- [x] Task from this section
-- [x] Another task from this section
-
-Stopping here. Next session: Section N+1.
-```
-
-### Tracking Progress
-
-After completing each task, update `tasks.md` in the change directory (`{{task.changePath}}`) to mark it as done:
-- Change `- [ ]` to `- [x]` for completed tasks
-- This keeps the checklist in sync with actual progress
+1. Read `task.md`, `plan.md`, and all numbered subtask files in `{{task.changePath}}`
+2. Choose the next subtask whose status is `PENDING` and whose dependencies are satisfied
+3. Implement only that subtask
+4. If all subtasks are complete, update `task.md` status to `DONE`
 
 ### Development Process
 
-**TDD requirement**: If the task introduces new code (functions, classes, modules), use the skill `test-driven-development`.
+- Use `test-driven-development` for new backend code
+- For frontend work, use `frontend-design`, `webapp-testing`, and `vercel-react-best-practices`
+- Keep work focused to the selected subtask
 
-**Skip test-driven-development when**:
-- Infrastructure/config tasks (CI, build, linting setup)
-- The task IS writing tests or e2e tests 
-  - Never use Mocks on E2E tests, the idea is to stress the real system with real APIs. Unless the user explicitly asked to use mocks.
-- Writing frontend or UI/UX code. 
-  - Here you should favor happy paths and basic unhappy flows using e2e/playwright tests
-  - Apply TDD in E2E imagining you are the user
-  - Use the `vercel-react-best-practices` skill when working with React.
-  - Use the `webapp-testing` skill to run your tests
-  - Use the `frontend-design` skill for design tasks.
-- Pure refactoring with existing test coverage
+### Self-Check
 
-4. Verify the chunk works before proceeding
-
-### Red Flags — STOP Immediately
-
-If you catch yourself thinking any of these, you are about to violate pacing:
-
-- "Let me just finish this related section too"
-- "These two sections are really one logical unit"
-- "It would be cleaner to do both together"
-- "I'm already in the zone, why stop?"
-- "The next section is trivial, it'll take 2 minutes"
-
-**All of these mean: Signal completion NOW. The next section is the next session.**
-
-### Self-Check Before Signaling
-
-Before signaling completion of a section, verify:
-
-- [ ] Code compiles/type-checks without errors
-- [ ] New functionality is wired up and callable
-- [ ] If it's a UI/frontend task use the `webapp-testing` skill to verify it works
-- [ ] No TODO comments left unaddressed
-- [ ] Tests pass for the changed code
-- [ ] Code follows project style guidelines
-
-- [ ] Remove AI code slop
-Check the current changes (staged, unstaged, or commit diffs, prompt the user if unclear), and remove all AI generated slop introduced in this branch.
-
-This includes:
-
-- Extra comments that a human wouldn't add or is inconsistent with the rest of the file
-- Extra defensive checks or try/catch blocks that are abnormal for that area of the codebase (especially if called by trusted / validated codepaths)
-- Casts to any to get around type issues
-- Any other style that is inconsistent with the file
-- also be mindful about deadcode, redeclared functions, DRY, YAGNI, and also for reinventing the wheel (recreating functionalities that already exist in the codebase, skipping existing utilities/packages patterns like not using the infra logger and using console.log)
+Before signaling, verify:
+- Code compiles or type-checks cleanly
+- New functionality is wired up and callable
+- Tests pass for the changed code
+- No TODO comments were left behind
+- The subtask document accurately reflects the work completed
+- AI slop was removed from the final diff
 
 {{> output-signals}}

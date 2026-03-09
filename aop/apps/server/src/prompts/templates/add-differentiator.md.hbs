@@ -36,7 +36,7 @@ Read from `{{task.changePath}}`:
 - `market-analysis.md` — what competitors do (to differentiate FROM)
 - `design-brief.md` — visual tokens to match
 - `copy.md` — differentiator section copy
-- `tasks.md` — the differentiator task description
+- `task.md` and `plan.md` — the differentiator task description and execution plan
 
 Read the built landing page source code in `{{worktree.path}}`.
 
@@ -52,7 +52,7 @@ What ONE thing does this product do that competitors don't? The widget should ma
 
 ### 3. Design the Widget Concept
 
-Use the `frontend-design` skill to design something distinctive:
+Design something distinctive:
 - Must be **interactive** — the user engages with it, not just reads it
 - Must be **unique** — competitors' pages don't have this
 - Must **demonstrate value** — not just decorate, but prove the product's worth
@@ -65,11 +65,11 @@ Implement the widget as a React component within the existing Next.js page:
 - Follow patterns already established in the LP codebase
 - Use design tokens (CSS custom properties) from the existing global styles
 - Ensure it's performant — lazy load if heavy, optimize animations
-- Use the `vercel-react-best-practices` skill for React performance patterns
+- Favor strong React performance patterns and static rendering where appropriate
 
 ### 5. Verify Visually
 
-Use the `webapp-testing` skill to:
+Verify visually by:
 - Take screenshots showing the widget on desktop and mobile
 - Verify animations/interactions work
 - Check it integrates visually with surrounding sections

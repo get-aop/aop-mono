@@ -44,7 +44,7 @@ Read ALL files in `{{task.changePath}}`. Identify:
 - **Style references** — links to sites they admire, design system docs
 - **Written direction** — any notes about tone, feel, aesthetic preferences
 
-If NO visual references exist, use the `canvas-design` and `frontend-design` skills to propose an aesthetic direction based on the product brief and market analysis. Output `<aop>REQUIRES_INPUT</aop>` to ask the user to confirm or provide references, then stop.
+If NO visual references exist, propose an aesthetic direction based on the product brief and market analysis, then output `<aop>REQUIRES_INPUT</aop>` to ask the user to confirm or provide references.
 
 ### 2. Read Market Context
 
@@ -55,13 +55,13 @@ Read `{{task.changePath}}/market-analysis.md` (from the previous step). Extract:
 
 ### 3. Analyze Visual Direction
 
-Use the `frontend-design` skill to develop a distinctive aesthetic direction:
+Develop a distinctive aesthetic direction:
 - **Mood**: What feeling should the page evoke?
 - **Tone**: Formal/casual, bold/subtle, minimal/rich?
 - **Differentiation**: How to look distinct from competitors found in market analysis?
 - **Typography character**: Modern/classic, geometric/humanist, tight/airy?
 
-Use the `theme-factory` skill to evaluate whether a preset theme fits or if a custom theme is needed.
+Decide whether a preset theme is appropriate or a custom theme is needed.
 
 ### 4. Extract Design Tokens
 
@@ -158,7 +158,7 @@ Once verified, output `<aop>BRIEF_READY</aop>` as the last thing you do.
 - **No code** — Define the design system in the brief. Implementation happens later.
 - **No copy** — Do NOT write headlines, CTAs, or body text. The copy step handles that.
 - **Differentiate from competitors** — Reference the market analysis to ensure the visual direction stands apart.
-- **Use skills** — The `frontend-design` skill prevents generic AI aesthetics. The `theme-factory` skill provides professional font/color pairings. Use both.
+- **Avoid generic aesthetics** — The brief should define a specific, defensible visual direction with concrete font and color choices.
 - **One brief per invocation** — If multiple design directions are possible, present the strongest one and note alternatives briefly.
 - **Signal is mandatory** — Do NOT finish without outputting `<aop>BRIEF_READY</aop>` (or `<aop>REQUIRES_INPUT</aop>` if you need visual references). Every session must end with a signal.
 

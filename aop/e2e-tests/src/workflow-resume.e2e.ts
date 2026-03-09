@@ -53,7 +53,7 @@ describe("workflow resume-from-step", () => {
     async () => {
       const changePath = await copyFixture("cli-greeting-command", worktree.path);
 
-      await Bun.$`git add --force openspec/`.cwd(worktree.path).quiet().nothrow();
+      await Bun.$`git add --force docs/`.cwd(worktree.path).quiet().nothrow();
       await Bun.$`git commit -m "Add cli-greeting-command fixture" --allow-empty`
         .cwd(worktree.path)
         .quiet()

@@ -184,8 +184,8 @@ export const registerCommands = (
     });
 
   cli
-    .command("run-task <changeName>", "Run opsx:new and opsx:ff for a change")
-    .action((changeName) => commands.runTaskCommand(changeName));
+    .command("run-task <taskName>", "Create task documents for a task name")
+    .action((taskName) => commands.runTaskCommand(taskName));
 
   cli
     .command("config:get [key]", "Get config value(s)")

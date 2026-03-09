@@ -26,7 +26,7 @@ import { Task, TaskStatus } from "@aop/common";
 const task: Task = {
   id: "task_abc123",
   repoId: "repo_xyz",
-  changePath: "openspec/changes/my-feature",
+  changePath: "docs/tasks/my-feature",
   worktreePath: null,
   status: TaskStatus.READY,
   readyAt: new Date(),

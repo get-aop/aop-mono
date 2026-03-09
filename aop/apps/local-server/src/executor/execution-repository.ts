@@ -1,6 +1,4 @@
-import type { Kysely } from "kysely";
 import type {
-  Database,
   Execution,
   ExecutionUpdate,
   NewExecution,
@@ -32,192 +30,142 @@ export interface ExecutionRepository {
   getStepLogsByExecutionId: (executionId: string) => Promise<StepLog[]>;
 }
 
-export const createExecutionRepository = (db: Kysely<Database>): ExecutionRepository => ({
-  createExecution: async (execution: NewExecution): Promise<Execution> => {
-    await db.insertInto("executions").values(execution).execute();
-    return db
-      .selectFrom("executions")
-      .selectAll()
-      .where("id", "=", execution.id)
-      .executeTakeFirstOrThrow();
-  },
+export const createExecutionRepository = (_legacyDb?: unknown): ExecutionRepository => {
+  const executions = new Map<string, Execution>();
+  const steps = new Map<string, StepExecution>();
+  const logs = new Map<string, StepLog[]>();
 
-  getExecution: async (id: string): Promise<Execution | null> => {
-    const execution = await db
-      .selectFrom("executions")
-      .selectAll()
-      .where("id", "=", id)
-      .executeTakeFirst();
-    return execution ?? null;
-  },
+  return {
+    createExecution: async (execution: NewExecution): Promise<Execution> => {
+      const record: Execution = {
+        ...execution,
+        completed_at: execution.completed_at ?? null,
+      };
+      executions.set(record.id, record);
+      return record;
+    },
 
-  updateExecution: async (id: string, updates: ExecutionUpdate): Promise<Execution | null> => {
-    const existing = await db
-      .selectFrom("executions")
-      .select("id")
-      .where("id", "=", id)
-      .executeTakeFirst();
+    getExecution: async (id: string): Promise<Execution | null> => executions.get(id) ?? null,
 
-    if (!existing) {
-      return null;
-    }
+    updateExecution: async (id: string, updates: ExecutionUpdate): Promise<Execution | null> => {
+      const existing = executions.get(id);
+      if (!existing) return null;
+      const updated = { ...existing, ...updates };
+      executions.set(id, updated);
+      return updated;
+    },
 
-    await db.updateTable("executions").set(updates).where("id", "=", id).execute();
+    getExecutionsByTaskId: async (taskId: string): Promise<Execution[]> =>
+      [...executions.values()]
+        .filter((execution) => execution.task_id === taskId)
+        .sort((left, right) => right.started_at.localeCompare(left.started_at)),
 
-    return db.selectFrom("executions").selectAll().where("id", "=", id).executeTakeFirstOrThrow();
-  },
+    cancelRunningExecutions: async (): Promise<number> => {
+      const running = [...executions.values()].filter((execution) => execution.status === "running");
+      const now = new Date().toISOString();
+      for (const execution of running) {
+        executions.set(execution.id, { ...execution, status: "cancelled", completed_at: now });
+      }
+      return running.length;
+    },
 
-  getExecutionsByTaskId: async (taskId: string): Promise<Execution[]> => {
-    return db
-      .selectFrom("executions")
-      .selectAll()
-      .where("task_id", "=", taskId)
-      .orderBy("started_at", "desc")
-      .execute();
-  },
+    createStepExecution: async (step: NewStepExecution): Promise<StepExecution> => {
+      const record: StepExecution = {
+        ...step,
+        step_id: step.step_id ?? null,
+        step_type: step.step_type ?? null,
+        remote_execution_id: step.remote_execution_id ?? null,
+        agent_pid: step.agent_pid ?? null,
+        session_id: step.session_id ?? null,
+        exit_code: step.exit_code ?? null,
+        signal: step.signal ?? null,
+        pause_context: step.pause_context ?? null,
+        error: step.error ?? null,
+        attempt: step.attempt ?? null,
+        iteration: step.iteration ?? null,
+        signals_json: step.signals_json ?? null,
+        ended_at: step.ended_at ?? null,
+      };
+      steps.set(record.id, record);
+      return record;
+    },
 
-  cancelRunningExecutions: async (): Promise<number> => {
-    const running = await db
-      .selectFrom("executions")
-      .select("id")
-      .where("status", "=", "running")
-      .execute();
+    getStepExecution: async (id: string): Promise<StepExecution | null> => steps.get(id) ?? null,
 
-    if (running.length === 0) {
-      return 0;
-    }
+    updateStepExecution: async (
+      id: string,
+      updates: StepExecutionUpdate,
+    ): Promise<StepExecution | null> => {
+      const existing = steps.get(id);
+      if (!existing) return null;
+      const updated = { ...existing, ...updates };
+      steps.set(id, updated);
+      return updated;
+    },
 
-    await db
-      .updateTable("executions")
-      .set({ status: "cancelled", completed_at: new Date().toISOString() })
-      .where("status", "=", "running")
-      .execute();
+    getStepExecutionsByExecutionId: async (executionId: string): Promise<StepExecution[]> =>
+      [...steps.values()]
+        .filter((step) => step.execution_id === executionId)
+        .sort((left, right) => left.started_at.localeCompare(right.started_at)),
 
-    return running.length;
-  },
+    getLatestStepExecution: async (taskId: string): Promise<StepExecution | null> => {
+      const executionIds = new Set(
+        [...executions.values()]
+          .filter((execution) => execution.task_id === taskId)
+          .map((execution) => execution.id),
+      );
 
-  createStepExecution: async (step: NewStepExecution): Promise<StepExecution> => {
-    await db.insertInto("step_executions").values(step).execute();
-    return db
-      .selectFrom("step_executions")
-      .selectAll()
-      .where("id", "=", step.id)
-      .executeTakeFirstOrThrow();
-  },
+      return (
+        [...steps.values()]
+          .filter((step) => executionIds.has(step.execution_id))
+          .sort((left, right) => right.started_at.localeCompare(left.started_at))[0] ?? null
+      );
+    },
 
-  getStepExecution: async (id: string): Promise<StepExecution | null> => {
-    const step = await db
-      .selectFrom("step_executions")
-      .selectAll()
-      .where("id", "=", id)
-      .executeTakeFirst();
-    return step ?? null;
-  },
+    cancelRunningStepExecutions: async (): Promise<number> => {
+      const running = [...steps.values()].filter((step) => step.status === "running");
+      const now = new Date().toISOString();
+      for (const step of running) {
+        steps.set(step.id, { ...step, status: "cancelled", ended_at: now });
+      }
+      return running.length;
+    },
 
-  updateStepExecution: async (
-    id: string,
-    updates: StepExecutionUpdate,
-  ): Promise<StepExecution | null> => {
-    const existing = await db
-      .selectFrom("step_executions")
-      .select("id")
-      .where("id", "=", id)
-      .executeTakeFirst();
+    getRunningStepExecutions: async (): Promise<(StepExecution & { task_id: string })[]> => {
+      return [...steps.values()]
+        .filter((step) => step.status === "running")
+        .map((step) => {
+          const execution = executions.get(step.execution_id);
+          return execution ? { ...step, task_id: execution.task_id } : null;
+        })
+        .filter((step): step is StepExecution & { task_id: string } => step !== null);
+    },
 
-    if (!existing) {
-      return null;
-    }
+    saveStepLogs: async (entries: NewStepLog[]): Promise<void> => {
+      for (const entry of entries) {
+        const existing = logs.get(entry.step_execution_id) ?? [];
+        existing.push({
+          id: existing.length + 1,
+          step_execution_id: entry.step_execution_id,
+          content: entry.content,
+          created_at: entry.created_at,
+        });
+        logs.set(entry.step_execution_id, existing);
+      }
+    },
 
-    await db.updateTable("step_executions").set(updates).where("id", "=", id).execute();
+    getStepLogs: async (stepExecutionId: string): Promise<StepLog[]> =>
+      logs.get(stepExecutionId) ?? [],
 
-    return db
-      .selectFrom("step_executions")
-      .selectAll()
-      .where("id", "=", id)
-      .executeTakeFirstOrThrow();
-  },
+    getStepLogCount: async (stepExecutionId: string): Promise<number> =>
+      (logs.get(stepExecutionId) ?? []).length,
 
-  getStepExecutionsByExecutionId: async (executionId: string): Promise<StepExecution[]> => {
-    return db
-      .selectFrom("step_executions")
-      .selectAll()
-      .where("execution_id", "=", executionId)
-      .orderBy("started_at", "asc")
-      .execute();
-  },
+    getStepLogsByExecutionId: async (executionId: string): Promise<StepLog[]> => {
+      const executionSteps = [...steps.values()]
+        .filter((step) => step.execution_id === executionId)
+        .sort((left, right) => left.started_at.localeCompare(right.started_at));
 
-  getLatestStepExecution: async (taskId: string): Promise<StepExecution | null> => {
-    const step = await db
-      .selectFrom("step_executions")
-      .innerJoin("executions", "executions.id", "step_executions.execution_id")
-      .selectAll("step_executions")
-      .where("executions.task_id", "=", taskId)
-      .orderBy("step_executions.started_at", "desc")
-      .limit(1)
-      .executeTakeFirst();
-    return step ?? null;
-  },
-
-  cancelRunningStepExecutions: async (): Promise<number> => {
-    const running = await db
-      .selectFrom("step_executions")
-      .select("id")
-      .where("status", "=", "running")
-      .execute();
-
-    if (running.length === 0) {
-      return 0;
-    }
-
-    await db
-      .updateTable("step_executions")
-      .set({ status: "cancelled", ended_at: new Date().toISOString() })
-      .where("status", "=", "running")
-      .execute();
-
-    return running.length;
-  },
-
-  getRunningStepExecutions: async (): Promise<(StepExecution & { task_id: string })[]> => {
-    return db
-      .selectFrom("step_executions")
-      .innerJoin("executions", "executions.id", "step_executions.execution_id")
-      .selectAll("step_executions")
-      .select("executions.task_id")
-      .where("step_executions.status", "=", "running")
-      .execute();
-  },
-
-  saveStepLogs: async (logs: NewStepLog[]): Promise<void> => {
-    if (logs.length === 0) return;
-    await db.insertInto("step_logs").values(logs).execute();
-  },
-
-  getStepLogs: async (stepExecutionId: string): Promise<StepLog[]> => {
-    return db
-      .selectFrom("step_logs")
-      .selectAll()
-      .where("step_execution_id", "=", stepExecutionId)
-      .orderBy("id", "asc")
-      .execute();
-  },
-
-  getStepLogCount: async (stepExecutionId: string): Promise<number> => {
-    const result = await db
-      .selectFrom("step_logs")
-      .select(db.fn.countAll<number>().as("count"))
-      .where("step_execution_id", "=", stepExecutionId)
-      .executeTakeFirstOrThrow();
-    return Number(result.count);
-  },
-
-  getStepLogsByExecutionId: async (executionId: string): Promise<StepLog[]> => {
-    return db
-      .selectFrom("step_logs")
-      .innerJoin("step_executions", "step_logs.step_execution_id", "step_executions.id")
-      .selectAll("step_logs")
-      .where("step_executions.execution_id", "=", executionId)
-      .orderBy("step_logs.id", "asc")
-      .execute();
-  },
-});
+      return executionSteps.flatMap((step) => logs.get(step.id) ?? []);
+    },
+  };
+};

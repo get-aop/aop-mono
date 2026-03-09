@@ -9,22 +9,23 @@ export type ServerStatus = SSEServerStatus;
 export const toSSETask = (
   task: Task,
   execution?: Pick<Execution, "id" | "started_at" | "completed_at"> | null,
+  repoPath?: string,
 ): SSETask => ({
-  id: task.id,
-  repoId: task.repo_id,
-  changePath: task.change_path,
-  status: task.status,
-  baseBranch: task.base_branch ?? null,
-  preferredProvider: task.preferred_provider ?? null,
-  preferredWorkflow: task.preferred_workflow ?? null,
-  createdAt: task.created_at,
-  updatedAt: task.updated_at,
-  errorMessage: undefined,
-  currentExecutionId: execution?.id,
-  executionStartedAt: execution?.started_at ?? undefined,
-  executionCompletedAt: execution?.completed_at ?? undefined,
-  taskProgress: readTaskProgress(task.repo_id, task.change_path),
-});
+    id: task.id,
+    repoId: task.repo_id,
+    changePath: task.change_path,
+    status: task.status,
+    baseBranch: task.base_branch ?? null,
+    preferredProvider: task.preferred_provider ?? null,
+    preferredWorkflow: task.preferred_workflow ?? null,
+    createdAt: task.created_at,
+    updatedAt: task.updated_at,
+    errorMessage: undefined,
+    currentExecutionId: execution?.id,
+    executionStartedAt: execution?.started_at ?? undefined,
+    executionCompletedAt: execution?.completed_at ?? undefined,
+    taskProgress: repoPath ? readTaskProgress(repoPath, task.change_path) : undefined,
+  });
 
 export const getServerStatus = async (ctx: LocalServerContext): Promise<ServerStatus> => {
   const globalMax = Number.parseInt(await ctx.settingsRepository.get("max_concurrent_tasks"), 10);
@@ -44,7 +45,7 @@ export const getServerStatus = async (ctx: LocalServerContext): Promise<ServerSt
         repoTasks.map(async (task) => {
           const executions = await ctx.executionRepository.getExecutionsByTaskId(task.id);
           const execution = executions.find((e) => e.status === "running") ?? executions[0];
-          return toSSETask(task, execution);
+          return toSSETask(task, execution, repo.path);
         }),
       );
 

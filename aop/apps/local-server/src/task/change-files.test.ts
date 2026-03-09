@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
-import { type AnyJson, createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
+import { type AnyJson, createTestDb, createTestRepo } from "../db/test-utils.ts";
 import { createRepoRoutes } from "../repo/routes.ts";
 
 describe("task/change-files", () => {
@@ -15,15 +15,22 @@ describe("task/change-files", () => {
   let app: Hono;
 
   const repoId = "repo-cf";
-  const changePath = "openspec/changes/test-change";
+  const changePath = "docs/tasks/test-change";
   const changeDir = () => join(aopPaths.repoDir(repoId), changePath);
+  const createRuntimeTask = async () =>
+    ctx.taskRepository.createIdempotent({
+      id: "task-change-files",
+      repo_id: repoId,
+      change_path: changePath,
+      status: "DRAFT",
+    });
 
   beforeEach(async () => {
     db = await createTestDb();
     ctx = createCommandContext(db);
     app = new Hono();
     app.route("/api/repos", createRepoRoutes(ctx));
-    await createTestRepo(db, repoId, "/path/to/repo");
+    await createTestRepo(db, repoId, aopPaths.repoDir(repoId));
   });
 
   afterEach(async () => {
@@ -33,47 +40,46 @@ describe("task/change-files", () => {
 
   describe("GET /api/repos/:repoId/tasks/:taskId/files", () => {
     test("lists markdown files in change directory", async () => {
-      await createTestTask(db, "task-1", repoId, changePath, "DRAFT");
+      const task = await createRuntimeTask();
+      expect(task).toBeTruthy();
       const dir = changeDir();
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, "tasks.md"), "# Tasks");
-      writeFileSync(join(dir, "design.md"), "# Design");
-      writeFileSync(join(dir, "proposal.md"), "# Proposal");
+      writeFileSync(join(dir, "plan.md"), "# Plan");
+      writeFileSync(join(dir, "001-first-step.md"), "# First step");
 
-      const res = await app.request(`/api/repos/${repoId}/tasks/task-1/files`);
+      const res = await app.request(`/api/repos/${repoId}/tasks/${task?.id}/files`);
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(200);
       expect(body.files).toBeArray();
-      expect(body.files).toContain("tasks.md");
-      expect(body.files).toContain("design.md");
-      expect(body.files).toContain("proposal.md");
+      expect(body.files).toContain("task.md");
+      expect(body.files).toContain("plan.md");
+      expect(body.files).toContain("001-first-step.md");
     });
 
     test("lists nested directory files with relative paths", async () => {
-      await createTestTask(db, "task-1", repoId, changePath, "DRAFT");
+      const task = await createRuntimeTask();
+      expect(task).toBeTruthy();
       const dir = changeDir();
       mkdirSync(join(dir, "specs"), { recursive: true });
-      writeFileSync(join(dir, "tasks.md"), "# Tasks");
       writeFileSync(join(dir, "specs/api.md"), "# API Spec");
 
-      const res = await app.request(`/api/repos/${repoId}/tasks/task-1/files`);
+      const res = await app.request(`/api/repos/${repoId}/tasks/${task?.id}/files`);
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(200);
-      expect(body.files).toContain("tasks.md");
+      expect(body.files).toContain("task.md");
       expect(body.files).toContain("specs/api.md");
     });
 
-    test("returns empty array for directory with no markdown files", async () => {
-      await createTestTask(db, "task-1", repoId, changePath, "DRAFT");
-      mkdirSync(changeDir(), { recursive: true });
+    test("returns scaffolded task.md when no extra markdown files exist", async () => {
+      const task = await createRuntimeTask();
+      expect(task).toBeTruthy();
 
-      const res = await app.request(`/api/repos/${repoId}/tasks/task-1/files`);
+      const res = await app.request(`/api/repos/${repoId}/tasks/${task?.id}/files`);
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(200);
-      expect(body.files).toEqual([]);
+      expect(body.files).toEqual(["task.md"]);
     });
 
     test("returns 404 for non-existent task", async () => {
@@ -84,38 +90,38 @@ describe("task/change-files", () => {
       expect(body.error).toBe("Task not found");
     });
 
-    test("returns empty array when change directory does not exist", async () => {
-      await createTestTask(db, "task-1", repoId, changePath, "DRAFT");
+    test("returns scaffolded task.md after task creation", async () => {
+      const task = await createRuntimeTask();
+      expect(task).toBeTruthy();
 
-      const res = await app.request(`/api/repos/${repoId}/tasks/task-1/files`);
+      const res = await app.request(`/api/repos/${repoId}/tasks/${task?.id}/files`);
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(200);
-      expect(body.files).toEqual([]);
+      expect(body.files).toEqual(["task.md"]);
     });
   });
 
   describe("GET /api/repos/:repoId/tasks/:taskId/files/:path", () => {
     test("returns file content for valid path", async () => {
-      await createTestTask(db, "task-1", repoId, changePath, "DRAFT");
-      const dir = changeDir();
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, "tasks.md"), "# Tasks\n- [ ] Task 1");
+      const task = await createRuntimeTask();
+      expect(task).toBeTruthy();
 
-      const res = await app.request(`/api/repos/${repoId}/tasks/task-1/files/tasks.md`);
+      const res = await app.request(`/api/repos/${repoId}/tasks/${task?.id}/files/task.md`);
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(200);
-      expect(body.content).toBe("# Tasks\n- [ ] Task 1");
+      expect(body.content).toContain("## Description");
     });
 
     test("returns nested file content", async () => {
-      await createTestTask(db, "task-1", repoId, changePath, "DRAFT");
+      const task = await createRuntimeTask();
+      expect(task).toBeTruthy();
       const dir = changeDir();
       mkdirSync(join(dir, "specs"), { recursive: true });
       writeFileSync(join(dir, "specs/api.md"), "# API");
 
-      const res = await app.request(`/api/repos/${repoId}/tasks/task-1/files/specs/api.md`);
+      const res = await app.request(`/api/repos/${repoId}/tasks/${task?.id}/files/specs/api.md`);
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(200);
@@ -123,10 +129,11 @@ describe("task/change-files", () => {
     });
 
     test("returns 404 for non-existent file", async () => {
-      await createTestTask(db, "task-1", repoId, changePath, "DRAFT");
+      const task = await createRuntimeTask();
+      expect(task).toBeTruthy();
       mkdirSync(changeDir(), { recursive: true });
 
-      const res = await app.request(`/api/repos/${repoId}/tasks/task-1/files/missing.md`);
+      const res = await app.request(`/api/repos/${repoId}/tasks/${task?.id}/files/missing.md`);
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(404);
@@ -143,10 +150,11 @@ describe("task/change-files", () => {
     });
 
     test("returns 400 for non-md extension", async () => {
-      await createTestTask(db, "task-1", repoId, changePath, "DRAFT");
+      const task = await createRuntimeTask();
+      expect(task).toBeTruthy();
       mkdirSync(changeDir(), { recursive: true });
 
-      const res = await app.request(`/api/repos/${repoId}/tasks/task-1/files/config.json`);
+      const res = await app.request(`/api/repos/${repoId}/tasks/${task?.id}/files/config.json`);
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(400);
@@ -154,7 +162,7 @@ describe("task/change-files", () => {
     });
 
     test("returns 404 for non-existent task", async () => {
-      const res = await app.request(`/api/repos/${repoId}/tasks/non-existent/files/tasks.md`);
+      const res = await app.request(`/api/repos/${repoId}/tasks/non-existent/files/task.md`);
       const body: AnyJson = await res.json();
 
       expect(res.status).toBe(404);

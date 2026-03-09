@@ -25,7 +25,7 @@ steps:
     maxAttempts: 3
     signals:
       - name: PLAN_READY
-        description: plan is written to tasks.md, ready for human approval
+        description: plan is written to plan.md, ready for human approval
       - name: REQUIRES_INPUT
         description: need clarification before planning can proceed. Also output `INPUT_REASON:` and `INPUT_TYPE:` tags explaining what you need
     transitions:
@@ -45,9 +45,9 @@ steps:
     maxAttempts: 15
     signals:
       - name: TASK_COMPLETE
-        description: all tasks in tasks.md are complete
+        description: all numbered task docs are complete
       - name: CHUNK_DONE
-        description: completed a chunk, more tasks remain in tasks.md
+        description: completed a chunk, more numbered task docs remain
     transitions:
       - condition: TASK_COMPLETE
         target: visual_verify

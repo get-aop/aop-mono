@@ -41,14 +41,15 @@ export const createCommandContext = (
 ): LocalServerContext => {
   const taskEventEmitter = options.taskEventEmitter ?? getTaskEventEmitter();
   const logBuffer = options.logBuffer ?? getLogBuffer();
-  const executionRepository = createExecutionRepository(db);
+  const repoRepository = createRepoRepository(db);
+  const executionRepository = createExecutionRepository();
   const logFlusher = options.logFlusher ?? createLogFlusher(executionRepository);
 
   return {
-    taskRepository: createTaskRepository(db, {
+    taskRepository: createTaskRepository(repoRepository, {
       eventEmitter: taskEventEmitter,
     }),
-    repoRepository: createRepoRepository(db),
+    repoRepository,
     settingsRepository: createSettingsRepository(db),
     executionRepository,
     sessionRepository: createSessionRepository(db),
