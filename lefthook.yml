@@ -1,11 +1,16 @@
-# Lefthook configuration
-# https://github.com/evilmartians/lefthook
-
 pre-commit:
   parallel: true
   commands:
-    aop-lint:
-      root: aop/
-      glob: "**/*.{js,ts,tsx,json}"
+    biome:
+      glob: "**/*.{js,ts,tsx,jsx,json,jsonc}"
+      exclude: "(node_modules/|coverage/|tmp/|\\.webpack/|\\.next/|dist/|build/|out/)"
       run: bunx @biomejs/biome check --write --staged --no-errors-on-unmatched {staged_files}
       stage_fixed: true
+
+pre-push:
+  commands:
+    coverage:
+      run: bun run test:coverage
+      skip:
+        - merge
+        - rebase

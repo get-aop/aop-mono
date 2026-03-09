@@ -8,10 +8,6 @@ on:
         required: false
         default: ""
 
-defaults:
-  run:
-    working-directory: aop
-
 jobs:
   e2e:
     runs-on: ubuntu-latest

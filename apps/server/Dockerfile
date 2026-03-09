@@ -1,11 +1,11 @@
 FROM oven/bun:1-slim AS base
 WORKDIR /app
 
-# Copy workspace root and deps (paths relative to repo root; Railway builds from repo root)
-COPY aop/package.json aop/bun.lock* aop/bunfig.toml ./
-COPY aop/packages/common ./packages/common
-COPY aop/packages/infra ./packages/infra
-COPY aop/apps/server ./apps/server
+# Copy workspace root and deps (paths relative to repo root)
+COPY package.json bun.lock* bunfig.toml ./
+COPY packages/common ./packages/common
+COPY packages/infra ./packages/infra
+COPY apps/server ./apps/server
 
 # Trim workspaces to only what we copied (server needs common, infra; not scripts, e2e-tests)
 RUN bun -e "const pkg = JSON.parse(await Bun.file('package.json').text()); pkg.workspaces = ['apps/*', 'packages/*']; await Bun.write('package.json', JSON.stringify(pkg));"

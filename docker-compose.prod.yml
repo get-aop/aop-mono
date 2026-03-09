@@ -19,8 +19,8 @@ services:
 
   server:
     build:
-      context: ..
-      dockerfile: aop/apps/server/Dockerfile
+      context: .
+      dockerfile: apps/server/Dockerfile
     container_name: aop-server
     environment:
       AOP_DATABASE_URL: postgresql://aop:aop@postgres:5432/aop

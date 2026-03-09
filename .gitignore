@@ -1,24 +1,64 @@
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.*
+!.env.example
+
+# Secrets
+*.pem
+*.key
+*.p12
+credentials.json
+secrets.json
+service-account*.json
+
+# openspec (symlink to shared specs)
+openspec
+
+# runtime data
+.aop
+.worktrees
+.worktrees/
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+.vscode/
+
+# Finder (MacOS) folder config
+.DS_Store
+
+test-results/
+test-runs/
+playwright-report/
+.playwright-mcp
+link-claude.sh
+
+# e2e test temp directories
+e2e-tests/tmp/
+
+# local tooling and scratch files
 __pycache__
 .dex
 .claude-bkp
-
-tmp
-
-**/*.local*
-.aop
-
-node_modules
-.DS_Store
-
-.playwright-mcp
-playwright-report
-link-claude.sh
-
-.worktrees/
-.vscode/
-.idea
 .leo
-
-openspec
-aop/.claude/skills/openspec*
-aop/.claude/commands/opsx*
+tmp
