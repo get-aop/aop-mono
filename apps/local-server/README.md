@@ -153,7 +153,7 @@ Create `~/Library/LaunchAgents/com.aop.local-server.plist`:
     <array>
         <string>/path/to/bun</string>
         <string>run</string>
-        <string>/path/to/aop/apps/local-server/src/run.ts</string>
+        <string>/path/to/aop-mono/apps/local-server/src/run.ts</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -182,7 +182,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/path/to/bun run /path/to/aop/apps/local-server/src/run.ts
+ExecStart=/path/to/bun run /path/to/aop-mono/apps/local-server/src/run.ts
 Restart=always
 
 [Install]

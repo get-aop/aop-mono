@@ -50,7 +50,7 @@ Use a strong random string for `api_key` (e.g. `openssl rand -hex 32`).
 Railway will create a service. Configure it:
 
 1. **Settings** → **Source**
-   - **Root Directory:** `aop`
+   - **Root Directory:** repository root
    - A `railway.json` in the repo configures the Dockerfile path automatically
 
 2. **Settings** → **Variables**
@@ -96,10 +96,10 @@ In AOP Desktop → **Settings**:
 
 Because the server lives in a monorepo:
 
-1. **Root Directory:** `aop` (Settings → Source → Root Directory)
-2. **railway.json:** The repo includes `aop/railway.json` which sets `builder: DOCKERFILE` and `dockerfilePath: apps/server/Dockerfile`
+1. **Root Directory:** repository root (Settings → Source → Root Directory)
+2. **railway.json:** The repo root includes `railway.json` which sets `builder: DOCKERFILE` and `dockerfilePath: apps/server/Dockerfile`
 
-Railway builds from the Root Directory (`aop`), so the Dockerfile finds `packages/common`, `packages/infra`, and `apps/server`.
+Railway builds from the repository root, so the Dockerfile finds `packages/common`, `packages/infra`, and `apps/server`.
 
 ---
 
@@ -107,8 +107,8 @@ Railway builds from the Root Directory (`aop`), so the Dockerfile finds `package
 
 ### Build fails: "Cannot find module @aop/common"
 
-- Ensure Root Directory is `aop` (the monorepo root), not `aop/apps/server`
-- The Dockerfile expects to be built with context `aop/`
+- Ensure Root Directory is the repository root, not `apps/server`
+- The Dockerfile expects to be built with repository root as the build context
 
 ### Build fails: "AOP_DATABASE_URL is required"
 

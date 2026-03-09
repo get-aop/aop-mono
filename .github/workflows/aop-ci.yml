@@ -3,16 +3,8 @@ name: AOP CI
 on:
   push:
     branches: [main]
-    paths:
-      - "aop/**"
   pull_request:
     branches: [main]
-    paths:
-      - "aop/**"
-
-defaults:
-  run:
-    working-directory: aop
 
 jobs:
   ci:
@@ -62,5 +54,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: aop-coverage-report
-          path: aop/coverage/
+          path: coverage/
           retention-days: 30

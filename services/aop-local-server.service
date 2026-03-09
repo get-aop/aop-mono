@@ -11,13 +11,13 @@
 
 [Unit]
 Description=AOP Local Server
-Documentation=https://github.com/get-aop/aop
+Documentation=https://github.com/get-aop/aop-mono
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/bun run /path/to/aop/apps/local-server/src/run.ts
-WorkingDirectory=/path/to/aop
+ExecStart=/usr/local/bin/bun run /path/to/aop-mono/apps/local-server/src/run.ts
+WorkingDirectory=/path/to/aop-mono
 Restart=on-failure
 RestartSec=5
 

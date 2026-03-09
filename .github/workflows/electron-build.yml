@@ -5,9 +5,9 @@ on:
     branches: [feat/electron-app]
     paths:
       - ".github/workflows/electron-build.yml"
-      - "aop/apps/electron/**"
-      - "aop/apps/dashboard/**"
-      - "aop/apps/local-server/**"
+      - "apps/electron/**"
+      - "apps/dashboard/**"
+      - "apps/local-server/**"
   workflow_dispatch:
     inputs:
       branch:
@@ -49,7 +49,6 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        working-directory: aop
         run: bun install
 
       - name: Check macOS signing secrets (optional)
@@ -72,11 +71,10 @@ jobs:
             echo "::warning::Continuing with unsigned / non-notarized macOS build."
           fi
       - name: Prepare clean Electron build
-        working-directory: aop
         run: bun run ./scripts/release/prepare-electron-build.ts
 
       - name: Build Electron app
-        working-directory: aop/apps/electron
+        working-directory: apps/electron
         run: bun run make
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -89,7 +87,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-artifacts
-          path: aop/apps/electron/out/make/*.dmg
+          path: apps/electron/out/make/*.dmg
           retention-days: 1
 
   build-linux:
@@ -115,19 +113,17 @@ jobs:
           sudo apt-get install -y icnsutils graphicsmagick
 
       - name: Install dependencies
-        working-directory: aop
         run: bun install
 
       - name: Prepare clean Electron build
-        working-directory: aop
         run: bun run ./scripts/release/prepare-electron-build.ts
 
       - name: Build Electron app
-        working-directory: aop/apps/electron
+        working-directory: apps/electron
         run: bun run make
 
       - name: Normalize Linux artifact filename
-        working-directory: aop/apps/electron
+        working-directory: apps/electron
         run: |
           deb_file="$(find out/make/deb -name "*.deb" -print -quit)"
           if [ -z "${deb_file}" ]; then
@@ -150,7 +146,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-artifacts
-          path: aop/apps/electron/out/make/deb/**/*.deb
+          path: apps/electron/out/make/deb/**/*.deb
           retention-days: 1
 
   build-linux-sidecar:
@@ -167,18 +163,17 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        working-directory: aop
         run: bun install
 
       - name: Build Linux sidecar for WSL
-        working-directory: aop/apps/electron
+        working-directory: apps/electron
         run: bun run build:sidecar-linux
 
       - name: Upload Linux sidecar
         uses: actions/upload-artifact@v4
         with:
           name: linux-sidecar
-          path: aop/apps/local-server/dist/aop-server-linux
+          path: apps/local-server/dist/aop-server-linux
           retention-days: 1
 
   build-windows:
@@ -200,32 +195,30 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        working-directory: aop
         run: bun install
 
       - name: Prepare clean Electron build
-        working-directory: aop
         run: bun run ./scripts/release/prepare-electron-build.ts
 
       - name: Download Linux sidecar
         uses: actions/download-artifact@v4
         with:
           name: linux-sidecar
-          path: aop/apps/local-server/dist
+          path: apps/local-server/dist
 
       - name: Build dashboard
-        working-directory: aop/apps/electron
+        working-directory: apps/electron
         run: bun run build:dashboard
 
       - name: Build Electron app
-        working-directory: aop/apps/electron
+        working-directory: apps/electron
         run: bun run make
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifacts
-          path: aop/apps/electron/out/make/**/*.exe
+          path: apps/electron/out/make/**/*.exe
           retention-days: 1
 
   release:
