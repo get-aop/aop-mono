@@ -8,7 +8,7 @@ You are planning the implementation for a task, creating a checklist for executi
 Read an input document, or prompt, and produce a structured research plan for user approval before any research begins. The plan defines what needs to be investigated.
 
 <EXTREMELY-IMPORTANT>
-You MUST write the output of this plan to the output path: {{task.changePath}}/tasks.md
+You MUST write the output of this plan to the output path: {{task.changePath}}/plan.md
 
 Once you finish the plan, you MUST output one of the required signals.
 </EXTREMELY-IMPORTANT>
@@ -24,7 +24,7 @@ digraph plan {
     context [label="Surface search\nfor context" shape=box];
     analyze [label="Analyze scope\n& constraints" shape=box];
     plan [label="Draft research plan" shape=box];
-    save [label="Save to openspec/changes/\n<change-slug>/tasks.md" shape=box];
+    save [label="Save to docs/tasks/\n<task-slug>/plan.md" shape=box];
     present [label="Present plan\nfor approval" shape=box];
 
     read -> gate;
@@ -57,13 +57,13 @@ Do lightweight exploration to understand the research landscape before writing t
 - **External research** (technologies, libraries, best practices): Quick web searches to identify terminology and sub-topics
 - **Hybrid**: Both — most research benefits from understanding the codebase AND the external landscape
 
-This is surface-level context gathering — NOT deep research. You're scoping the work, not doing the work. The `/aop-research` skill handles deep dives with full source citations.
+This is surface-level context gathering — NOT deep research. You're scoping the work, not doing the work. A later research execution pass handles deep dives with full source citations.
 
 ### 4. Analyze and Draft Plan
 
 Synthesize the document requirements into a research plan.
 
-**Every task in the plan MUST be a research task.** The plan is a research agenda — it defines what needs to be investigated, compared, evaluated, or analyzed. The `/aop-research` skill will execute these tasks with deep research (codebase exploration, web searches, or both), source citations, and structured findings.
+**Every task in the plan MUST be a research task.** The plan is a research agenda — it defines what needs to be investigated, compared, evaluated, or analyzed. A later research execution pass will work through these tasks with deep research, source citations, and structured findings.
 
 **Research task verbs** (use these): Investigate, Research, Compare, Analyze, Evaluate, Map, Identify, Survey, Benchmark, Document, Assess, Review
 
@@ -83,7 +83,7 @@ Synthesize the document requirements into a research plan.
 
 Write the plan to the output file, then present it for approval.
 
-**File path**: {{task.changePath}}/tasks.md
+**File path**: {{task.changePath}}/plan.md
 
 **You MUST write the plan to a file.** The plan file is the deliverable — it's what gets tracked, referenced during research, and checked off as findings are produced. Presenting the plan in chat without saving it is a failure.
 
@@ -153,7 +153,7 @@ The verification section items ALWAYS use `- [ ]` checkboxes. These are starting
 
 - **Always save the plan file** — The plan MUST be written to the output path. A plan only shown in chat is a failed invocation.
 - **Always present for approval** — After saving, show the file path and summary in chat, then explicitly ask the user to approve. Never silently save and move on.
-- **Plan, don't research** — Do NOT produce findings, deep analysis, or source citations. Surface searches for context are fine, but the deliverable is a plan of research tasks, not research itself. Even if the user says "just research it" — your job is ONLY the plan. The `/aop-research` skill does the actual research.
+- **Plan, don't research** — Do NOT produce findings, deep analysis, or source citations. Surface searches for context are fine, but the deliverable is a plan of research tasks, not research itself.
 - **Research tasks only** — Every task checkbox must be a research task (investigate, compare, analyze, evaluate). Do NOT create implementation tasks (build, implement, create, deploy). If the input asks for implementation, redirect the user to `/aop-plan-task`.
 - **Strict format only** — The plan file has exactly 5 top-level sections: `# Plan:`, `## Summary`, `## Context`, `## Tasks`, `## Verification`. Do NOT add extra sections like "Notes", "Success Criteria", "Deliverables", "Methodology", or anything else. All relevant information fits within the 5 required sections.
 - **No horizontal rules** — Do NOT use `---` between tasks. Tasks are separated by blank lines only.

@@ -5,8 +5,8 @@
  * Generic loop that runs a prompt repeatedly until a done keyword is found.
  *
  * Usage:
- *   bun scripts/ralph-loop.ts "/opsx:apply aop-platform-mvp"
- *   bun scripts/ralph-loop.ts --max 5 "/opsx:apply aop-platform-mvp"
+ *   bun scripts/ralph-loop.ts "implement the next docs task"
+ *   bun scripts/ralph-loop.ts --max 5 "implement the next docs task"
  *   bun scripts/ralph-loop.ts --prompt-file ./my-prompt.md
  *   bun scripts/ralph-loop.ts --done-keyword "DONE" "/aop:execute-full"
  *   bun scripts/ralph-loop.ts --done-keyword "<aop>FINISHED</aop>" --max 50 "/aop:implement <task-id>"
@@ -117,7 +117,7 @@ Options:
   --cwd <path>         Working directory for claude (default: current)
 
 Examples:
-  bun scripts/ralph-loop.ts "/opsx:apply aop-platform-mvp"
+  bun scripts/ralph-loop.ts "implement the next docs task"
   bun scripts/ralph-loop.ts --max 10 "implement the next task"
   bun scripts/ralph-loop.ts --prompt-file ./tasks/feature.md --max 5
   bun scripts/ralph-loop.ts --done-keyword "DONE" "/aop:execute-full"

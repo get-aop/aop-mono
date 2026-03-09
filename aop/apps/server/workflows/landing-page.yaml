@@ -45,7 +45,7 @@ steps:
     maxAttempts: 3
     signals:
       - name: PLAN_READY
-        description: outline is written to tasks.md, ready for human approval
+        description: outline is written to plan.md, ready for human approval
       - name: PLAN_APPROVED
         description: human approved the outline, proceed to copy
       - name: REQUIRES_INPUT
@@ -89,9 +89,9 @@ steps:
     maxAttempts: 15
     signals:
       - name: TASK_COMPLETE
-        description: all tasks in tasks.md are complete
+        description: all numbered task docs are complete
       - name: CHUNK_DONE
-        description: completed a chunk, more tasks remain in tasks.md
+        description: completed a chunk, more numbered task docs remain
     transitions:
       - condition: TASK_COMPLETE
         target: visual_verify

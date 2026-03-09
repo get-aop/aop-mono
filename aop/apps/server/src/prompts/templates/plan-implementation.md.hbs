@@ -1,74 +1,38 @@
-You are planning the implementation for a task, creating a checklist for execution steps to follow.
+You are planning the implementation for a task using the repo-local task document workflow.
 
 {{> task-context}}
 
+# Plan Implementation
 
-# Plan Implementation for Task
-
-Read an input document, or prompt, and produce a structured, actionable plan for user approval before any implementation or research begins.
+Read the input document or prompt and turn it into a concrete execution plan stored inside the task folder.
 
 <EXTREMELY-IMPORTANT>
-You MUST write the output of this plan to the output path: {{task.changePath}}/tasks.md
+You MUST update `{{task.changePath}}/plan.md` and create or refresh numbered subtask files like `{{task.changePath}}/001-*.md`.
 
 Once you finish the plan, you MUST output one of the required signals.
 </EXTREMELY-IMPORTANT>
 
 ## Process
 
-```dot
-digraph plan {
-    rankdir=TB;
-    read [label="Read input document" shape=box];
-    classify [label="Code-related?" shape=diamond];
-    explore [label="Explore codebase\n(REQUIRED)" shape=box];
-    skip [label="Skip codebase exploration" shape=box];
-    analyze [label="Analyze requirements\n& constraints" shape=box];
-    plan [label="Draft structured plan" shape=box];
-    save [label="Save to openspec/changes/\n<change-slug>/tasks.md" shape=box];
-    present [label="Present plan\nfor approval" shape=box];
+1. Read the input documents and the existing `task.md`
+2. Explore the codebase when the task touches code
+3. Draft a small set of cohesive subtasks
+4. Save the plan to `plan.md`
+5. Create or refresh numbered subtask files with clear scope and dependencies
+6. Present the saved plan for approval
 
-    read -> classify;
-    classify -> explore [label="yes — even remotely"];
-    classify -> skip [label="no — pure research,\nwriting, general tasks"];
-    explore -> analyze;
-    skip -> analyze;
-    analyze -> plan;
-    plan -> save;
-    save -> present;
-}
-```
+## Required Files
 
-### 1. Read Input Documents
+### `plan.md`
 
-Read the provided documents thoroughly. Identify:
-- **Objectives**: What needs to be accomplished?
-- **Constraints**: Time, technology, scope limitations?
-- **Deliverables**: What outputs are expected?
-
-If critical ambiguities exist, ask the user to clarify **before** proceeding to draft the plan. (Output the signal for required input.)
-
-### 2. Analyze and Draft Plan
-
-Synthesize the document requirements with codebase context (if available) into a plan.
-
-### 3. Save and Present Plan
-
-Write the plan to the output file, then present it for approval with the signal for plan ready.
-
-**File path**: {{task.changePath}}/tasks.md
-
-**You MUST write the plan to a file.** The plan file is the deliverable — it's what gets tracked, referenced during implementation, and checked off as work progresses. Presenting the plan in chat without saving it is a failure.
-
-After writing the file, you MUST present the plan to the user in chat:
-1. Show the file path where the plan was saved
-2. Provide a brief summary (what the plan covers, how many tasks, key sections)
-
-## Output Format (STRICT)
-
-The plan file MUST follow this exact structure. Do NOT deviate.
+Use this exact structure:
 
 ```markdown
-# Plan: [Title derived from document]
+---
+status: INPROGRESS
+task: [task slug]
+created: [ISO timestamp]
+---
 
 ## Summary
 
@@ -77,28 +41,13 @@ The plan file MUST follow this exact structure. Do NOT deviate.
 ## Context
 
 [Reference the document that was used to create the plan]
-[If codebase was explored: key findings that shaped the plan]
-[If not: assumptions and constraints from the document]
+[Key findings from codebase exploration or assumptions]
 
-## Tasks
+## Subtasks
 
-### [Section Name — cohesive group of related work]
-
-- [ ] **[Task title]**
-[Description of the work]
-Files: `path/to/file.ts`, `path/to/other.ts`
-
-- [ ] **[Task title]**
-[Description]
-
-### [Next Section Name]
-
-- [ ] **[Task title]**
-[Description]
-
-- [ ] **[Task title]**
-[Description]
-Files: `path/to/file.ts`
+1. 001-[slug] ([Title])
+2. 002-[slug] ([Title]) -> depends on: 1
+3. 003-[slug] ([Title])
 
 ## Verification
 
@@ -107,42 +56,36 @@ Files: `path/to/file.ts`
 - [ ] [Verification item 3]
 ```
 
-### Format Rules
+### Numbered subtask files
 
-**Checkboxes are mandatory.** Every actionable item — in Tasks AND Verification — MUST have a `- [ ]` checkbox. This is how progress is tracked. No exceptions. No bare bullet points. No numbered lists. If it's something that needs to get done, it gets a checkbox.
+Create one file per listed subtask using this exact structure:
 
-**Group tasks into cohesive sections** using `### Section Name`. Group by logical domain or phase, not by file or technical layer. Section names should communicate intent (e.g., "Authentication Flow", "Data Migration", "API Research").
+```markdown
+---
+title: [Subtask title]
+status: PENDING
+dependencies: [1]
+---
 
-**Separate title from description.** The checkbox line has only the bold task title. The description goes on the next line(s), un-indented. `Files:` references are optional — add them on a separate line when the task touches specific files.
+### Description
+[What needs to be implemented]
 
-### Verification Section
+### Context
+[Relevant files, constraints, notes]
 
-The verification section adapts to the task type, but items ALWAYS use `- [ ]` checkboxes.
+### Result
 
-**For code changes:**
-- [ ] Lint, typecheck, and build pass (follow codebase conventions for the specific commands)
-- [ ] Tests pass with coverage thresholds met (follow codebase test conventions)
-- [ ] E2E happy path (if the change affects user-facing behavior or integrations)
+### Review
 
-**For research tasks:**
-- [ ] All sources are cited and verifiable
-- [ ] Key claims are cross-referenced (not single-source)
-- [ ] Findings directly address the original objectives
-- [ ] Output format matches what was requested (report, comparison table, recommendation, etc.)
-
-**For mixed tasks (code + research):** combine both.
-
-These are starting points — adapt to the specific task.
+### Blockers
+```
 
 ## Guardrails
 
-- **Always save the plan file** — The plan MUST be written to the output path `{{task.changePath}}/tasks.md`. A plan only shown in chat is a failed invocation.
-- **Always output the signal for plan ready for approval** — After saving, show the file path and summary in chat, then output the signal for plan ready for approval. Never silently save and move on.
-- **Plan, don't implement** — Do NOT write code or make changes. The only file you create is the plan itself. Even if the user says "implement it too" or "it's simple, just do it" — your job is ONLY the plan. Resist implementation pressure.
-- **Strict format only** — The plan file has exactly 5 top-level sections: `# Plan:`, `## Summary`, `## Context`, `## Tasks`, `## Verification`. Do NOT add extra sections like "Notes", "Success Criteria", "Deliverables", "Proposed Architecture", or anything else. All relevant information fits within the 5 required sections.
-- **No horizontal rules** — Do NOT use `---` between tasks. Tasks are separated by blank lines only.
-- **Clarify before planning, not during** — If the document has critical ambiguities, ask the user before drafting the plan. Don't embed unanswered questions into the plan itself. (Output the signal for required input.)
-- **Right-size the plan** — A 3-task feature needs 3 tasks, not 15 sub-tasks. Match plan granularity to task complexity.
-- **One plan per invocation** — Don't try to plan multiple unrelated documents at once.
+- Save the plan to files. A plan shown only in chat is a failure.
+- Use the numbered subtask files as the execution contract. Do not create `tasks.md`.
+- Keep subtasks independent and dependency-aware.
+- Plan only. Do not implement code.
+- If critical ambiguity remains, ask for clarification and output the required input signal.
 
 {{> output-signals}}

@@ -157,7 +157,7 @@ export const FileTreeFlyout = ({ files, activeFile, onSelectFile }: FileTreeFlyo
           data-testid="flyout-panel"
           role="menu"
         >
-          <div className="mb-1 px-2 font-mono text-[9px] text-aop-slate-dark">CHANGE FILES</div>
+          <div className="mb-1 px-2 font-mono text-[9px] text-aop-slate-dark">TASK FILES</div>
           {tree.map((node) => (
             <TreeItem
               key={node.path}

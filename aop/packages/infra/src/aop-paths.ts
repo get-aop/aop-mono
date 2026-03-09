@@ -8,10 +8,7 @@ export const aopPaths = {
   db: () => join(getAopHome(), "aop.sqlite"),
   logs: () => join(getAopHome(), "logs"),
   repoDir: (repoId: string) => join(getAopHome(), "repos", repoId),
-  relativeOpenspec: () => "openspec",
-  relativeOpenspecChanges: () => join("openspec", "changes"),
-  openspec: (repoId: string) => join(getAopHome(), "repos", repoId, "openspec"),
-  openspecChanges: (repoId: string) => join(getAopHome(), "repos", repoId, "openspec", "changes"),
+  relativeTaskDocs: () => join("docs", "tasks"),
   worktrees: (repoId: string) => join(getAopHome(), "repos", repoId, "worktrees"),
   worktree: (repoId: string, taskId: string) =>
     join(getAopHome(), "repos", repoId, "worktrees", taskId),

@@ -22,7 +22,7 @@ import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import type { SpawnAgentOptions } from "./step-launcher.ts";
 import { spawnAgentWithReaper } from "./step-launcher.ts";
 import type { ExecutorContext, StepWithTask } from "./types.ts";
-import { createWorktree, setupWorktreeOpenspecSymlink } from "./worktree-manager.ts";
+import { createWorktree } from "./worktree-manager.ts";
 
 // Re-export from sub-modules for backward compatibility
 export {
@@ -42,7 +42,11 @@ export {
   readRunResultFromLog,
   type SpawnAgentOptions,
 } from "./step-launcher.ts";
-export { createWorktree, setupWorktreeOpenspecSymlink } from "./worktree-manager.ts";
+export { createWorktree } from "./worktree-manager.ts";
+
+export const setupWorktreeOpenspecSymlink = (worktreePath: string, _repoId: string): void => {
+  ensureDir(worktreePath);
+};
 
 const logger = getLogger("executor");
 
@@ -70,7 +74,6 @@ export const executeTask = async (
   await markTaskWorking(ctx, task, executorCtx.worktreePath, serverSync);
 
   const worktreeInfo = await createWorktree(executorCtx);
-  setupWorktreeOpenspecSymlink(worktreeInfo.path, executorCtx.repoId);
   log.info("Worktree ready at {path}", { path: worktreeInfo.path });
 
   const executionId = await createExecutionRecord(ctx, task.id);
@@ -217,7 +220,7 @@ export const buildContext = async (
 
   ensureDir(logsDir);
 
-  const changePath = join(aopPaths.repoDir(repo.id), task.change_path);
+  const changePath = join(repo.path, task.change_path);
   const worktreePath = aopPaths.worktree(repo.id, task.id);
 
   return {

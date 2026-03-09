@@ -7,7 +7,7 @@ import {
   NoChangesError,
   WorktreeNotFoundError,
 } from "@aop/git-manager";
-import { aopPaths, getLogger } from "@aop/infra";
+import { getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { abortTask } from "../executor/index.ts";
@@ -91,6 +91,27 @@ export interface MarkTaskReadyOptions {
   retryFromStep?: string;
 }
 
+const getMarkTaskReadyError = (task: Task): MarkTaskReadyError | null => {
+  if (task.status === "READY") {
+    return { code: "ALREADY_READY", taskId: task.id };
+  }
+
+  if (task.status !== "DRAFT" && task.status !== "BLOCKED") {
+    return { code: "INVALID_STATUS", status: task.status };
+  }
+
+  return null;
+};
+
+const buildReadyTaskUpdate = (options?: MarkTaskReadyOptions) => ({
+  status: "READY" as const,
+  ready_at: new Date().toISOString(),
+  preferred_workflow: options?.workflow ?? null,
+  base_branch: options?.baseBranch ?? null,
+  preferred_provider: options?.provider ?? null,
+  retry_from_step: options?.retryFromStep ?? null,
+});
+
 export const markTaskReady = async (
   ctx: LocalServerContext,
   identifier: string,
@@ -102,25 +123,27 @@ export const markTaskReady = async (
     return { success: false, error: { code: "NOT_FOUND", identifier } };
   }
 
-  if (task.status === "READY") {
+  const invalidState = getMarkTaskReadyError(task);
+  if (invalidState) {
+    if (invalidState.code === "INVALID_STATUS") {
+      logger.warn("Mark ready failed: invalid status {status} for task {taskId}", {
+        status: task.status,
+        taskId: task.id,
+      });
+    }
+
+    return { success: false, error: invalidState };
+  }
+
+  const repo = await ctx.repoRepository.getById(task.repo_id);
+  if (!repo) {
     return {
       success: false,
-      error: { code: "ALREADY_READY", taskId: task.id },
+      error: { code: "NOT_FOUND", identifier },
     };
   }
 
-  if (task.status !== "DRAFT" && task.status !== "BLOCKED") {
-    logger.warn("Mark ready failed: invalid status {status} for task {taskId}", {
-      status: task.status,
-      taskId: task.id,
-    });
-    return {
-      success: false,
-      error: { code: "INVALID_STATUS", status: task.status },
-    };
-  }
-
-  const changePath = join(aopPaths.repoDir(task.repo_id), task.change_path);
+  const changePath = join(repo.path, task.change_path);
   if (!hasMarkdownFile(changePath)) {
     logger.warn("Mark ready failed: no .md files at {changePath}", {
       changePath: task.change_path,
@@ -131,14 +154,7 @@ export const markTaskReady = async (
     };
   }
 
-  const updated = await ctx.taskRepository.update(task.id, {
-    status: "READY",
-    ready_at: new Date().toISOString(),
-    preferred_workflow: options?.workflow ?? null,
-    base_branch: options?.baseBranch ?? null,
-    preferred_provider: options?.provider ?? null,
-    retry_from_step: options?.retryFromStep ?? null,
-  });
+  const updated = await ctx.taskRepository.update(task.id, buildReadyTaskUpdate(options));
 
   if (!updated) {
     logger.error("Mark ready failed: update returned null for task {taskId}", { taskId: task.id });

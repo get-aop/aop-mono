@@ -1,14 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import {
   extractAssistantSignalTextFromRawJsonl,
   inferRunOutcomeFromRawJsonl,
   parseRawJsonlContent,
   renderCompactLogLines,
 } from "./index";
-
-const OPENCODE_FIXTURE_PATH = new URL("./fixtures/opencode.jsonl", import.meta.url);
-const readOpenCodeFixture = () => readFileSync(OPENCODE_FIXTURE_PATH, "utf-8");
 
 describe("logs parser", () => {
   test("parses multiline json and ignores non-json lines", () => {
@@ -36,12 +32,38 @@ describe("logs parser", () => {
 });
 
 describe("logs renderer", () => {
-  test("renders compact tool lines from real opencode logs", () => {
-    const parsed = parseRawJsonlContent(readOpenCodeFixture());
+  test("renders compact tool lines from real task workflow logs", () => {
+    const content = [
+      JSON.stringify({
+        type: "tool_use",
+        part: {
+          tool: "bash",
+          state: {
+            input: {
+              command: "cat docs/tasks/cli-greeting-command/task.md",
+              description: "Read task document",
+            },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "tool_use",
+        part: {
+          tool: "bash",
+          state: {
+            input: {
+              command: "ls docs/tasks/cli-greeting-command",
+              description: "List task folder files",
+            },
+          },
+        },
+      }),
+    ].join("\n");
+    const parsed = parseRawJsonlContent(content);
     const lines = renderCompactLogLines(parsed, { timestamp: "2026-01-01T00:00:00.000Z" });
     expect(lines.map((line) => line.content)).toEqual([
-      '[Bash] openspec status --change "cli-greeting-command5" --json - Get OpenSpec status JSON for change',
-      '[Bash] openspec instructions apply --change "cli-greeting-command5" --json - Get OpenSpec apply instructions JSON',
+      "[Bash] cat docs/tasks/cli-greeting-command/task.md - Read task document",
+      "[Bash] ls docs/tasks/cli-greeting-command - List task folder files",
     ]);
   });
 

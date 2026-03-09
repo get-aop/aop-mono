@@ -8,7 +8,7 @@ AOP uses a client-server architecture with a local HTTP server for background ta
 
 - **Local Server**: HTTP server that manages task lifecycle and coordinates all background operations
 - **Orchestrator**: Initializes and coordinates the watcher, ticker, processor, and remote sync
-- **Watcher**: Monitors `openspec/changes/` directories for task file changes
+- **Watcher**: Monitors `docs/tasks/` directories for task file changes
 - **Queue Processor**: Polls for READY tasks and dispatches to executor with concurrency control
 - **Executor**: Spawns Claude CLI agents in isolated git worktrees
 - **CLI**: Thin client that communicates with the local server via REST API

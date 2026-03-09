@@ -89,8 +89,6 @@ const copyExtraResourcesLinux = async (outputPath: string) => {
 
   console.log(`[Forge] Linux resources: ${resourcesDir}`);
 
-  const skillsSource = path.join(__dirname, "..", "..", "..", ".claude", "skills");
-  const codexSource = path.join(__dirname, "..", "..", "..", ".codex");
   const filesToCopy = [
     {
       from: path.join(__dirname, "..", "local-server", "dist", "aop-server"),
@@ -100,12 +98,6 @@ const copyExtraResourcesLinux = async (outputPath: string) => {
       from: path.join(__dirname, "..", "dashboard", "dist"),
       to: path.join(resourcesDir, "dashboard"),
     },
-    ...(fs.existsSync(skillsSource)
-      ? [{ from: skillsSource, to: path.join(resourcesDir, "claude-skills") }]
-      : []),
-    ...(fs.existsSync(codexSource)
-      ? [{ from: codexSource, to: path.join(resourcesDir, "codex") }]
-      : []),
     {
       from: path.join(__dirname, "assets", "tray-icon.png"),
       to: path.join(resourcesDir, "tray-icon.png"),
@@ -152,8 +144,6 @@ const copyExtraResourcesWindows = async (outputPath: string) => {
 
   console.log(`[Forge] Windows resources: ${resourcesDir}`);
 
-  const skillsSource = path.join(__dirname, "..", "..", "..", ".claude", "skills");
-  const codexSource = path.join(__dirname, "..", "..", "..", ".codex");
   const filesToCopy = [
     {
       from: path.join(__dirname, "..", "local-server", "dist", "aop-server-linux"),
@@ -163,12 +153,6 @@ const copyExtraResourcesWindows = async (outputPath: string) => {
       from: path.join(__dirname, "..", "dashboard", "dist"),
       to: path.join(resourcesDir, "dashboard"),
     },
-    ...(fs.existsSync(skillsSource)
-      ? [{ from: skillsSource, to: path.join(resourcesDir, "claude-skills") }]
-      : []),
-    ...(fs.existsSync(codexSource)
-      ? [{ from: codexSource, to: path.join(resourcesDir, "codex") }]
-      : []),
     {
       from: path.join(__dirname, "assets", "tray-icon.png"),
       to: path.join(resourcesDir, "tray-icon.png"),
@@ -249,22 +233,6 @@ const config: ForgeConfig = {
         from: path.join(__dirname, "..", "dashboard", "dist"),
         to: "dashboard",
       },
-      ...(fs.existsSync(path.join(__dirname, "..", "..", "..", ".claude", "skills"))
-        ? [
-            {
-              from: resolveSourcePath(path.join(__dirname, "..", "..", "..", ".claude", "skills")),
-              to: "claude-skills",
-            },
-          ]
-        : []),
-      ...(fs.existsSync(path.join(__dirname, "..", "..", "..", ".codex"))
-        ? [
-            {
-              from: resolveSourcePath(path.join(__dirname, "..", "..", "..", ".codex")),
-              to: "codex",
-            },
-          ]
-        : []),
       {
         from: path.join(__dirname, "assets", "tray-icon.png"),
         to: "tray-icon.png",

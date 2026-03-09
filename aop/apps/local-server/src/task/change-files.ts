@@ -1,13 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { aopPaths } from "@aop/infra";
 import type { Context } from "hono";
 import type { LocalServerContext } from "../context.ts";
 import { getRepoById } from "../repo/handlers.ts";
 import { getTaskById } from "./handlers.ts";
-
-const getChangeDir = (task: { repo_id: string; change_path: string }) =>
-  join(aopPaths.repoDir(task.repo_id), task.change_path);
 
 const listMdFiles = (dir: string, prefix = ""): string[] => {
   try {
@@ -45,7 +41,7 @@ export const handleListFiles = async (ctx: LocalServerContext, c: Context) => {
   const task = await getTaskById(ctx, taskId);
   if (!task || task.repo_id !== repoId) return c.json({ error: "Task not found" }, 404);
 
-  const changeDir = getChangeDir(task);
+  const changeDir = join(repo.path, task.change_path);
   const files = listMdFiles(changeDir);
   return c.json({ files });
 };
@@ -68,7 +64,7 @@ export const handleReadFile = async (ctx: LocalServerContext, c: Context) => {
   const task = await getTaskById(ctx, taskId);
   if (!task || task.repo_id !== repoId) return c.json({ error: "Task not found" }, 404);
 
-  const changeDir = getChangeDir(task);
+  const changeDir = join(repo.path, task.change_path);
   if (!isValidMdPath(filePath, changeDir)) {
     return c.json({ error: "Invalid file path" }, 400);
   }

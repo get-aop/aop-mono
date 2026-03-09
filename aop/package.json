@@ -26,7 +26,6 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "prepare": "lefthook install",
-    "postinstall": "cd .. && openspec init --tools claude 2>/dev/null || true",
     "ralph-loop": "bun run ./scripts/ralph-loop.ts",
     "build:release": "bun run ./scripts/installer/build.ts"
   },
@@ -38,7 +37,6 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@fission-ai/openspec": "^1.1.1",
     "cac": "^6.7.14",
     "yaml": "^2.8.2"
   }

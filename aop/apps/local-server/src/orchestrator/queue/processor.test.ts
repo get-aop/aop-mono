@@ -589,26 +589,21 @@ describe("QueueProcessor", () => {
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "RESUMING");
       await ctx.taskRepository.update("task-1", { resume_input: "Approved" });
 
-      // Create execution + step for getLatestStepExecution
-      await db
-        .insertInto("executions")
-        .values({
-          id: "exec-1",
-          task_id: "task-1",
-          status: "running",
-          started_at: new Date().toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("step_executions")
-        .values({
-          id: "step-1",
-          execution_id: "exec-1",
-          step_type: "iterate",
-          status: "running",
-          started_at: new Date().toISOString(),
-        })
-        .execute();
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        step_type: "iterate",
+        status: "running",
+        started_at: new Date().toISOString(),
+        ended_at: null,
+      });
 
       const mockServerSync = {
         isDegraded: () => false,
@@ -692,25 +687,21 @@ describe("QueueProcessor", () => {
       await createTestTask(db, "task-resume", "repo-1", "changes/feat-2", "RESUMING");
       await ctx.taskRepository.update("task-resume", { resume_input: "Go" });
 
-      await db
-        .insertInto("executions")
-        .values({
-          id: "exec-1",
-          task_id: "task-resume",
-          status: "running",
-          started_at: new Date().toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("step_executions")
-        .values({
-          id: "step-1",
-          execution_id: "exec-1",
-          step_type: "iterate",
-          status: "running",
-          started_at: new Date().toISOString(),
-        })
-        .execute();
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-resume",
+        status: "running",
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        step_type: "iterate",
+        status: "running",
+        started_at: new Date().toISOString(),
+        ended_at: null,
+      });
 
       const mockServerSync = {
         isDegraded: () => false,

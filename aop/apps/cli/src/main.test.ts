@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { rm, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import cac, { type CAC } from "cac";
 import {
   createCli,
@@ -53,13 +55,18 @@ describe("parseEnvFile", () => {
 
 describe("loadProjectEnv", () => {
   const savedEnv: Record<string, string | undefined> = {};
+  const projectRoot = resolve(import.meta.dirname, "..", "..", "..");
+  const envPath = resolve(projectRoot, ".env");
+  let originalEnvFile: string | null = null;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     savedEnv.AOP_LOCAL_SERVER_URL = process.env.AOP_LOCAL_SERVER_URL;
     savedEnv.AOP_SERVER_URL = process.env.AOP_SERVER_URL;
+    const envFile = Bun.file(envPath);
+    originalEnvFile = (await envFile.exists()) ? await envFile.text() : null;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) {
         delete process.env[key];
@@ -67,12 +74,27 @@ describe("loadProjectEnv", () => {
         process.env[key] = value;
       }
     }
+
+    if (originalEnvFile === null) {
+      await rm(envPath, { force: true });
+      return;
+    }
+
+    await writeFile(envPath, originalEnvFile);
   });
 
   test("loads env vars from project root .env", async () => {
+    await writeFile(envPath, "AOP_LOCAL_SERVER_URL=http://localhost:4111\n");
     delete process.env.AOP_LOCAL_SERVER_URL;
+
     await loadProjectEnv();
-    expect(process.env.AOP_LOCAL_SERVER_URL).toBeDefined();
+
+    const localServerUrl = process.env.AOP_LOCAL_SERVER_URL;
+    expect(localServerUrl).toBeDefined();
+    if (localServerUrl === undefined) {
+      throw new Error("Expected AOP_LOCAL_SERVER_URL to be loaded from .env");
+    }
+    expect(localServerUrl === "http://localhost:4111").toBe(true);
   });
 
   test("does not overwrite existing env vars", async () => {

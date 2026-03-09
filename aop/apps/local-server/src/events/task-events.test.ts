@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { useTestAopHome } from "@aop/infra";
 import type { Kysely } from "kysely";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
@@ -7,14 +8,17 @@ import { createTaskEventEmitter, type TaskEvent } from "./task-events.ts";
 
 describe("events/task-events", () => {
   let db: Kysely<Database>;
+  let cleanupAopHome: () => void;
 
   beforeEach(async () => {
+    cleanupAopHome = useTestAopHome();
     db = await createTestDb();
     await createTestRepo(db, "repo-1", "/test/repo");
   });
 
   afterEach(async () => {
     await db.destroy();
+    cleanupAopHome();
   });
 
   describe("task-created event", () => {
@@ -97,6 +101,7 @@ describe("events/task-events", () => {
       const repo = createTaskRepository(db, { eventEmitter: emitter });
 
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DRAFT");
+      await repo.refresh();
 
       const events: TaskEvent[] = [];
       emitter.subscribe((event) => events.push(event));
@@ -117,6 +122,7 @@ describe("events/task-events", () => {
       const repo = createTaskRepository(db, { eventEmitter: emitter });
 
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DRAFT");
+      await repo.refresh();
 
       const events: TaskEvent[] = [];
       emitter.subscribe((event) => events.push(event));
@@ -126,20 +132,23 @@ describe("events/task-events", () => {
       expect(events).toHaveLength(0);
     });
 
-    test("emits event when task is marked removed", async () => {
+    test("emits status change when task is marked removed", async () => {
       const emitter = createTaskEventEmitter();
       const repo = createTaskRepository(db, { eventEmitter: emitter });
 
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DRAFT");
+      await repo.refresh();
 
       const events: TaskEvent[] = [];
       emitter.subscribe((event) => events.push(event));
 
       await repo.markRemoved("task-1");
 
-      expect(events).toHaveLength(2);
+      expect(events).toHaveLength(1);
       expect(events[0]?.type).toBe("task-status-changed");
-      expect(events[1]?.type).toBe("task-removed");
+      if (events[0]?.type === "task-status-changed") {
+        expect(events[0].newStatus).toBe("REMOVED");
+      }
     });
 
     test("emits events when stale working tasks are reset", async () => {
@@ -148,6 +157,7 @@ describe("events/task-events", () => {
 
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
       await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "WORKING");
+      await repo.refresh();
 
       const events: TaskEvent[] = [];
       emitter.subscribe((event) => events.push(event));

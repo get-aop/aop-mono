@@ -99,11 +99,7 @@ describe("events/routes", () => {
 
       // biome-ignore lint/style/noNonNullAssertion: test code, body always exists
       const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let text = "";
-
-      const { value } = await reader.read();
-      text += decoder.decode(value);
+      const text = await collectChunks(reader, 3);
       controller.abort();
 
       const events = parseSSEEvents(text);
@@ -192,7 +188,7 @@ describe("events/routes", () => {
       expect(eventData.newStatus).toBe("READY");
     });
 
-    test("broadcasts task-removed event when task is removed", async () => {
+    test("broadcasts REMOVED status change when task is removed", async () => {
       await createTestRepo(db, "repo-1", "/path/to/repo");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DRAFT");
 
@@ -209,20 +205,21 @@ describe("events/routes", () => {
       let text = decoder.decode(initValue);
 
       await ctx.taskRepository.markRemoved("task-1");
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
-      // markRemoved emits both task-status-changed and task-removed events
-      text += await collectChunks(reader, 4);
+      // markRemoved updates the task status to REMOVED and broadcasts that status change
+      text += await collectChunks(reader, 6);
       controller.abort();
 
       const events = parseSSEEvents(text);
-      const removedEvent = events.find((e) => e.event === "task-removed");
+      const removedEvent = events.find((e) => e.event === "task-status-changed");
       expect(removedEvent).toBeDefined();
 
       // biome-ignore lint/style/noNonNullAssertion: already checked via expect
       const eventData = JSON.parse(removedEvent!.data);
-      expect(eventData.type).toBe("task-removed");
+      expect(eventData.type).toBe("task-status-changed");
       expect(eventData.taskId).toBe("task-1");
+      expect(eventData.newStatus).toBe("REMOVED");
     });
 
     test("increments event IDs for each event", async () => {

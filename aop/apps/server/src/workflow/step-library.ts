@@ -7,7 +7,6 @@ export interface StepBlockDefinition {
   category: "general" | "backend" | "frontend" | "business" | "research";
   description: string;
   signals: SignalDefinition[];
-  skills: string[];
   promptTemplate: string;
   defaults: { maxAttempts: number };
 }
@@ -24,7 +23,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
         description: "codebase exploration is done, findings are written",
       },
     ],
-    skills: [],
     promptTemplate: "codebase-research.md.hbs",
     defaults: { maxAttempts: 3 },
   },
@@ -32,16 +30,19 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
     id: "plan_implementation",
     type: "iterate",
     category: "general",
-    description: "Read context files, create tasks.md checklist, get approval before building",
+    description:
+      "Read context files, create plan.md and numbered subtask docs, get approval before building",
     signals: [
-      { name: "PLAN_READY", description: "plan is written to tasks.md, ready for human approval" },
+      {
+        name: "PLAN_READY",
+        description: "plan.md and numbered subtask docs are written and ready for human approval",
+      },
       {
         name: "REQUIRES_INPUT",
         description:
           "need clarification before planning can proceed. Also output `INPUT_REASON:` and `INPUT_TYPE:` tags explaining what you need",
       },
     ],
-    skills: ["brainstorming"],
     promptTemplate: "plan-implementation.md.hbs",
     defaults: { maxAttempts: 3 },
   },
@@ -49,12 +50,11 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
     id: "implement_backend",
     type: "implement",
     category: "backend",
-    description: "Grind through tasks.md using TDD, implement backend code",
+    description: "Work through numbered subtask docs using TDD, implement backend code",
     signals: [
-      { name: "TASK_COMPLETE", description: "all tasks in tasks.md are complete" },
-      { name: "CHUNK_DONE", description: "completed a chunk, more tasks remain in tasks.md" },
+      { name: "TASK_COMPLETE", description: "all numbered subtask docs are complete" },
+      { name: "CHUNK_DONE", description: "completed a chunk, more numbered subtask docs remain" },
     ],
-    skills: ["test-driven-development"],
     promptTemplate: "implement-backend.md.hbs",
     defaults: { maxAttempts: 15 },
   },
@@ -62,12 +62,11 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
     id: "implement_frontend",
     type: "implement",
     category: "frontend",
-    description: "Grind through tasks.md, implement frontend code with visual testing",
+    description: "Work through numbered subtask docs, implement frontend code with visual testing",
     signals: [
-      { name: "TASK_COMPLETE", description: "all tasks in tasks.md are complete" },
-      { name: "CHUNK_DONE", description: "completed a chunk, more tasks remain in tasks.md" },
+      { name: "TASK_COMPLETE", description: "all numbered subtask docs are complete" },
+      { name: "CHUNK_DONE", description: "completed a chunk, more numbered subtask docs remain" },
     ],
-    skills: ["frontend-design", "webapp-testing", "vercel-react-best-practices"],
     promptTemplate: "implement-frontend.md.hbs",
     defaults: { maxAttempts: 15 },
   },
@@ -85,7 +84,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
           "need human judgment on the visual result. Also output `INPUT_REASON:` and `INPUT_TYPE:` tags explaining what you need",
       },
     ],
-    skills: ["webapp-testing"],
     promptTemplate: "visual-verify.md.hbs",
     defaults: { maxAttempts: 5 },
   },
@@ -98,7 +96,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
       { name: "TESTS_PASS", description: "all relevant tests pass" },
       { name: "TESTS_FAIL", description: "one or more tests are failing, details reported" },
     ],
-    skills: [],
     promptTemplate: "run-tests.md.hbs",
     defaults: { maxAttempts: 1 },
   },
@@ -111,7 +108,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
       { name: "SEO_PASS", description: "SEO checks meet acceptable thresholds" },
       { name: "SEO_NEEDS_WORK", description: "issues found that need addressing" },
     ],
-    skills: ["webapp-testing"],
     promptTemplate: "seo-audit.md.hbs",
     defaults: { maxAttempts: 1 },
   },
@@ -124,7 +120,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
       { name: "REVIEW_PASSED", description: "code is clean and ready" },
       { name: "REVIEW_FAILED", description: "found issues that need the implementer to address" },
     ],
-    skills: ["code-review", "remove-ai-slop"],
     promptTemplate: "code-review-step.md.hbs",
     defaults: { maxAttempts: 2 },
   },
@@ -134,7 +129,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
     category: "general",
     description: "Systematically debug issues using structured methodology",
     signals: [{ name: "FIX_COMPLETE", description: "issue is fixed and verified" }],
-    skills: ["systematic-debugging"],
     promptTemplate: "debug-systematic.md.hbs",
     defaults: { maxAttempts: 10 },
   },
@@ -147,7 +141,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
       { name: "FEEDBACK_ADDRESSED", description: "all feedback has been addressed" },
       { name: "CHUNK_DONE", description: "addressed a chunk of feedback, more remains" },
     ],
-    skills: [],
     promptTemplate: "address-feedback.md.hbs",
     defaults: { maxAttempts: 10 },
   },
@@ -160,7 +153,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
     signals: [
       { name: "RESEARCH_COMPLETE", description: "market research is done, findings are written" },
     ],
-    skills: [],
     promptTemplate: "market-analysis.md.hbs",
     defaults: { maxAttempts: 3 },
   },
@@ -178,7 +170,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
           "need visual references or brand direction. Also output `INPUT_REASON:` and `INPUT_TYPE:` tags explaining what you need",
       },
     ],
-    skills: ["frontend-design", "theme-factory"],
     promptTemplate: "design-brief.md.hbs",
     defaults: { maxAttempts: 3 },
   },
@@ -191,7 +182,7 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
     signals: [
       {
         name: "PLAN_READY",
-        description: "outline is written to tasks.md, ready for human approval",
+        description: "outline is written to plan.md, ready for human approval",
       },
       { name: "PLAN_APPROVED", description: "human approved the outline, proceed to copy" },
       {
@@ -200,7 +191,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
           "need clarification on page structure or goals. Also output `INPUT_REASON:` and `INPUT_TYPE:` tags explaining what you need",
       },
     ],
-    skills: [],
     promptTemplate: "outline-landing-page.md.hbs",
     defaults: { maxAttempts: 3 },
   },
@@ -217,7 +207,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
           "need clarification on messaging or tone. Also output `INPUT_REASON:` and `INPUT_TYPE:` tags explaining what you need",
       },
     ],
-    skills: [],
     promptTemplate: "landing-page-copy.md.hbs",
     defaults: { maxAttempts: 5 },
   },
@@ -230,7 +219,6 @@ export const STEP_LIBRARY: StepBlockDefinition[] = [
       { name: "TASK_COMPLETE", description: "differentiator widget is built and integrated" },
       { name: "CHUNK_DONE", description: "completed a chunk, more work remains" },
     ],
-    skills: ["frontend-design", "webapp-testing"],
     promptTemplate: "add-differentiator.md.hbs",
     defaults: { maxAttempts: 10 },
   },

@@ -4,7 +4,7 @@ You are conducting deep research to gather information and synthesize findings.
 
 # Research
 
-Execute research tasks from the provided plan file at `{{task.changePath}}/tasks.md` by dispatching sections to parallel subagents, compiling results into a structured report.
+Execute research tasks from the provided plan file at `{{task.changePath}}/plan.md` by dispatching sections to parallel subagents, compiling results into a structured report.
 
 Research tasks may require **codebase exploration**, **web research**, or **both**. Let each task dictate which tools to use — never default to one mode.
 
@@ -131,7 +131,7 @@ Completed batch: [Section A], [Section B], [Section C]
 ```
 6. **Loop** — if pending sections remain, go to Step 2 for the next batch
 
-**Report file path**: Same directory as the plan — if plan is at `openspec/changes/my-research/tasks.md`, the report goes to `openspec/changes/my-research/report.md`.
+**Report file path**: Same directory as the plan — if plan is at `docs/tasks/my-research/plan.md`, the report goes to `docs/tasks/my-research/report.md`.
 
 **Report structure** (built incrementally, batch by batch):
 
@@ -185,7 +185,7 @@ Run through the **Verification section** in the plan file:
 
 - **3 sections at a time** — Dispatch up to 3 sections in parallel using the Task tool. Do NOT dispatch all sections at once (resource limits) and do NOT do them sequentially (too slow). If fewer than 3 sections remain, dispatch what's left.
 - **Match tools to task** — Read the task description. Codebase tasks require Read/Glob/Grep. External tasks require WebSearch/WebFetch. Hybrid tasks require both. Do NOT default to web-only or local-only — let the task dictate the tools.
-- **Single report file** — All written research goes in `report.md`. Do NOT create per-task files, scratch files, or intermediate documents. One file, built incrementally. Skill-generated artifacts (charts, images, web pages) are the exception — save them in the same directory and reference them from `report.md`.
+- **Single report file** — All written research goes in `report.md`. Do NOT create per-task files, scratch files, or intermediate documents. One file, built incrementally. If you generate supporting artifacts, save them in the same directory and reference them from `report.md`.
 - **Cite everything** — Every factual claim needs a source. File paths with line numbers (`path/to/file.ts:42`) for codebase findings. URLs for external findings. "The codebase uses X" or "according to the docs" without a concrete reference is not a citation.
 - **Mark checkboxes** — After each batch completes, update the plan file to mark all completed task checkboxes `- [x]`. This is how progress is tracked.
 - **Plan order in report** — Append sections to `report.md` in the order they appear in the plan, not the order subagents return. This keeps the report coherent.

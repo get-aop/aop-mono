@@ -91,16 +91,15 @@ describe("task/handlers", () => {
       }
     });
 
-    test("returns MISSING_PROMPT_FILE when no .md files exist", async () => {
+    test("marks task as ready when task.md exists", async () => {
       await createTestRepo(db, TEST_REPO_ID, "/test/repo");
       await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
 
       const result = await markTaskReady(ctx, "task-1");
 
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("MISSING_PROMPT_FILE");
-        expect((result.error as { changePath: string }).changePath).toBe(changePath);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.task.status).toBe("READY");
       }
     });
 
@@ -295,25 +294,19 @@ describe("task/handlers", () => {
       await createTestTask(db, "task-1", TEST_REPO_ID, "changes/feat", "PAUSED");
 
       // Create execution + step so getLatestStepExecution works
-      await db
-        .insertInto("executions")
-        .values({
-          id: "exec-1",
-          task_id: "task-1",
-          status: "running",
-          started_at: new Date().toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("step_executions")
-        .values({
-          id: "step-1",
-          execution_id: "exec-1",
-          step_type: "iterate",
-          status: "running",
-          started_at: new Date().toISOString(),
-        })
-        .execute();
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        step_type: "iterate",
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
 
       const result = await resumeTask(ctx, "task-1", "Approved, proceed");
 
@@ -535,6 +528,16 @@ describe("task/handlers", () => {
       }
     });
 
+    const commitRepoState = async (message: string): Promise<void> => {
+      const addProc = Bun.spawn(["git", "add", "."], { cwd: testRepoPath });
+      await addProc.exited;
+
+      const commitProc = Bun.spawn(["git", "commit", "-m", message], {
+        cwd: testRepoPath,
+      });
+      await commitProc.exited;
+    };
+
     test("returns NOT_FOUND when task does not exist", async () => {
       const result = await applyTask(ctx, "non-existent");
 
@@ -584,9 +587,10 @@ describe("task/handlers", () => {
       }
     });
 
-    test("returns REPO_NOT_FOUND when repo does not exist", async () => {
+    test("returns NOT_FOUND when repo is removed before apply", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       await ctx.repoRepository.remove("repo-1");
 
@@ -594,14 +598,15 @@ describe("task/handlers", () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("REPO_NOT_FOUND");
-        expect((result.error as { taskId: string }).taskId).toBe("task-1");
+        expect(result.error.code).toBe("NOT_FOUND");
+        expect((result.error as { identifier: string }).identifier).toBe("task-1");
       }
     });
 
     test("returns WORKTREE_NOT_FOUND when worktree does not exist", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       const result = await applyTask(ctx, "task-1");
 
@@ -614,6 +619,7 @@ describe("task/handlers", () => {
     test("returns NO_CHANGES when worktree has no changes", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
       await gitManager.init();
@@ -630,6 +636,7 @@ describe("task/handlers", () => {
     test("successfully applies worktree changes", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
       await gitManager.init();
@@ -658,6 +665,7 @@ describe("task/handlers", () => {
     test("applies BLOCKED task", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "BLOCKED");
+      await commitRepoState("Add task docs");
 
       const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
       await gitManager.init();
@@ -686,6 +694,7 @@ describe("task/handlers", () => {
     test("returns DIRTY_WORKING_DIRECTORY when main repo has uncommitted changes", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
       await gitManager.init();
@@ -716,6 +725,7 @@ describe("task/handlers", () => {
     test("applies with conflicts and returns conflicting files", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
       await gitManager.init();

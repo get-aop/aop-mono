@@ -3,7 +3,6 @@ import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
-import { setupSkillsOnFirstRun } from "./skills-setup.js";
 import {
   createTray,
   destroyTray,
@@ -50,16 +49,6 @@ const getDashboardPath = (): string => {
     return path.join(process.resourcesPath, "dashboard");
   }
   return path.join(__dirname, "..", "..", "dashboard", "dist");
-};
-
-const getBundledResourcePath = (
-  packagedDir: string,
-  ...devRelPath: string[]
-): string | undefined => {
-  const p = app.isPackaged
-    ? path.join(process.resourcesPath, packagedDir)
-    : path.join(__dirname, "..", "..", "..", ...devRelPath);
-  return fs.existsSync(p) ? p : undefined;
 };
 
 const spawnServerWithEnv = (
@@ -212,8 +201,6 @@ const spawnServerWindows = async (): Promise<number> => {
   mainWindow?.webContents.send("status-update", "Copying resources to WSL...");
   const serverPath = getServerPath();
   const dashboardPath = getDashboardPath();
-  const skillsPath = getBundledResourcePath("claude-skills", ".claude", "skills");
-  const codexPath = getBundledResourcePath("codex", ".codex");
 
   if (!fs.existsSync(serverPath)) {
     throw new Error(`Server binary not found at: ${serverPath}`);
@@ -222,10 +209,7 @@ const spawnServerWindows = async (): Promise<number> => {
     throw new Error(`Dashboard not found at: ${dashboardPath}`);
   }
 
-  const wslPaths = await syncResourcesToWsl(distro, serverPath, dashboardPath, {
-    skillsPath,
-    codexPath,
-  });
+  const wslPaths = await syncResourcesToWsl(distro, serverPath, dashboardPath);
 
   mainWindow?.webContents.send("status-update", "Starting AOP Server in WSL...");
 
@@ -488,7 +472,6 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
-    setupSkillsOnFirstRun();
     createWindow();
 
     createTray();

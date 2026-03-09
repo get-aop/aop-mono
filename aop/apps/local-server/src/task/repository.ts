@@ -1,12 +1,19 @@
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
+import { basename, join } from "node:path";
+import { TaskStatus } from "@aop/common";
+import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
-import { sql } from "kysely";
 import type { Database, NewTask, Task, TaskUpdate } from "../db/schema.ts";
 import type { TaskEventEmitter } from "../events/task-events.ts";
+import { createRepoRepository, type RepoRepository } from "../repo/repository.ts";
 import { toSSETask } from "../status/handlers.ts";
-import type { TaskStatus } from "./types.ts";
+import { parseTaskDoc, updateTaskDocStatus, writeTaskDoc } from "../task-docs/task.ts";
+import type { TaskDocFrontmatter } from "../task-docs/types.ts";
+import type { TaskStatus as TaskStatusType } from "./types.ts";
 
 export interface ListFilters {
-  status?: TaskStatus;
+  status?: TaskStatusType;
   repo_id?: string;
   orderByReadyAt?: "asc" | "desc";
   excludeRemoved?: boolean;
@@ -14,7 +21,7 @@ export interface ListFilters {
 
 export interface TaskMetrics {
   total: number;
-  byStatus: Record<TaskStatus, number>;
+  byStatus: Record<TaskStatusType, number>;
   successRate: number;
   avgDurationMs: number;
   avgFailedDurationMs: number;
@@ -26,6 +33,7 @@ export interface ConcurrencyLimits {
 }
 
 export interface TaskRepository {
+  refresh: () => Promise<void>;
   create: (task: NewTask) => Promise<Task>;
   createIdempotent: (task: NewTask) => Promise<Task | null>;
   get: (id: string) => Promise<Task | null>;
@@ -44,255 +52,457 @@ export interface TaskRepositoryOptions {
   eventEmitter?: TaskEventEmitter;
 }
 
+interface RuntimeTaskState {
+  worktree_path: string | null;
+  ready_at: string | null;
+  remote_id: string | null;
+  synced_at: string | null;
+  preferred_workflow: string | null;
+  base_branch: string | null;
+  preferred_provider: string | null;
+  retry_from_step: string | null;
+  resume_input: string | null;
+}
+
+const DEFAULT_RUNTIME_STATE: RuntimeTaskState = {
+  worktree_path: null,
+  ready_at: null,
+  remote_id: null,
+  synced_at: null,
+  preferred_workflow: null,
+  base_branch: null,
+  preferred_provider: null,
+  retry_from_step: null,
+  resume_input: null,
+};
+
+const TASK_DIR = aopPaths.relativeTaskDocs();
+
+const taskIdFor = (repoId: string, changePath: string): string =>
+  `task_${createHash("sha1").update(`${repoId}:${changePath}`).digest("hex").slice(0, 12)}`;
+
+const normalizeTaskPath = (changePath: string): string => {
+  if (changePath === TASK_DIR || changePath.startsWith(`${TASK_DIR}/`)) {
+    return changePath;
+  }
+
+  return join(TASK_DIR, basename(changePath));
+};
+
+const taskDirFor = (repoPath: string, changePath: string): string =>
+  join(repoPath, normalizeTaskPath(changePath));
+
+const buildTaskBody = (title: string): string =>
+  [
+    "",
+    "## Description",
+    title,
+    "",
+    "## Requirements",
+    "",
+    "## Acceptance Criteria",
+    "- [ ] Define acceptance criteria",
+    "",
+  ].join("\n");
+
+const compareNullableDate = (left: string | null, right: string | null): number => {
+  if (left === right) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return left.localeCompare(right);
+};
+
+const hasTaskUpdateField = (updates: TaskUpdate, key: keyof TaskUpdate): boolean =>
+  Object.hasOwn(updates, key);
+
+const getTaskUpdateValue = <T>(updates: TaskUpdate, key: keyof TaskUpdate, current: T): T => {
+  if (!hasTaskUpdateField(updates, key)) {
+    return current;
+  }
+
+  return (updates[key] ?? null) as T;
+};
+
+const buildRuntimeStateFromTask = (task: NewTask): RuntimeTaskState => ({
+  ...DEFAULT_RUNTIME_STATE,
+  worktree_path: task.worktree_path ?? null,
+  ready_at: task.ready_at ?? null,
+  remote_id: task.remote_id ?? null,
+  synced_at: task.synced_at ?? null,
+  preferred_workflow: task.preferred_workflow ?? null,
+  base_branch: task.base_branch ?? null,
+  preferred_provider: task.preferred_provider ?? null,
+  retry_from_step: task.retry_from_step ?? null,
+  resume_input: task.resume_input ?? null,
+});
+
+const mergeRuntimeState = (state: RuntimeTaskState, updates: TaskUpdate): RuntimeTaskState => ({
+  ...state,
+  worktree_path: getTaskUpdateValue(updates, "worktree_path", state.worktree_path),
+  ready_at: getTaskUpdateValue(updates, "ready_at", state.ready_at),
+  remote_id: getTaskUpdateValue(updates, "remote_id", state.remote_id),
+  synced_at: getTaskUpdateValue(updates, "synced_at", state.synced_at),
+  preferred_workflow: getTaskUpdateValue(updates, "preferred_workflow", state.preferred_workflow),
+  base_branch: getTaskUpdateValue(updates, "base_branch", state.base_branch),
+  preferred_provider: getTaskUpdateValue(updates, "preferred_provider", state.preferred_provider),
+  retry_from_step: getTaskUpdateValue(updates, "retry_from_step", state.retry_from_step),
+  resume_input: getTaskUpdateValue(updates, "resume_input", state.resume_input),
+});
+
+const matchesFilters = (task: Task, filters?: ListFilters): boolean => {
+  if (filters?.status && task.status !== filters.status) return false;
+  if (filters?.excludeRemoved && task.status === TaskStatus.REMOVED) return false;
+  if (filters?.repo_id && task.repo_id !== filters.repo_id) return false;
+  return true;
+};
+
+const buildTaskFrontmatter = (task: NewTask, title: string): TaskDocFrontmatter => ({
+  id: task.id,
+  title,
+  status: task.status ?? TaskStatus.DRAFT,
+  created: task.created_at ?? new Date().toISOString(),
+  branch: undefined,
+});
+
 export const createTaskRepository = (
-  db: Kysely<Database>,
+  source: RepoRepository | Kysely<Database>,
   options: TaskRepositoryOptions = {},
 ): TaskRepository => {
   const { eventEmitter } = options;
+  const repoRepository = "getAll" in source ? source : createRepoRepository(source);
+  const runtime = new Map<string, RuntimeTaskState>();
+  const cache = new Map<string, Task>();
 
-  const getLatestExecution = async (taskId: string) => {
-    const execution = await db
-      .selectFrom("executions")
-      .selectAll()
-      .where("task_id", "=", taskId)
-      .orderBy("started_at", "desc")
-      .limit(1)
-      .executeTakeFirst();
-    return execution ?? null;
+  const getRuntimeState = (taskId: string): RuntimeTaskState => {
+    const existing = runtime.get(taskId);
+    if (existing) return existing;
+    const next = { ...DEFAULT_RUNTIME_STATE };
+    runtime.set(taskId, next);
+    return next;
   };
 
-  const emitTaskCreated = (task: Task): void => {
+  const mapTaskFromDisk = async (
+    repoId: string,
+    repoPath: string,
+    changePath: string,
+  ): Promise<Task> => {
+    const normalizedChangePath = normalizeTaskPath(changePath);
+    const taskFilePath = join(repoPath, normalizedChangePath, "task.md");
+    const doc = await parseTaskDoc(taskFilePath);
+    const id = doc.id ?? taskIdFor(repoId, normalizedChangePath);
+    const state = getRuntimeState(id);
+    const taskChangePath = doc.changePath ?? normalizedChangePath;
+
+    return {
+      id,
+      repo_id: repoId,
+      change_path: taskChangePath,
+      worktree_path: state.worktree_path,
+      status: doc.status,
+      ready_at: state.ready_at,
+      remote_id: state.remote_id,
+      synced_at: state.synced_at,
+      preferred_workflow: state.preferred_workflow,
+      base_branch: state.base_branch ?? doc.branch,
+      preferred_provider: state.preferred_provider,
+      retry_from_step: state.retry_from_step,
+      resume_input: state.resume_input,
+      created_at: doc.createdAt,
+      updated_at: doc.updatedAt,
+    };
+  };
+
+  const emitCreated = (task: Task): void => {
     eventEmitter?.emit({ type: "task-created", task: toSSETask(task) });
   };
 
-  const emitStatusChanged = async (task: Task, previousStatus: TaskStatus): Promise<void> => {
-    if (task.status !== previousStatus) {
-      const execution = await getLatestExecution(task.id);
-      eventEmitter?.emit({
-        type: "task-status-changed",
-        taskId: task.id,
-        previousStatus,
-        newStatus: task.status as TaskStatus,
-        task: toSSETask(task, execution),
-      });
+  const emitStatusChanged = (task: Task, previousStatus: TaskStatusType): void => {
+    if (task.status === previousStatus) return;
+    eventEmitter?.emit({
+      type: "task-status-changed",
+      taskId: task.id,
+      previousStatus,
+      newStatus: task.status as TaskStatusType,
+      task: toSSETask(task),
+    });
+  };
+
+  const emitRemoved = (task: Task): void => {
+    eventEmitter?.emit({ type: "task-removed", taskId: task.id, task: toSSETask(task) });
+  };
+
+  const scanRepoTasks = async (repoId: string, repoPath: string): Promise<Task[]> => {
+    const tasksRoot = join(repoPath, TASK_DIR);
+    if (!existsSync(tasksRoot)) return [];
+
+    const folders = readdirSync(tasksRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && existsSync(join(tasksRoot, entry.name, "task.md")))
+      .map((entry) => entry.name)
+      .sort();
+
+    const tasks: Task[] = [];
+    for (const folder of folders) {
+      tasks.push(await mapTaskFromDisk(repoId, repoPath, join(TASK_DIR, folder)));
+    }
+    return tasks;
+  };
+
+  const buildTaskSnapshot = async (): Promise<Map<string, Task>> => {
+    const repos = await repoRepository.getAll();
+    const next = new Map<string, Task>();
+
+    for (const repo of repos) {
+      const tasks = await scanRepoTasks(repo.id, repo.path);
+      for (const task of tasks) {
+        next.set(task.id, task);
+      }
+    }
+
+    return next;
+  };
+
+  const emitSnapshotTask = (taskId: string, task: Task): void => {
+    const previous = cache.get(taskId);
+    if (!previous) {
+      emitCreated(task);
+      return;
+    }
+
+    if (previous.status !== task.status) {
+      emitStatusChanged(task, previous.status as TaskStatusType);
     }
   };
 
-  const emitTaskRemoved = async (task: Task): Promise<void> => {
-    const execution = await getLatestExecution(task.id);
-    eventEmitter?.emit({ type: "task-removed", taskId: task.id, task: toSSETask(task, execution) });
+  const emitRemovedSnapshotTasks = (next: Map<string, Task>): void => {
+    for (const [taskId, previous] of cache.entries()) {
+      if (next.has(taskId)) continue;
+
+      runtime.delete(taskId);
+      emitRemoved(previous);
+    }
+  };
+
+  const emitSnapshotChanges = (next: Map<string, Task>): void => {
+    for (const [taskId, task] of next.entries()) {
+      emitSnapshotTask(taskId, task);
+    }
+
+    emitRemovedSnapshotTasks(next);
+  };
+
+  const replaceCache = (next: Map<string, Task>): void => {
+    cache.clear();
+    for (const [taskId, task] of next.entries()) {
+      cache.set(taskId, task);
+    }
+  };
+
+  const refreshCache = async (): Promise<void> => {
+    const next = await buildTaskSnapshot();
+    emitSnapshotChanges(next);
+    replaceCache(next);
+  };
+
+  const findTaskFolder = async (repoId: string, taskId: string): Promise<string | null> => {
+    const repo = await repoRepository.getById(repoId);
+    if (!repo) return null;
+    const task = cache.get(taskId);
+    if (!task) return null;
+    return taskDirFor(repo.path, task.change_path);
+  };
+
+  const sortTasks = (tasks: Task[], orderBy: "asc" | "desc" | undefined): Task[] => {
+    if (!orderBy) return tasks;
+
+    return [...tasks].sort((left, right) => {
+      const result = compareNullableDate(left.ready_at, right.ready_at);
+      return orderBy === "asc" ? result : result * -1;
+    });
+  };
+
+  const getAllTasks = async (): Promise<Task[]> => {
+    await refreshCache();
+    return [...cache.values()];
+  };
+
+  const filterTasks = async (filters?: ListFilters): Promise<Task[]> => {
+    const tasks = await getAllTasks();
+    const filtered = tasks.filter((task) => matchesFilters(task, filters));
+
+    return sortTasks(filtered, filters?.orderByReadyAt);
+  };
+
+  const getWorkingCounts = async (): Promise<{
+    globalWorking: number;
+    workingByRepo: Map<string, number>;
+  }> => {
+    const workingByRepo = new Map<string, number>();
+    const workingTasks = await filterTasks({ status: TaskStatus.WORKING });
+
+    for (const task of workingTasks) {
+      workingByRepo.set(task.repo_id, (workingByRepo.get(task.repo_id) ?? 0) + 1);
+    }
+
+    return {
+      globalWorking: workingTasks.length,
+      workingByRepo,
+    };
+  };
+
+  const hasRepoCapacity = async (
+    task: Task,
+    workingByRepo: Map<string, number>,
+    limits: ConcurrencyLimits,
+  ): Promise<boolean> => {
+    const repoWorking = workingByRepo.get(task.repo_id) ?? 0;
+    const repoMax = await limits.getRepoMax(task.repo_id);
+    return repoWorking < repoMax;
+  };
+
+  const pickNextTask = async (
+    limits: ConcurrencyLimits,
+    desiredStatus: TaskStatusType,
+    orderBy: "asc" | "desc",
+  ): Promise<Task | null> => {
+    const tasks = await filterTasks({
+      status: desiredStatus,
+      excludeRemoved: true,
+      orderByReadyAt: orderBy,
+    });
+
+    const { globalWorking, workingByRepo } = await getWorkingCounts();
+
+    if (globalWorking >= limits.globalMax) {
+      return null;
+    }
+
+    for (const task of tasks) {
+      if (await hasRepoCapacity(task, workingByRepo, limits)) {
+        return task;
+      }
+    }
+
+    return null;
+  };
+
+  const getTaskOrRefreshFallback = async (
+    taskId: string,
+    repoId: string,
+    repoPath: string,
+    changePath: string,
+  ): Promise<Task> => {
+    await refreshCache();
+    return cache.get(taskId) ?? (await mapTaskFromDisk(repoId, repoPath, changePath));
+  };
+
+  const createTaskRecord = async (task: NewTask): Promise<Task> => {
+    const repo = await repoRepository.getById(task.repo_id);
+    if (!repo) {
+      throw new Error(`Repo not found: ${task.repo_id}`);
+    }
+    const changePath = normalizeTaskPath(task.change_path);
+    const taskId = taskIdFor(task.repo_id, changePath);
+
+    const taskDir = taskDirFor(repo.path, changePath);
+    mkdirSync(taskDir, { recursive: true });
+
+    const title = basename(changePath);
+    const frontmatter = buildTaskFrontmatter(task, title);
+
+    await writeTaskDoc(join(taskDir, "task.md"), frontmatter, buildTaskBody(title));
+    runtime.set(taskId, buildRuntimeStateFromTask(task));
+    return getTaskOrRefreshFallback(taskId, task.repo_id, repo.path, changePath);
+  };
+
+  const syncTaskStatusToDisk = async (task: Task, status: TaskUpdate["status"]): Promise<void> => {
+    if (!status) return;
+
+    const taskDir = await findTaskFolder(task.repo_id, task.id);
+    if (!taskDir) return;
+
+    await updateTaskDocStatus(join(taskDir, "task.md"), status as TaskStatusType);
+  };
+
+  const updateTaskRecord = async (id: string, updates: TaskUpdate): Promise<Task | null> => {
+    await refreshCache();
+    const existing = cache.get(id);
+    if (!existing) return null;
+
+    runtime.set(id, mergeRuntimeState(getRuntimeState(id), updates));
+    await syncTaskStatusToDisk(existing, updates.status);
+
+    await refreshCache();
+    return cache.get(id) ?? null;
+  };
+
+  const markRemoved = async (id: string): Promise<boolean> => {
+    const task = await getTask(id);
+    if (!task || task.status === TaskStatus.WORKING) return false;
+    await updateTaskRecord(id, { status: TaskStatus.REMOVED });
+    return true;
+  };
+
+  const getTask = async (id: string): Promise<Task | null> => {
+    await refreshCache();
+    return cache.get(id) ?? null;
   };
 
   return {
-    create: async (task: NewTask): Promise<Task> => {
-      await db.insertInto("tasks").values(task).execute();
-      const created = await db
-        .selectFrom("tasks")
-        .selectAll()
-        .where("id", "=", task.id)
-        .executeTakeFirstOrThrow();
-      emitTaskCreated(created);
-      return created;
-    },
+    refresh: refreshCache,
+
+    create: createTaskRecord,
 
     createIdempotent: async (task: NewTask): Promise<Task | null> => {
-      const existing = await db
-        .selectFrom("tasks")
-        .selectAll()
-        .where("repo_id", "=", task.repo_id)
-        .where("change_path", "=", task.change_path)
-        .executeTakeFirst();
-
-      if (existing) {
-        return existing;
-      }
-
-      await db
-        .insertInto("tasks")
-        .values(task)
-        .onConflict((oc) =>
-          oc.columns(["repo_id", "change_path"]).doUpdateSet({ repo_id: task.repo_id }),
-        )
-        .execute();
-
-      const result = await db
-        .selectFrom("tasks")
-        .selectAll()
-        .where("repo_id", "=", task.repo_id)
-        .where("change_path", "=", task.change_path)
-        .executeTakeFirst();
-
-      if (result && result.id === task.id) {
-        emitTaskCreated(result);
-      }
-      return result ?? null;
+      await refreshCache();
+      const changePath = normalizeTaskPath(task.change_path);
+      const existing = [...cache.values()].find(
+        (entry) =>
+          entry.repo_id === task.repo_id && normalizeTaskPath(entry.change_path) === changePath,
+      );
+      if (existing) return existing;
+      return createTaskRecord({ ...task, change_path: changePath });
     },
 
-    get: async (id: string): Promise<Task | null> => {
-      const task = await db.selectFrom("tasks").selectAll().where("id", "=", id).executeTakeFirst();
-      return task ?? null;
-    },
+    get: getTask,
 
     getByChangePath: async (repoId: string, changePath: string): Promise<Task | null> => {
-      const task = await db
-        .selectFrom("tasks")
-        .selectAll()
-        .where("repo_id", "=", repoId)
-        .where("change_path", "=", changePath)
-        .executeTakeFirst();
-      return task ?? null;
+      await refreshCache();
+      const normalizedChangePath = normalizeTaskPath(changePath);
+      return (
+        [...cache.values()].find(
+          (task) =>
+            task.repo_id === repoId && normalizeTaskPath(task.change_path) === normalizedChangePath,
+        ) ?? null
+      );
     },
 
-    update: async (id: string, updates: TaskUpdate): Promise<Task | null> => {
-      const existing = await db
-        .selectFrom("tasks")
-        .selectAll()
-        .where("id", "=", id)
-        .executeTakeFirst();
+    update: updateTaskRecord,
 
-      if (!existing) {
-        return null;
-      }
+    markRemoved,
 
-      const previousStatus = existing.status as TaskStatus;
-
-      await db
-        .updateTable("tasks")
-        .set({
-          ...updates,
-          updated_at: sql`datetime('now')`,
-        })
-        .where("id", "=", id)
-        .execute();
-
-      const updated = await db
-        .selectFrom("tasks")
-        .selectAll()
-        .where("id", "=", id)
-        .executeTakeFirstOrThrow();
-
-      if (updates.status) {
-        await emitStatusChanged(updated, previousStatus);
-      }
-
-      return updated;
-    },
-
-    markRemoved: async (id: string): Promise<boolean> => {
-      const existing = await db
-        .selectFrom("tasks")
-        .selectAll()
-        .where("id", "=", id)
-        .executeTakeFirst();
-
-      if (!existing || existing.status === "WORKING") {
-        return false;
-      }
-
-      const previousStatus = existing.status as TaskStatus;
-
-      await db
-        .updateTable("tasks")
-        .set({
-          status: "REMOVED",
-          updated_at: sql`datetime('now')`,
-        })
-        .where("id", "=", id)
-        .where("status", "!=", "WORKING")
-        .execute();
-
-      const updated = await db
-        .selectFrom("tasks")
-        .selectAll()
-        .where("id", "=", id)
-        .executeTakeFirstOrThrow();
-
-      await emitStatusChanged(updated, previousStatus);
-      await emitTaskRemoved(updated);
-
-      return true;
-    },
-
-    list: async (filters?: ListFilters): Promise<Task[]> => {
-      let query = db.selectFrom("tasks").selectAll();
-
-      if (filters?.status) {
-        query = query.where("status", "=", filters.status);
-      }
-      if (filters?.excludeRemoved) {
-        query = query.where("status", "!=", "REMOVED");
-      }
-      if (filters?.repo_id) {
-        query = query.where("repo_id", "=", filters.repo_id);
-      }
-      if (filters?.orderByReadyAt) {
-        query = query.orderBy("ready_at", filters.orderByReadyAt);
-      }
-
-      return query.execute();
-    },
+    list: filterTasks,
 
     countWorking: async (repoId?: string): Promise<number> => {
-      let query = db
-        .selectFrom("tasks")
-        .select((eb) => eb.fn.countAll<number>().as("count"))
-        .where("status", "=", "WORKING");
-
-      if (repoId) {
-        query = query.where("repo_id", "=", repoId);
-      }
-
-      const result = await query.executeTakeFirstOrThrow();
-      return result.count;
+      const tasks = await filterTasks({ status: TaskStatus.WORKING, repo_id: repoId });
+      return tasks.length;
     },
 
-    getNextExecutable: (limits: ConcurrencyLimits) =>
-      getNextTask(db, limits, "READY", "tasks.ready_at"),
+    getNextExecutable: (limits: ConcurrencyLimits) => pickNextTask(limits, TaskStatus.READY, "asc"),
 
     getNextResumable: (limits: ConcurrencyLimits) =>
-      getNextTask(db, limits, "RESUMING", "tasks.updated_at"),
+      pickNextTask(limits, TaskStatus.RESUMING, "desc"),
 
     resetStaleWorkingTasks: async (): Promise<number> => {
-      const workingTasks = await db
-        .selectFrom("tasks")
-        .selectAll()
-        .where("status", "=", "WORKING")
-        .execute();
-
-      if (workingTasks.length === 0) {
-        return 0;
+      const tasks = await filterTasks({ status: TaskStatus.WORKING });
+      for (const task of tasks) {
+        await updateTaskRecord(task.id, { status: TaskStatus.READY });
       }
-
-      await db
-        .updateTable("tasks")
-        .set({
-          status: "READY",
-          updated_at: sql`datetime('now')`,
-        })
-        .where("status", "=", "WORKING")
-        .execute();
-
-      for (const task of workingTasks) {
-        const updated = await db
-          .selectFrom("tasks")
-          .selectAll()
-          .where("id", "=", task.id)
-          .executeTakeFirstOrThrow();
-        await emitStatusChanged(updated, "WORKING");
-      }
-
-      return workingTasks.length;
+      return tasks.length;
     },
 
     getMetrics: async (repoId?: string): Promise<TaskMetrics> => {
-      let baseQuery = db.selectFrom("tasks");
-      if (repoId) {
-        baseQuery = baseQuery.where("repo_id", "=", repoId);
-      }
-
-      const tasks = await baseQuery.selectAll().execute();
-
-      const byStatus: Record<TaskStatus, number> = {
+      const tasks = await filterTasks({ repo_id: repoId, excludeRemoved: true });
+      const byStatus: Record<TaskStatusType, number> = {
         DRAFT: 0,
         READY: 0,
         RESUMING: 0,
@@ -304,93 +514,21 @@ export const createTaskRepository = (
       };
 
       for (const task of tasks) {
-        byStatus[task.status as TaskStatus]++;
+        byStatus[task.status as TaskStatusType]++;
       }
 
-      const total = tasks.length;
-      const doneCount = byStatus.DONE;
-      const blockedCount = byStatus.BLOCKED;
-      const successRate = doneCount + blockedCount > 0 ? doneCount / (doneCount + blockedCount) : 0;
-
-      let completedDurationQuery = db
-        .selectFrom("executions")
-        .innerJoin("tasks", "tasks.id", "executions.task_id")
-        .select(
-          sql<number>`AVG((julianday(executions.completed_at) - julianday(executions.started_at)) * 86400000)`.as(
-            "avg_duration",
-          ),
-        )
-        .where("executions.status", "=", "completed");
-
-      let failedDurationQuery = db
-        .selectFrom("executions")
-        .innerJoin("tasks", "tasks.id", "executions.task_id")
-        .select(
-          sql<number>`AVG((julianday(executions.completed_at) - julianday(executions.started_at)) * 86400000)`.as(
-            "avg_duration",
-          ),
-        )
-        .where("executions.status", "=", "failed");
-
-      if (repoId) {
-        completedDurationQuery = completedDurationQuery.where("tasks.repo_id", "=", repoId);
-        failedDurationQuery = failedDurationQuery.where("tasks.repo_id", "=", repoId);
-      }
-
-      const completedDuration = await completedDurationQuery.executeTakeFirst();
-      const failedDuration = await failedDurationQuery.executeTakeFirst();
+      const successRate =
+        byStatus.DONE + byStatus.BLOCKED > 0
+          ? byStatus.DONE / (byStatus.DONE + byStatus.BLOCKED)
+          : 0;
 
       return {
-        total,
+        total: tasks.length,
         byStatus,
         successRate,
-        avgDurationMs: completedDuration?.avg_duration ?? 0,
-        avgFailedDurationMs: failedDuration?.avg_duration ?? 0,
+        avgDurationMs: 0,
+        avgFailedDurationMs: 0,
       };
     },
   };
-};
-
-/** Shared concurrency-aware task picker for both executable and resumable flows */
-const getNextTask = async (
-  db: Kysely<Database>,
-  limits: ConcurrencyLimits,
-  status: "READY" | "RESUMING",
-  orderByColumn: "tasks.ready_at" | "tasks.updated_at",
-): Promise<Task | null> => {
-  const globalWorking = await db
-    .selectFrom("tasks")
-    .select((eb) => eb.fn.countAll<number>().as("count"))
-    .where("status", "=", "WORKING")
-    .executeTakeFirstOrThrow();
-
-  if (globalWorking.count >= limits.globalMax) {
-    return null;
-  }
-
-  // Join with repos to exclude orphaned tasks whose repo was deleted
-  const candidateTasks = await db
-    .selectFrom("tasks")
-    .innerJoin("repos", "tasks.repo_id", "repos.id")
-    .selectAll("tasks")
-    .where("tasks.status", "=", status)
-    .orderBy(orderByColumn, "asc")
-    .execute();
-
-  for (const task of candidateTasks) {
-    const repoWorking = await db
-      .selectFrom("tasks")
-      .select((eb) => eb.fn.countAll<number>().as("count"))
-      .where("status", "=", "WORKING")
-      .where("repo_id", "=", task.repo_id)
-      .executeTakeFirstOrThrow();
-
-    const repoMax = await limits.getRepoMax(task.repo_id);
-
-    if (repoWorking.count < repoMax) {
-      return task;
-    }
-  }
-
-  return null;
 };

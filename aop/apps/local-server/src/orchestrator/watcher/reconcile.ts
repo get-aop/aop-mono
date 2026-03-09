@@ -7,7 +7,7 @@ import type { TaskRepository } from "../../task/repository.ts";
 
 const logger = getLogger("reconcile");
 
-const CHANGES_DIR = "openspec/changes";
+const TASKS_DIR = aopPaths.relativeTaskDocs();
 
 export interface ReconcileResult {
   created: number;
@@ -22,20 +22,20 @@ export interface ReconcileDeps {
 export const reconcileRepo = async (repo: Repo, deps: ReconcileDeps): Promise<ReconcileResult> => {
   const startTime = performance.now();
   const log = logger.with({ repoId: repo.id, repoPath: repo.path });
-  const globalChangesPath = aopPaths.openspecChanges(repo.id);
-  const changesOnDisk = getChangesOnDisk(globalChangesPath);
+  const tasksRoot = join(repo.path, TASKS_DIR);
+  const tasksOnDisk = getTasksOnDisk(tasksRoot);
 
   const allTasks = await deps.taskRepository.list({ repo_id: repo.id });
   const activeTasks = allTasks.filter((t) => t.status !== "REMOVED");
 
   const created = await createMissingTasks(
     repo.id,
-    changesOnDisk,
+    tasksOnDisk,
     allTasks,
     deps.taskRepository,
     log,
   );
-  const removed = await removeOrphanedTasks(changesOnDisk, activeTasks, deps.taskRepository, log);
+  const removed = await removeOrphanedTasks(tasksOnDisk, activeTasks, deps.taskRepository, log);
 
   const durationMs = Math.round(performance.now() - startTime);
   log.debug("Repo reconciliation complete in {durationMs}ms", { durationMs, created, removed });
@@ -69,7 +69,7 @@ export const reconcileAllRepos = async (deps: ReconcileDeps): Promise<ReconcileR
 
 const createMissingTasks = async (
   repoId: string,
-  changesOnDisk: string[],
+  tasksOnDisk: string[],
   allTasks: Task[],
   taskStore: TaskRepository,
   log: Logger,
@@ -77,14 +77,14 @@ const createMissingTasks = async (
   const knownTaskPaths = new Set(allTasks.map((t) => t.change_path));
 
   let created = 0;
-  for (const changeName of changesOnDisk) {
-    const relativeChangePath = join(CHANGES_DIR, changeName);
+  for (const taskName of tasksOnDisk) {
+    const relativeChangePath = join(TASKS_DIR, taskName);
     if (knownTaskPaths.has(relativeChangePath)) continue;
 
     const task = await createDraftTask(repoId, relativeChangePath, taskStore);
     if (task) {
       created++;
-      log.info("Created task for change: {changeName}", { changeName });
+      log.info("Created task for task folder: {taskName}", { taskName });
     }
   }
 
@@ -92,12 +92,12 @@ const createMissingTasks = async (
 };
 
 const removeOrphanedTasks = async (
-  changesOnDisk: string[],
+  tasksOnDisk: string[],
   activeTasks: Task[],
   taskStore: TaskRepository,
   log: Logger,
 ): Promise<number> => {
-  const diskPaths = new Set(changesOnDisk.map((name) => join(CHANGES_DIR, name)));
+  const diskPaths = new Set(tasksOnDisk.map((name) => join(TASKS_DIR, name)));
 
   let removed = 0;
   for (const task of activeTasks) {
@@ -116,14 +116,19 @@ const removeOrphanedTasks = async (
   return removed;
 };
 
-const RESERVED_FOLDERS = ["archive"];
+const RESERVED_FOLDERS = ["archive", ".drafts"];
 
-const getChangesOnDisk = (changesPath: string): string[] => {
-  if (!existsSync(changesPath)) return [];
+const getTasksOnDisk = (tasksPath: string): string[] => {
+  if (!existsSync(tasksPath)) return [];
 
   try {
-    return readdirSync(changesPath, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && !RESERVED_FOLDERS.includes(entry.name))
+    return readdirSync(tasksPath, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          !RESERVED_FOLDERS.includes(entry.name) &&
+          existsSync(join(tasksPath, entry.name, "task.md")),
+      )
       .map((entry) => entry.name);
   } catch {
     return [];

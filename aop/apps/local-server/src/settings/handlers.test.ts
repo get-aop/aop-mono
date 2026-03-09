@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
-import { createTestDb, createTestRepo } from "../db/test-utils.ts";
+import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
 import { cleanupRemovedWorktrees, setAllSettings, setSetting } from "./handlers.ts";
 
 describe("settings/handlers", () => {
@@ -113,49 +113,21 @@ describe("settings/handlers", () => {
     });
 
     test("returns zero counts when removed tasks have no worktree_path", async () => {
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-1",
-          repo_id: TEST_REPO_ID,
-          change_path: "changes/test",
-          status: "REMOVED",
-          worktree_path: null,
-        })
-        .execute();
+      await createTestTask(db, "task-1", TEST_REPO_ID, "changes/test", "REMOVED");
 
       const result = await cleanupRemovedWorktrees(ctx);
       expect(result).toEqual({ cleaned: 0, failed: 0 });
     });
 
-    test("counts failed when repo is not found", async () => {
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-orphan",
-          repo_id: "nonexistent-repo",
-          change_path: "changes/test",
-          status: "REMOVED",
-          worktree_path: "/tmp/some-worktree",
-        })
-        .execute();
+    test("ignores removed tasks from unregistered repos", async () => {
+      await createTestTask(db, "task-orphan", "nonexistent-repo", "changes/test", "REMOVED");
 
       const result = await cleanupRemovedWorktrees(ctx);
-      expect(result.failed).toBe(1);
-      expect(result.cleaned).toBe(0);
+      expect(result).toEqual({ cleaned: 0, failed: 0 });
     });
 
     test("skips non-REMOVED tasks", async () => {
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-working",
-          repo_id: TEST_REPO_ID,
-          change_path: "changes/test",
-          status: "WORKING",
-          worktree_path: "/tmp/some-worktree",
-        })
-        .execute();
+      await createTestTask(db, "task-working", TEST_REPO_ID, "changes/test", "WORKING");
 
       const result = await cleanupRemovedWorktrees(ctx);
       expect(result).toEqual({ cleaned: 0, failed: 0 });

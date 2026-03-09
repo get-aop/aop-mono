@@ -8,7 +8,6 @@ coveragePathIgnorePatterns = [
   "**/migrations/**",
   "**/test-utils.ts",
   "**/test-setup.ts",
-  "**/openspec/**",
   "**/e2e-tests/**",
   # We have code for Mac and Linux and its not possible to achieve coverage in CI
   # TODO: refactor into two files (linxu and macos), and ignore only macos

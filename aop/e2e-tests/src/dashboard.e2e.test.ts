@@ -91,7 +91,7 @@ describe("dashboard E2E tests", () => {
         await Bun.sleep(2000);
 
         const { exitCode: statusExit, stdout } = await runAopCommand(
-          ["status", join(repo.path, "openspec/changes/backlog-test"), "--json"],
+          ["status", join(repo.path, "docs/tasks/backlog-test"), "--json"],
           undefined,
           ctx.env,
         );
@@ -419,7 +419,7 @@ describe("dashboard E2E tests", () => {
         await Bun.sleep(2000);
 
         const { exitCode: statusExit, stdout } = await runAopCommand(
-          ["status", join(blockedRepo.path, "openspec/changes/blocked-test"), "--json"],
+          ["status", join(blockedRepo.path, "docs/tasks/blocked-test"), "--json"],
           undefined,
           ctx.env,
         );
@@ -519,7 +519,7 @@ describe("dashboard E2E tests", () => {
           await Bun.sleep(2000);
 
           const { exitCode: statusExit, stdout } = await runAopCommand(
-            ["status", join(abortRepo.path, "openspec/changes/backlog-test"), "--json"],
+            ["status", join(abortRepo.path, "docs/tasks/backlog-test"), "--json"],
             undefined,
             ctx.env,
           );

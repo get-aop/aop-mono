@@ -271,8 +271,8 @@ describe("end-to-end template resolution", () => {
 
 ## Task Details
 
-- **Change Path**: changes/add-auth
-- Read ALL the files in the change path to gather the context for the task.
+- **Task Path**: changes/add-auth
+- Read the full task folder for context: \`task.md\`, \`plan.md\` when present, and any numbered subtask files like \`001-*.md\`.
 
 ## Worktree Information
 
@@ -321,8 +321,8 @@ DO NOT FINISH THE SESSION WITHOUT SIGNALING.
 
 ## Task Details
 
-- **Change Path**: changes/refactor
-- Read ALL the files in the change path to gather the context for the task.
+- **Task Path**: changes/refactor
+- Read the full task folder for context: \`task.md\`, \`plan.md\` when present, and any numbered subtask files like \`001-*.md\`.
 
 ## Worktree Information
 
@@ -366,8 +366,8 @@ Do NOT fix failing tests — only report the results. Fixes happen in a separate
 
 ## Task Details
 
-- **Change Path**: changes/bugfix
-- Read ALL the files in the change path to gather the context for the task.
+- **Task Path**: changes/bugfix
+- Read the full task folder for context: \`task.md\`, \`plan.md\` when present, and any numbered subtask files like \`001-*.md\`.
 
 ## Worktree Information
 

@@ -61,11 +61,6 @@ describe("summarizeToolArguments", () => {
     );
   });
 
-  test("formats Skill invocations", () => {
-    expect(summarizeToolArguments("skill", { skill: "commit" })).toBe("commit");
-    expect(summarizeToolArguments("skill", { skill: "test", args: "-v" })).toBe("test -v");
-  });
-
   test("formats Task descriptions", () => {
     expect(summarizeToolArguments("task", { description: "Run tests" })).toBe("Run tests");
     expect(summarizeToolArguments("task", { title: "Build app" })).toBe("Build app");

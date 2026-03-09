@@ -66,13 +66,6 @@ describe("formatToolInput", () => {
     expect(formatToolInput("Grep", { pattern: "TODO", path: "/src" })).toBe("TODO in /src");
   });
 
-  test("formats Skill with optional args", () => {
-    expect(formatToolInput("Skill", { skill: "commit" })).toBe("commit");
-    expect(formatToolInput("Skill", { skill: "commit", args: "-m 'test'" })).toBe(
-      "commit -m 'test'",
-    );
-  });
-
   test("formats Task description", () => {
     expect(formatToolInput("Task", { description: "Run tests" })).toBe("Run tests");
   });

@@ -1,5 +1,3 @@
-import { lstatSync, symlinkSync } from "node:fs";
-import { join } from "node:path";
 import { GitManager, WorktreeExistsError, type WorktreeInfo } from "@aop/git-manager";
 import { aopPaths, getLogger } from "@aop/infra";
 import type { ExecutorContext } from "./types.ts";
@@ -26,14 +24,4 @@ export const createWorktree = async (ctx: ExecutorContext): Promise<WorktreeInfo
     }
     throw error;
   }
-};
-
-export const setupWorktreeOpenspecSymlink = (worktreePath: string, repoId: string): void => {
-  const localOpenspec = join(worktreePath, aopPaths.relativeOpenspec());
-  try {
-    lstatSync(localOpenspec);
-    return;
-  } catch {}
-  const globalOpenspec = aopPaths.openspec(repoId);
-  symlinkSync(globalOpenspec, localOpenspec);
 };

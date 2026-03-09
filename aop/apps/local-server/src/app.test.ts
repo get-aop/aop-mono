@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { type AppDependencies, createApp } from "./app.ts";
 import { createCommandContext, type LocalServerContext } from "./context.ts";
@@ -92,7 +93,7 @@ describe("app", () => {
       expect(res.status).toBe(200);
       expect(body.repos).toHaveLength(1);
       expect(body.repos[0].id).toBe("repo-1");
-      expect(body.repos[0].path).toBe("/path/to/repo1");
+      expect(body.repos[0].path).toBe(aopPaths.repoDir("repo-1"));
       expect(body.repos[0].max).toBe(2);
       expect(body.repos[0].tasks).toHaveLength(2);
     });
