@@ -5,11 +5,11 @@ describe("buildWslCommand", () => {
   test("quotes env values in export statements", () => {
     const fullCommand = buildWslCommand("/home/test/.aop/aop-server", {
       AOP_DB_PATH: "/home/test/My Folder/aop.db",
-      AOP_API_KEY: "token;$HOME && echo hi",
+      AOP_SECRET_TOKEN: "token;$HOME && echo hi",
     });
 
     expect(fullCommand).toContain("export AOP_DB_PATH='/home/test/My Folder/aop.db'");
-    expect(fullCommand).toContain("export AOP_API_KEY='token;$HOME && echo hi'");
+    expect(fullCommand).toContain("export AOP_SECRET_TOKEN='token;$HOME && echo hi'");
     expect(fullCommand).toContain("exec /home/test/.aop/aop-server");
   });
 

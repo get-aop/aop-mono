@@ -3,7 +3,6 @@ import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
-import type { ServerSync } from "../orchestrator/sync/server-sync.ts";
 import { abortTask } from "./abort.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import * as processUtils from "./process-utils.ts";
@@ -362,34 +361,6 @@ describe("abortTask", () => {
     expect(killSpy).not.toHaveBeenCalled();
 
     killSpy.mockRestore();
-  });
-
-  test("syncs task removal with serverSync when provided", async () => {
-    await createTestRepo(db, "repo-1", "/test/repo");
-    await createTestTask(db, "task-1", "repo-1", "/test/change", "WORKING");
-
-    const mockServerSync = {
-      syncTask: mock(() => Promise.resolve()),
-    } as unknown as ServerSync;
-
-    const result = await abortTask(ctx, "task-1", mockServerSync);
-
-    expect(result.taskId).toBe("task-1");
-    expect(mockServerSync.syncTask).toHaveBeenCalledWith("task-1", "repo-1", "REMOVED");
-  });
-
-  test("handles serverSync failure gracefully", async () => {
-    await createTestRepo(db, "repo-1", "/test/repo");
-    await createTestTask(db, "task-1", "repo-1", "/test/change", "WORKING");
-
-    const mockServerSync = {
-      syncTask: mock(() => Promise.reject(new Error("Network error"))),
-    } as unknown as ServerSync;
-
-    const result = await abortTask(ctx, "task-1", mockServerSync);
-
-    expect(result.taskId).toBe("task-1");
-    expect(mockServerSync.syncTask).toHaveBeenCalled();
   });
 
   test("updates multiple running executions to aborted", async () => {

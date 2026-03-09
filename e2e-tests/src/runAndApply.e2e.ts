@@ -19,7 +19,7 @@ describe("aop task workflow and apply", () => {
   let ctx: TestContext;
 
   beforeAll(async () => {
-    ctx = await createTestContext("run-apply", { remoteServer: false });
+    ctx = await createTestContext("run-apply");
   });
 
   afterAll(async () => {

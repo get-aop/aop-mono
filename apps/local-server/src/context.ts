@@ -11,11 +11,11 @@ import {
   type ExecutionRepository,
 } from "./executor/execution-repository.ts";
 import { createLogFlusher, type LogFlusher } from "./executor/log-flusher.ts";
-import type { ServerSync } from "./orchestrator/sync/server-sync.ts";
 import { createRepoRepository, type RepoRepository } from "./repo/repository.ts";
 import { createSessionRepository, type SessionRepository } from "./session/repository.ts";
 import { createSettingsRepository, type SettingsRepository } from "./settings/repository.ts";
 import { createTaskRepository, type TaskRepository } from "./task/repository.ts";
+import { createLocalWorkflowService, type LocalWorkflowService } from "./workflow/service.ts";
 
 export interface LocalServerContext {
   taskRepository: TaskRepository;
@@ -26,7 +26,7 @@ export interface LocalServerContext {
   taskEventEmitter: TaskEventEmitter;
   logBuffer: LogBuffer;
   logFlusher: LogFlusher;
-  serverSync?: ServerSync;
+  workflowService: LocalWorkflowService;
 }
 
 export interface CreateCommandContextOptions {
@@ -45,7 +45,7 @@ export const createCommandContext = (
   const executionRepository = createExecutionRepository();
   const logFlusher = options.logFlusher ?? createLogFlusher(executionRepository);
 
-  return {
+  const context = {
     taskRepository: createTaskRepository(repoRepository, {
       eventEmitter: taskEventEmitter,
     }),
@@ -56,5 +56,9 @@ export const createCommandContext = (
     taskEventEmitter,
     logBuffer,
     logFlusher,
-  };
+  } as LocalServerContext;
+
+  context.workflowService = createLocalWorkflowService(context);
+
+  return context;
 };

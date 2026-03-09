@@ -1,24 +1,19 @@
 import { join } from "node:path";
 import type { ExecutionInfo, SignalDefinition, StepCommand } from "@aop/common/protocol";
 import type { WorktreeInfo } from "@aop/git-manager";
-import { aopPaths, generateTypeId, getLogger } from "@aop/infra";
+import { aopPaths, getLogger } from "@aop/infra";
 import type { LLMProvider } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
-import type { ServerSync } from "../orchestrator/sync/server-sync.ts";
 import { createTemplateContext, resolveTemplate } from "../orchestrator/sync/template-resolver.ts";
 import { SettingKey } from "../settings/types.ts";
 import {
   cleanupLogFile,
   ensureDir,
   finalizeExecutionAndGetNextStep,
-  finalizeExecutionRecord,
   populateLogBuffer,
   processAgentCompletion,
-  syncTaskStatus,
-  updateStepExecutionRecord,
 } from "./completion-handler.ts";
-import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import type { SpawnAgentOptions } from "./step-launcher.ts";
 import { spawnAgentWithReaper } from "./step-launcher.ts";
 import type { ExecutorContext, StepWithTask } from "./types.ts";
@@ -30,11 +25,9 @@ export {
   ensureDir,
   extractPauseContext,
   finalizeExecutionAndGetNextStep,
-  finalizeExecutionRecord,
   persistStepLogs,
   populateLogBuffer,
   processAgentCompletion,
-  type ServerStepInfo,
 } from "./completion-handler.ts";
 export {
   pollForProcessExit,
@@ -55,7 +48,6 @@ export interface ExecuteTaskOptions {
   task: Task;
   stepCommand: StepCommand;
   executionInfo: ExecutionInfo;
-  serverSync?: ServerSync;
   provider?: LLMProvider;
 }
 
@@ -64,31 +56,26 @@ export const executeTask = async (
   task: Task,
   stepCommand: StepCommand,
   executionInfo: ExecutionInfo,
-  serverSync?: ServerSync,
   provider?: LLMProvider,
 ): Promise<void> => {
   const log = logger.with({ taskId: task.id, changePath: task.change_path });
   log.info("Starting task execution");
 
   const executorCtx = await buildContext(ctx, task);
-  await markTaskWorking(ctx, task, executorCtx.worktreePath, serverSync);
+  await markTaskWorking(ctx, task, executorCtx.worktreePath);
 
   const worktreeInfo = await createWorktree(executorCtx);
   log.info("Worktree ready at {path}", { path: worktreeInfo.path });
-
-  const executionId = await createExecutionRecord(ctx, task.id);
-  log.info("Created execution record", { executionId });
 
   return launchStep({
     ctx,
     executorCtx,
     worktreeInfo,
-    executionId,
+    executionId: executionInfo.id,
     stepCommand,
     executionInfo,
     taskId: task.id,
     repoId: task.repo_id,
-    serverSync,
     provider,
   });
 };
@@ -96,19 +83,10 @@ export const executeTask = async (
 export const reattachToRunningAgent = async (
   ctx: LocalServerContext,
   step: StepWithTask,
-  serverSync?: ServerSync,
   provider?: LLMProvider,
 ): Promise<void> => {
   const { reattachToRunningAgent: reattachFn } = await import("./step-launcher.ts");
-  return reattachFn(
-    ctx,
-    step,
-    buildContext,
-    createWorktree,
-    handleAgentCompletion,
-    serverSync,
-    provider,
-  );
+  return reattachFn(ctx, step, buildContext, createWorktree, handleAgentCompletion, provider);
 };
 
 export const handleAgentCompletion = async (
@@ -124,10 +102,8 @@ export const handleAgentCompletion = async (
     executionId,
     stepId,
     stepCommand,
-    executionInfo,
     taskId,
     repoId,
-    serverSync,
     provider,
   } = opts;
 
@@ -154,8 +130,6 @@ export const handleAgentCompletion = async (
       taskId,
       status: currentTask.status,
     });
-    await updateStepExecutionRecord(ctx, stepId, result);
-    await finalizeExecutionRecord(ctx, executionId, result);
     return;
   }
 
@@ -165,12 +139,6 @@ export const handleAgentCompletion = async (
     executionId,
     stepId,
     result,
-    serverSync,
-    {
-      serverStepId: stepCommand.id,
-      serverExecutionId: executionInfo.id,
-      attempt: stepCommand.attempt,
-    },
   );
 
   if (!nextStepInfo) return;
@@ -196,7 +164,6 @@ export const handleAgentCompletion = async (
     executionInfo: nextStepInfo.execution,
     taskId,
     repoId,
-    serverSync,
     provider,
   });
 };
@@ -239,63 +206,11 @@ export const markTaskWorking = async (
   ctx: LocalServerContext,
   task: Task,
   worktreePath: string,
-  serverSync?: ServerSync,
 ): Promise<void> => {
   await ctx.taskRepository.update(task.id, {
     status: "WORKING",
     worktree_path: worktreePath,
   });
-
-  if (serverSync) {
-    await syncTaskStatus(serverSync, task.id, task.repo_id, "WORKING");
-  }
-};
-
-export const createExecutionRecord = async (
-  ctx: LocalServerContext,
-  taskId: string,
-): Promise<string> => {
-  const executionId = generateTypeId("exec");
-  const now = new Date().toISOString();
-
-  await ctx.executionRepository.createExecution({
-    id: executionId,
-    task_id: taskId,
-    status: ExecutionStatus.RUNNING,
-    started_at: now,
-  });
-
-  return executionId;
-};
-
-export const createStepRecord = async (
-  ctx: LocalServerContext,
-  executionId: string,
-  stepType?: string,
-  remoteStepId?: string,
-  workflowStepId?: string,
-  remoteExecutionId?: string,
-  attempt?: number,
-  iteration?: number,
-  signals?: SignalDefinition[],
-): Promise<string> => {
-  const stepId = remoteStepId ?? generateTypeId("step");
-  const now = new Date().toISOString();
-
-  await ctx.executionRepository.createStepExecution({
-    id: stepId,
-    execution_id: executionId,
-    step_id: workflowStepId ?? null,
-    step_type: stepType ?? null,
-    remote_execution_id: remoteExecutionId ?? null,
-    attempt: attempt ?? null,
-    iteration: iteration ?? null,
-    signals_json: signals?.length ? JSON.stringify(signals) : null,
-    status: StepExecutionStatus.RUNNING,
-    started_at: now,
-  });
-
-  return stepId;
 };
 
 export interface BuildPromptOptions {
@@ -333,7 +248,6 @@ interface LaunchStepOptions {
   executionInfo: ExecutionInfo;
   taskId: string;
   repoId: string;
-  serverSync?: ServerSync;
   provider?: LLMProvider;
 }
 
@@ -347,7 +261,6 @@ const launchStep = async (opts: LaunchStepOptions): Promise<void> => {
     executionInfo,
     taskId,
     repoId,
-    serverSync,
     provider,
   } = opts;
 
@@ -360,17 +273,7 @@ const launchStep = async (opts: LaunchStepOptions): Promise<void> => {
     return;
   }
 
-  const stepId = await createStepRecord(
-    ctx,
-    executionId,
-    stepCommand.type,
-    stepCommand.id,
-    stepCommand.stepId,
-    executionInfo.id,
-    stepCommand.attempt,
-    stepCommand.iteration,
-    stepCommand.signals,
-  );
+  const stepId = stepCommand.id;
   logger.info("Created step record", {
     executionId,
     stepId,
@@ -400,7 +303,6 @@ const launchStep = async (opts: LaunchStepOptions): Promise<void> => {
       taskId,
       repoId,
       signals: stepCommand.signals,
-      serverSync,
       provider,
     },
     handleAgentCompletion,

@@ -1,6 +1,6 @@
 # AOP - Agents Operating Platform
 
-AOP (Agents Operating Platform) - A platform for orchestrating AI agents with CLI, server, dashboard, and local server components.
+AOP (Agents Operating Platform) - A platform for orchestrating AI agents with CLI, local server, and dashboard components.
 
 ## Coding Conventions
 
@@ -32,20 +32,19 @@ Entrypoints must NEVER import repositories or contain business logic. If you're 
 ### Package Structure
 
 ```
-apps/           # Apps (cli, server, dashboard)
+apps/           # Apps (cli, local-server, dashboard)
 packages/       # Shared code (common for types, infra for utilities)
 ```
 
 Within apps, organize by domain:
 
 ```
-apps/server/src/
-  api/        # Routes (thin)
-  db/         # Connection, migrations
-  clients/    # Domain: service + repository
-  tasks/      # Domain: service + repository
-  executions/ # Domain: service + repository
-  workflow/   # Domain: service + repository
+apps/local-server/src/
+  repo/       # Domain: repo registration and status
+  task/       # Domain: task discovery and updates
+  executor/   # Domain: agent execution lifecycle
+  workflow/   # Domain: local workflow orchestration
+  settings/   # Domain: local configuration
 ```
 
 ### DRY

@@ -75,20 +75,6 @@ export const AuthResponseSchema = z.object({
 
 export type AuthResponse = z.infer<typeof AuthResponseSchema>;
 
-export const SyncRepoRequestSchema = z.object({
-  syncedAt: z.string(),
-});
-
-export type SyncRepoRequest = z.infer<typeof SyncRepoRequestSchema>;
-
-export const SyncTaskRequestSchema = z.object({
-  repoId: z.string(),
-  status: TaskStatusEnum,
-  syncedAt: z.string(),
-});
-
-export type SyncTaskRequest = z.infer<typeof SyncTaskRequestSchema>;
-
 export const TaskReadyRequestSchema = z.object({
   repoId: z.string(),
   workflowName: z.string().optional(),

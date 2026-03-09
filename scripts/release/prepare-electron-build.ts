@@ -10,7 +10,6 @@ const PACKAGE_FILES = [
   "apps/electron/package.json",
   "apps/dashboard/package.json",
   "apps/local-server/package.json",
-  "apps/server/package.json",
   "apps/cli/package.json",
 ];
 

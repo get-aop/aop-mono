@@ -24,3 +24,19 @@ Follow the repo guidelines to run tests, builds and correct way of verifying cha
 - **Never** push any commits unless explicitly asked
 - Only make code changes and let the user handle all git operations
 - Same for writing operations on external systems (eg. never create a Linear Ticket, GitHub issue, POST/PATCH to APIs), unless explicitly asked.
+
+## Repo Skills
+
+This repository vendors a small public-friendly skill bundle locally so task workflows do not depend on globally installed skills.
+
+Canonical skill paths:
+- `.claude/skills/brainstorming/SKILL.md`
+- `.claude/skills/create-task/SKILL.md`
+- `.claude/skills/task-planner/SKILL.md`
+- `.claude/skills/task-review/SKILL.md`
+- `.claude/skills/code-review/SKILL.md`
+- `.claude/skills/remove-ai-slop/SKILL.md`
+- `.claude/skills/systematic-debugging/SKILL.md`
+- `.claude/skills/test-driven-development/SKILL.md`
+
+Matching copies also live under `.codex/skills/` for Codex-based runs.

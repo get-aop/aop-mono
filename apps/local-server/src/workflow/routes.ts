@@ -6,7 +6,7 @@ export const createWorkflowRoutes = (ctx: LocalServerContext) => {
   const routes = new Hono();
 
   routes.get("/", async (c) => {
-    const result = await listWorkflows(ctx.settingsRepository);
+    const result = await listWorkflows(ctx.workflowService);
     return c.json(result);
   });
 

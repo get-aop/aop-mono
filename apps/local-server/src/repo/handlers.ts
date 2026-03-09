@@ -184,7 +184,7 @@ const abortWorkingTasks = async (ctx: LocalServerContext, tasks: Task[]): Promis
 
   for (const task of tasks) {
     try {
-      await abortTask(ctx, task.id, { serverSync: ctx.serverSync });
+      await abortTask(ctx, task.id);
       abortedCount++;
     } catch (err) {
       logger.error("Failed to abort task {taskId}: {error}", {

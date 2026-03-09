@@ -17,9 +17,6 @@ const requireEnvNumber = (key: string): number => {
 
 /** Ports for binding - what port the server listens on */
 export const AOP_PORTS = {
-  get SERVER() {
-    return requireEnvNumber("AOP_SERVER_PORT");
-  },
   get LOCAL_SERVER() {
     return requireEnvNumber("AOP_LOCAL_SERVER_PORT");
   },
@@ -33,19 +30,10 @@ export const AOP_PORTS = {
 
 /** URLs for connecting - how to reach services (can differ from binding port in prod behind proxy) */
 export const AOP_URLS = {
-  get SERVER() {
-    return requireEnv("AOP_SERVER_URL");
-  },
   get LOCAL_SERVER() {
     return requireEnv("AOP_LOCAL_SERVER_URL");
   },
   get DASHBOARD() {
     return requireEnv("AOP_DASHBOARD_URL");
-  },
-  get DATABASE() {
-    return requireEnv("AOP_DATABASE_URL");
-  },
-  get DATABASE_TEST() {
-    return `${requireEnv("AOP_DATABASE_URL")}_test`;
   },
 } as const;

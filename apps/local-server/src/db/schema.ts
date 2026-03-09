@@ -22,8 +22,6 @@ export interface TasksTable {
   worktree_path: string | null;
   status: "DRAFT" | "READY" | "RESUMING" | "WORKING" | "PAUSED" | "BLOCKED" | "DONE" | "REMOVED";
   ready_at: string | null;
-  remote_id: string | null;
-  synced_at: string | null;
   preferred_workflow: string | null;
   base_branch: string | null;
   preferred_provider: string | null;
@@ -36,7 +34,10 @@ export interface TasksTable {
 export interface ExecutionsTable {
   id: string;
   task_id: string;
+  workflow_id: Generated<string>;
   status: "running" | "completed" | "failed" | "aborted" | "cancelled";
+  visited_steps: Generated<string>;
+  iteration: Generated<number>;
   started_at: string;
   completed_at: string | null;
 }
@@ -46,10 +47,9 @@ export interface StepExecutionsTable {
   execution_id: string;
   step_id: string | null;
   step_type: string | null;
-  remote_execution_id: string | null;
   agent_pid: number | null;
   session_id: string | null;
-  status: "running" | "success" | "failure" | "cancelled";
+  status: "running" | "success" | "failure" | "cancelled" | "awaiting_input";
   exit_code: number | null;
   signal: string | null;
   pause_context: string | null;

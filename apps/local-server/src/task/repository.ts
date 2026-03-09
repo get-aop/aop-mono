@@ -55,8 +55,6 @@ export interface TaskRepositoryOptions {
 interface RuntimeTaskState {
   worktree_path: string | null;
   ready_at: string | null;
-  remote_id: string | null;
-  synced_at: string | null;
   preferred_workflow: string | null;
   base_branch: string | null;
   preferred_provider: string | null;
@@ -67,8 +65,6 @@ interface RuntimeTaskState {
 const DEFAULT_RUNTIME_STATE: RuntimeTaskState = {
   worktree_path: null,
   ready_at: null,
-  remote_id: null,
-  synced_at: null,
   preferred_workflow: null,
   base_branch: null,
   preferred_provider: null,
@@ -127,8 +123,6 @@ const buildRuntimeStateFromTask = (task: NewTask): RuntimeTaskState => ({
   ...DEFAULT_RUNTIME_STATE,
   worktree_path: task.worktree_path ?? null,
   ready_at: task.ready_at ?? null,
-  remote_id: task.remote_id ?? null,
-  synced_at: task.synced_at ?? null,
   preferred_workflow: task.preferred_workflow ?? null,
   base_branch: task.base_branch ?? null,
   preferred_provider: task.preferred_provider ?? null,
@@ -140,8 +134,6 @@ const mergeRuntimeState = (state: RuntimeTaskState, updates: TaskUpdate): Runtim
   ...state,
   worktree_path: getTaskUpdateValue(updates, "worktree_path", state.worktree_path),
   ready_at: getTaskUpdateValue(updates, "ready_at", state.ready_at),
-  remote_id: getTaskUpdateValue(updates, "remote_id", state.remote_id),
-  synced_at: getTaskUpdateValue(updates, "synced_at", state.synced_at),
   preferred_workflow: getTaskUpdateValue(updates, "preferred_workflow", state.preferred_workflow),
   base_branch: getTaskUpdateValue(updates, "base_branch", state.base_branch),
   preferred_provider: getTaskUpdateValue(updates, "preferred_provider", state.preferred_provider),
@@ -200,8 +192,6 @@ export const createTaskRepository = (
       worktree_path: state.worktree_path,
       status: doc.status,
       ready_at: state.ready_at,
-      remote_id: state.remote_id,
-      synced_at: state.synced_at,
       preferred_workflow: state.preferred_workflow,
       base_branch: state.base_branch ?? doc.branch,
       preferred_provider: state.preferred_provider,

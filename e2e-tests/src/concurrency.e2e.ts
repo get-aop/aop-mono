@@ -22,7 +22,7 @@ describe("concurrency limits", () => {
   let repo: TempRepoResult;
 
   beforeAll(async () => {
-    ctx = await createTestContext("concurrency", { remoteServer: false });
+    ctx = await createTestContext("concurrency");
     repo = await createTempRepo("concurrency", ctx.reposDir);
   });
 

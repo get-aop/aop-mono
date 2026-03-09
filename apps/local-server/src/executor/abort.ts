@@ -1,6 +1,5 @@
 import { getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
-import type { ServerSync } from "../orchestrator/sync/server-sync.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import * as processUtils from "./process-utils.ts";
 
@@ -15,17 +14,14 @@ export interface AbortResult {
 
 export interface AbortTaskOptions {
   targetStatus?: "REMOVED" | "BLOCKED";
-  serverSync?: ServerSync;
 }
 
 export const abortTask = async (
   ctx: LocalServerContext,
   taskId: string,
-  optionsOrServerSync?: AbortTaskOptions | ServerSync,
+  options?: AbortTaskOptions,
 ): Promise<AbortResult> => {
-  const options = normalizeOptions(optionsOrServerSync);
-  const targetStatus = options.targetStatus ?? "REMOVED";
-  const { serverSync } = options;
+  const targetStatus = options?.targetStatus ?? "REMOVED";
 
   const log = logger.with({ taskId });
   log.info("Aborting task", { targetStatus });
@@ -49,14 +45,6 @@ export const abortTask = async (
   if (killedFromProc) result.agentKilled = true;
 
   await updateExecutionStatus(ctx, taskId);
-
-  if (serverSync) {
-    try {
-      await serverSync.syncTask(taskId, task.repo_id, targetStatus);
-    } catch (err) {
-      log.warn("Failed to sync task status: {error}", { error: String(err) });
-    }
-  }
 
   log.info("Task aborted", { agentKilled: result.agentKilled, targetStatus });
   return result;
@@ -177,14 +165,6 @@ const updateExecutionStatus = async (ctx: LocalServerContext, taskId: string): P
       }
     }
   }
-};
-
-const normalizeOptions = (
-  optionsOrServerSync?: AbortTaskOptions | ServerSync,
-): AbortTaskOptions => {
-  if (!optionsOrServerSync) return {};
-  if ("syncTask" in optionsOrServerSync) return { serverSync: optionsOrServerSync };
-  return optionsOrServerSync;
 };
 
 const waitForProcessExit = (pid: number, timeoutMs: number): Promise<boolean> => {

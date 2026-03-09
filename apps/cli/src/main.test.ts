@@ -61,7 +61,6 @@ describe("loadProjectEnv", () => {
 
   beforeEach(async () => {
     savedEnv.AOP_LOCAL_SERVER_URL = process.env.AOP_LOCAL_SERVER_URL;
-    savedEnv.AOP_SERVER_URL = process.env.AOP_SERVER_URL;
     const envFile = Bun.file(envPath);
     originalEnvFile = (await envFile.exists()) ? await envFile.text() : null;
   });
@@ -296,8 +295,8 @@ describe("registerCommands", () => {
     getCommandAction("apply")("task-123");
     await getCommandAction("create-task")("build feature", { debug: true, raw: true });
     getCommandAction("run-task")("change-name");
-    getCommandAction("config:get")("AOP_SERVER_URL");
-    getCommandAction("config:set")("AOP_SERVER_URL", "http://localhost:8080");
+    getCommandAction("config:get")("max_concurrent_tasks");
+    getCommandAction("config:set")("max_concurrent_tasks", "10");
 
     expect(handlers.statusCommand).toHaveBeenCalledWith("task-1", { json: true });
     expect(handlers.repoInitCommand).toHaveBeenCalledWith("/repo");
@@ -315,11 +314,8 @@ describe("registerCommands", () => {
       raw: true,
     });
     expect(handlers.runTaskCommand).toHaveBeenCalledWith("change-name");
-    expect(handlers.configGetCommand).toHaveBeenCalledWith("AOP_SERVER_URL");
-    expect(handlers.configSetCommand).toHaveBeenCalledWith(
-      "AOP_SERVER_URL",
-      "http://localhost:8080",
-    );
+    expect(handlers.configGetCommand).toHaveBeenCalledWith("max_concurrent_tasks");
+    expect(handlers.configSetCommand).toHaveBeenCalledWith("max_concurrent_tasks", "10");
   });
 });
 

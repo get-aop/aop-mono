@@ -9,7 +9,6 @@ import { executeTask, reattachToRunningAgent } from "../executor/executor.ts";
 import { recoverStaleTasks } from "../executor/recovery.ts";
 import { SettingKey } from "../settings/types.ts";
 import { createQueueProcessor, type QueueProcessor } from "./queue/processor.ts";
-import { createDegradedServerSync, createServerSync, type ServerSync } from "./sync/server-sync.ts";
 import {
   createTicker,
   createWatcherManager,
@@ -38,7 +37,6 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
   let watcher: WatcherManager | null = null;
   let ticker: Ticker | null = null;
   let queueProcessor: QueueProcessor | null = null;
-  let serverSync: ServerSync | null = null;
   let ready = false;
   const executingTasks = new Map<string, ExecutingTask>();
   let pendingRefresh: Promise<void> | null = null;
@@ -48,66 +46,6 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
     ticker: ticker?.isRunning() ? "running" : "stopped",
     processor: queueProcessor?.isRunning() ? "running" : "stopped",
   });
-
-  const initializeServerSync = async (): Promise<void> => {
-    const serverUrl = await ctx.settingsRepository.get(SettingKey.SERVER_URL);
-    const apiKey = await ctx.settingsRepository.get(SettingKey.API_KEY);
-
-    if (!serverUrl || !apiKey) {
-      logger.info("No server URL or API key configured, running in degraded mode");
-      serverSync = createDegradedServerSync();
-      ctx.serverSync = serverSync;
-      return;
-    }
-
-    serverSync = createServerSync({ serverUrl, apiKey });
-    ctx.serverSync = serverSync;
-    await authenticateAndRetryQueued();
-    await syncActiveTasksToServer();
-  };
-
-  const authenticateAndRetryQueued = async (): Promise<void> => {
-    if (!serverSync) return;
-
-    try {
-      const maxConcurrent = Number.parseInt(
-        await ctx.settingsRepository.get(SettingKey.MAX_CONCURRENT_TASKS),
-        10,
-      );
-
-      const result = await serverSync.authenticate({
-        requestedMaxConcurrentTasks: maxConcurrent,
-      });
-
-      logger.info("Authenticated with server, clientId: {clientId}, maxConcurrent: {max}", {
-        clientId: result.clientId,
-        max: result.effectiveMaxConcurrentTasks,
-      });
-
-      await serverSync.flushOfflineQueue();
-      await serverSync.retryQueuedReadyTasks();
-    } catch (err) {
-      logger.warn("Server authentication failed, running in degraded mode: {error}", {
-        error: String(err),
-      });
-    }
-  };
-
-  const syncActiveTasksToServer = async (): Promise<void> => {
-    if (!serverSync || serverSync.isDegraded()) return;
-
-    const repos = await ctx.repoRepository.getAll();
-    const repoIds = new Set(repos.map((r) => r.id));
-    const tasks = await ctx.taskRepository.list({ excludeRemoved: true });
-    const activeTasks = tasks.filter((t) => repoIds.has(t.repo_id));
-    if (activeTasks.length === 0) return;
-
-    for (const task of activeTasks) {
-      await serverSync.syncTask(task.id, task.repo_id, task.status as TaskStatus);
-    }
-
-    logger.info("Synced {count} active tasks to server on startup", { count: activeTasks.length });
-  };
 
   const startWatcher = async (): Promise<void> => {
     const repos = await ctx.repoRepository.getAll();
@@ -158,7 +96,7 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
       repoRepository: ctx.repoRepository,
       settingsRepository: ctx.settingsRepository,
       executionRepository: ctx.executionRepository,
-      serverSync: serverSync ?? undefined,
+      workflowService: ctx.workflowService,
       executeTask: (task, stepCommand, execution, revertStatus) =>
         executeTaskAsync(task, stepCommand, execution, revertStatus),
     });
@@ -192,9 +130,7 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
     revertStatus: TaskStatus = "READY",
   ): void => {
     const promise: Promise<void> = resolveProviderForTask(task)
-      .then((provider) =>
-        executeTask(ctx, task, stepCommand, execution, serverSync ?? undefined, provider),
-      )
+      .then((provider) => executeTask(ctx, task, stepCommand, execution, provider))
       .then(() => {})
       .catch(async (err) => {
         logger.error("Task execution failed: {error}", {
@@ -286,24 +222,6 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
     }
   };
 
-  const flushServerSyncQueue = async (): Promise<void> => {
-    if (!serverSync) return;
-
-    const queueSize = serverSync.getOfflineQueueSize();
-    if (queueSize > 0) {
-      logger.info("Flushing {count} queued server requests before shutdown", {
-        count: queueSize,
-      });
-      try {
-        await serverSync.flushOfflineQueue();
-      } catch (err) {
-        logger.warn("Failed to flush offline queue: {error}", {
-          error: String(err),
-        });
-      }
-    }
-  };
-
   const handleStaleTaskRecovery = async (): Promise<void> => {
     const result = await recoverStaleTasks(ctx, {
       logsDir: aopPaths.logs(),
@@ -313,7 +231,7 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
           .then(async (task) => {
             if (!task) return;
             const provider = await resolveProviderForTask(task);
-            await reattachToRunningAgent(ctx, step, serverSync ?? undefined, provider);
+            await reattachToRunningAgent(ctx, step, provider);
           })
           .catch(async (err) => {
             logger.error("Reattached agent failed: {error}", {
@@ -338,7 +256,6 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
           promise,
         });
       },
-      serverSync: serverSync ?? undefined,
       executeTask: (task, stepCommand, execution) => {
         executeTaskAsync(task, stepCommand, execution, "BLOCKED");
       },
@@ -357,7 +274,6 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
       const startTime = performance.now();
       logger.info("Starting orchestrator");
 
-      await initializeServerSync();
       await handleStaleTaskRecovery();
       await startWatcher();
       await startTicker();
@@ -377,7 +293,6 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
       watcher?.stop();
 
       await waitForPendingRefresh();
-      await flushServerSyncQueue();
 
       logger.info("Orchestrator stopped");
     },

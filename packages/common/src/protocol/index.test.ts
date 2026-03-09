@@ -7,8 +7,6 @@ import {
   StepCommandSchema,
   StepCompleteRequestSchema,
   StepCompleteResponseSchema,
-  SyncRepoRequestSchema,
-  SyncTaskRequestSchema,
   TaskReadyRequestSchema,
   TaskReadyResponseSchema,
   TaskStatusResponseSchema,
@@ -55,52 +53,6 @@ describe("Protocol Types", () => {
     test("rejects missing required fields", () => {
       const result = AuthResponseSchema.safeParse({
         clientId: "client_xxx",
-      });
-      expect(result.success).toBe(false);
-    });
-  });
-
-  describe("SyncRepoRequest", () => {
-    test("validates request with syncedAt timestamp", () => {
-      const result = SyncRepoRequestSchema.safeParse({
-        syncedAt: "2026-02-02T10:00:00Z",
-      });
-      expect(result.success).toBe(true);
-    });
-
-    test("rejects missing syncedAt", () => {
-      const result = SyncRepoRequestSchema.safeParse({});
-      expect(result.success).toBe(false);
-    });
-  });
-
-  describe("SyncTaskRequest", () => {
-    test("validates request with repoId, status, and syncedAt", () => {
-      const result = SyncTaskRequestSchema.safeParse({
-        repoId: "repo_xxx",
-        status: "DRAFT",
-        syncedAt: "2026-02-02T10:00:00Z",
-      });
-      expect(result.success).toBe(true);
-    });
-
-    test("validates all valid statuses", () => {
-      const statuses = ["DRAFT", "READY", "WORKING", "BLOCKED", "DONE", "REMOVED"];
-      for (const status of statuses) {
-        const result = SyncTaskRequestSchema.safeParse({
-          repoId: "repo_xxx",
-          status,
-          syncedAt: "2026-02-02T10:00:00Z",
-        });
-        expect(result.success).toBe(true);
-      }
-    });
-
-    test("rejects invalid status", () => {
-      const result = SyncTaskRequestSchema.safeParse({
-        repoId: "repo_xxx",
-        status: "INVALID",
-        syncedAt: "2026-02-02T10:00:00Z",
       });
       expect(result.success).toBe(false);
     });

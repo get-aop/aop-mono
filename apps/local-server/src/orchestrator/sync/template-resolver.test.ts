@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createTemplateLoader } from "../../../../server/src/prompts/template-loader.ts";
+import { createTemplateLoader } from "../../prompts/template-loader.ts";
 import {
   createTemplateContext,
   resolveTemplate,
