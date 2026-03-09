@@ -200,4 +200,185 @@ describe("QueueProcessor", () => {
       "BLOCKED",
     );
   });
+
+  test("reverts a RESUMING task when resume_input is missing", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "RESUMING");
+
+    const workflowService = {
+      listWorkflows: mock(async () => ["aop-default"]),
+      startTask: mock(async (): Promise<TaskReadyResponse> => ({ status: "DONE" })),
+      completeStep: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+      resumeTask: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+    };
+    const executeTask = mock(() => undefined);
+    const processor = createQueueProcessor({
+      taskRepository: ctx.taskRepository,
+      repoRepository: ctx.repoRepository,
+      settingsRepository: ctx.settingsRepository,
+      executionRepository: ctx.executionRepository,
+      workflowService,
+      executeTask,
+    });
+
+    const result = await processor.processOnce();
+
+    expect(result).toBeNull();
+    expect(workflowService.resumeTask).not.toHaveBeenCalled();
+    expect((await ctx.taskRepository.get("task-1"))?.status).toBe("RESUMING");
+  });
+
+  test("reverts a RESUMING task when no awaiting-input step exists", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "RESUMING");
+    await ctx.taskRepository.update("task-1", { resume_input: "continue" });
+
+    const workflowService = {
+      listWorkflows: mock(async () => ["aop-default"]),
+      startTask: mock(async (): Promise<TaskReadyResponse> => ({ status: "DONE" })),
+      completeStep: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+      resumeTask: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+    };
+    const executeTask = mock(() => undefined);
+    const processor = createQueueProcessor({
+      taskRepository: ctx.taskRepository,
+      repoRepository: ctx.repoRepository,
+      settingsRepository: ctx.settingsRepository,
+      executionRepository: ctx.executionRepository,
+      workflowService,
+      executeTask,
+    });
+
+    const result = await processor.processOnce();
+
+    expect(result).toBeNull();
+    expect(workflowService.resumeTask).not.toHaveBeenCalled();
+    expect((await ctx.taskRepository.get("task-1"))?.status).toBe("RESUMING");
+  });
+
+  test("reverts a READY task when workflow start throws", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
+
+    const workflowService = {
+      listWorkflows: mock(async () => ["aop-default"]),
+      startTask: mock(async (): Promise<TaskReadyResponse> => {
+        throw new Error("boom");
+      }),
+      completeStep: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+      resumeTask: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+    };
+    const executeTask = mock(() => undefined);
+    const processor = createQueueProcessor({
+      taskRepository: ctx.taskRepository,
+      repoRepository: ctx.repoRepository,
+      settingsRepository: ctx.settingsRepository,
+      executionRepository: ctx.executionRepository,
+      workflowService,
+      executeTask,
+    });
+
+    await expect(processor.processOnce()).rejects.toThrow("boom");
+    expect((await ctx.taskRepository.get("task-1"))?.status).toBe("READY");
+  });
+
+  test("reverts a RESUMING task when resumeTask throws", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "RESUMING");
+    await ctx.taskRepository.update("task-1", { resume_input: "continue" });
+    await ctx.executionRepository.createExecution({
+      id: "exec-1",
+      task_id: "task-1",
+      workflow_id: "aop-default",
+      status: "running",
+      visited_steps: JSON.stringify(["draft_plan"]),
+      iteration: 0,
+      started_at: new Date().toISOString(),
+    });
+    await ctx.executionRepository.createStepExecution({
+      id: "step-awaiting",
+      execution_id: "exec-1",
+      step_id: "draft_plan",
+      step_type: "implement",
+      status: "awaiting_input",
+      started_at: new Date().toISOString(),
+    });
+
+    const workflowService = {
+      listWorkflows: mock(async () => ["aop-default"]),
+      startTask: mock(async (): Promise<TaskReadyResponse> => ({ status: "DONE" })),
+      completeStep: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+      resumeTask: mock(async (): Promise<StepCompleteResponse> => {
+        throw new Error("boom");
+      }),
+    };
+    const executeTask = mock(() => undefined);
+    const processor = createQueueProcessor({
+      taskRepository: ctx.taskRepository,
+      repoRepository: ctx.repoRepository,
+      settingsRepository: ctx.settingsRepository,
+      executionRepository: ctx.executionRepository,
+      workflowService,
+      executeTask,
+    });
+
+    await expect(processor.processOnce()).rejects.toThrow("boom");
+    expect((await ctx.taskRepository.get("task-1"))?.status).toBe("RESUMING");
+  });
+
+  test("starts, ignores duplicate starts, and keeps running after loop errors until stopped", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo");
+    await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
+
+    const workflowService = {
+      listWorkflows: mock(async () => ["aop-default"]),
+      startTask: mock(async (): Promise<TaskReadyResponse> => {
+        throw new Error("loop failure");
+      }),
+      completeStep: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+      resumeTask: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+    };
+    const executeTask = mock(() => undefined);
+    const processor = createQueueProcessor(
+      {
+        taskRepository: ctx.taskRepository,
+        repoRepository: ctx.repoRepository,
+        settingsRepository: ctx.settingsRepository,
+        executionRepository: ctx.executionRepository,
+        workflowService,
+        executeTask,
+      },
+      { pollIntervalMs: 5 },
+    );
+
+    await processor.start();
+    await processor.start();
+    expect(processor.isRunning()).toBe(true);
+
+    await Bun.sleep(20);
+
+    expect((await ctx.taskRepository.get("task-1"))?.status).toBe("READY");
+    expect(processor.isRunning()).toBe(true);
+
+    processor.stop();
+    expect(processor.isRunning()).toBe(false);
+  });
 });
