@@ -210,7 +210,7 @@ export const removeTask = async (
     }
 
     logger.info("Force removing working task {taskId}, aborting agent", { taskId: task.id });
-    await abortTask(ctx, task.id, { serverSync: ctx.serverSync });
+    await abortTask(ctx, task.id);
     return { success: true, taskId: task.id, aborted: true };
   }
 
@@ -261,7 +261,6 @@ export const blockTask = async (
   logger.info("Blocking task {taskId}, aborting agent", { taskId: task.id });
   const result = await abortTask(ctx, task.id, {
     targetStatus: "BLOCKED",
-    serverSync: ctx.serverSync,
   });
   logger.info("Task blocked {taskId} (agentKilled={agentKilled})", {
     taskId: task.id,

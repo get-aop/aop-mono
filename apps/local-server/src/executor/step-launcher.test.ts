@@ -27,8 +27,6 @@ const createMockTask = (overrides: Partial<Task> = {}): Task => ({
   status: "WORKING",
   worktree_path: null,
   ready_at: null,
-  remote_id: null,
-  synced_at: null,
   preferred_workflow: null,
   base_branch: null,
   preferred_provider: null,
@@ -228,7 +226,6 @@ describe("step-launcher", () => {
         execution_id: "exec-1",
         step_id: "wf-step-1",
         step_type: "implement",
-        remote_execution_id: "remote-exec-1",
         agent_pid: null,
         session_id: null,
         status: "running",
@@ -279,7 +276,7 @@ describe("step-launcher", () => {
       expect(opts.stepCommand.stepId).toBe("wf-step-1");
       expect(opts.stepCommand.attempt).toBe(1);
       expect(opts.stepCommand.iteration).toBe(2);
-      expect(opts.executionInfo.id).toBe("remote-exec-1");
+      expect(opts.executionInfo.id).toBe("exec-1");
       expect(logFilePath).toBe(logFile);
       expect(runResult.exitCode).toBe(0);
       expect(signals).toEqual([{ name: "DONE", description: "done" }]);
@@ -291,7 +288,6 @@ describe("step-launcher", () => {
         execution_id: "exec-1",
         step_id: null,
         step_type: null,
-        remote_execution_id: null,
         agent_pid: null,
         session_id: null,
         status: "running",
@@ -330,7 +326,6 @@ describe("step-launcher", () => {
         execution_id: "exec-1",
         step_id: null,
         step_type: null,
-        remote_execution_id: null,
         agent_pid: null,
         session_id: null,
         status: "running",

@@ -16,7 +16,6 @@ const toStepExecutionRecord = (step: NewStepExecution): StepExecution => {
     ...step,
     step_id: withNull(step.step_id),
     step_type: withNull(step.step_type),
-    remote_execution_id: withNull(step.remote_execution_id),
     agent_pid: withNull(step.agent_pid),
     session_id: withNull(step.session_id),
     exit_code: withNull(step.exit_code),
@@ -35,6 +34,7 @@ export interface ExecutionRepository {
   getExecution: (id: string) => Promise<Execution | null>;
   updateExecution: (id: string, updates: ExecutionUpdate) => Promise<Execution | null>;
   getExecutionsByTaskId: (taskId: string) => Promise<Execution[]>;
+  getLatestExecutionByTaskId: (taskId: string) => Promise<Execution | null>;
   cancelRunningExecutions: () => Promise<number>;
 
   createStepExecution: (step: NewStepExecution) => Promise<StepExecution>;
@@ -60,6 +60,9 @@ export const createExecutionRepository = (_legacyDb?: unknown): ExecutionReposit
     createExecution: async (execution: NewExecution): Promise<Execution> => {
       const record: Execution = {
         ...execution,
+        workflow_id: execution.workflow_id ?? "aop-default",
+        visited_steps: execution.visited_steps ?? "[]",
+        iteration: execution.iteration ?? 0,
         completed_at: execution.completed_at ?? null,
       };
       executions.set(record.id, record);
@@ -80,6 +83,11 @@ export const createExecutionRepository = (_legacyDb?: unknown): ExecutionReposit
       [...executions.values()]
         .filter((execution) => execution.task_id === taskId)
         .sort((left, right) => right.started_at.localeCompare(left.started_at)),
+
+    getLatestExecutionByTaskId: async (taskId: string): Promise<Execution | null> =>
+      [...executions.values()]
+        .filter((execution) => execution.task_id === taskId)
+        .sort((left, right) => right.started_at.localeCompare(left.started_at))[0] ?? null,
 
     cancelRunningExecutions: async (): Promise<number> => {
       const running = [...executions.values()].filter(

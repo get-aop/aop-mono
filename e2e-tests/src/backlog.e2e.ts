@@ -26,7 +26,7 @@ describe("backlog full flow", () => {
   let repo: TempRepoResult;
 
   beforeAll(async () => {
-    ctx = await createTestContext("backlog", { remoteServer: false });
+    ctx = await createTestContext("backlog");
     repo = await createTempRepo("backlog", ctx.reposDir);
   });
 

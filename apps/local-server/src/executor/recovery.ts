@@ -6,7 +6,6 @@ import { inferRunOutcomeFromRawJsonl } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { readLogLines } from "../events/log-file-tailer.ts";
-import type { ServerSync, StepCompletePayload } from "../orchestrator/sync/server-sync.ts";
 import { ExecutionStatus, StepExecutionStatus } from "./execution-types.ts";
 import { cleanupLogFile, populateLogBuffer } from "./executor.ts";
 import {
@@ -30,7 +29,6 @@ export interface RecoveryDeps {
   isProcessAlive?: (pid: number) => boolean;
   isClaudeProcess?: (pid: number) => boolean;
   reattachToRunningAgent?: (step: StepWithTask) => void;
-  serverSync?: ServerSync;
   executeTask?: (task: Task, step: StepCommand, execution: ExecutionInfo) => void;
 }
 
@@ -111,31 +109,6 @@ const applyRecoveryAction = async (
 
 const TERMINAL_STATUSES = new Set(["BLOCKED", "REMOVED", "DONE"]);
 
-const MAX_RETRY_DELAY_MS = 30_000;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-const completeStepOnServerWithRetry = async (
-  serverSync: ServerSync,
-  stepId: string,
-  payload: StepCompletePayload,
-): Promise<Awaited<ReturnType<ServerSync["completeStep"]>>> => {
-  let delay = 1000;
-  for (;;) {
-    try {
-      return await serverSync.completeStep(stepId, payload);
-    } catch (err) {
-      logger.warn("Server unavailable during recovery, retrying in {delay}ms: {error}", {
-        stepId,
-        delay,
-        error: String(err),
-      });
-      await sleep(delay);
-      delay = Math.min(delay * 2, MAX_RETRY_DELAY_MS);
-    }
-  }
-};
-
 const recoverFromLogFile = async (
   ctx: LocalServerContext,
   step: StepWithTask,
@@ -143,20 +116,6 @@ const recoverFromLogFile = async (
   deps: RecoveryDeps,
 ): Promise<"success" | "failure"> => {
   const outcome = determineOutcomeFromLog(logFile);
-  const now = new Date().toISOString();
-
-  const stepStatus =
-    outcome === "success" ? StepExecutionStatus.SUCCESS : StepExecutionStatus.FAILURE;
-  const execStatus = outcome === "success" ? ExecutionStatus.COMPLETED : ExecutionStatus.FAILED;
-
-  await ctx.executionRepository.updateStepExecution(step.id, {
-    status: stepStatus,
-    ended_at: now,
-  });
-  await ctx.executionRepository.updateExecution(step.execution_id, {
-    status: execStatus,
-    completed_at: now,
-  });
 
   const flushedCount = await ctx.executionRepository.getStepLogCount(step.id);
   await persistStepLogsFromOffset(ctx, step.id, logFile, flushedCount);
@@ -174,61 +133,27 @@ const recoverFromLogFile = async (
     return outcome;
   }
 
-  if (step.remote_execution_id) {
-    await handleServerCompletion(ctx, step, task, outcome, deps);
-  } else if (outcome === "failure") {
-    await ctx.taskRepository.update(step.task_id, { status: "BLOCKED" });
-  }
-  // success without remote_execution_id: task stays WORKING (unchanged)
-
-  return outcome;
-};
-
-const handleServerCompletion = async (
-  ctx: LocalServerContext,
-  step: StepWithTask,
-  task: Task | null,
-  outcome: "success" | "failure",
-  deps: RecoveryDeps,
-): Promise<void> => {
-  const { serverSync, executeTask } = deps;
-
-  if (!serverSync) {
-    logger.warn("No serverSync available for recovery, setting task BLOCKED", {
-      taskId: step.task_id,
-    });
-    await ctx.taskRepository.update(step.task_id, { status: "BLOCKED" });
-    return;
+  if (!task) {
+    return outcome;
   }
 
-  const remoteExecutionId = step.remote_execution_id;
-  if (!remoteExecutionId) return;
-
-  const payload: StepCompletePayload = {
-    executionId: remoteExecutionId,
-    attempt: step.attempt ?? 1,
+  const completion = await ctx.workflowService.completeStep(task, {
+    executionId: step.execution_id,
+    stepId: step.id,
     status: outcome === "success" ? "success" : "failure",
-    durationMs: 0,
-  };
+  });
 
-  const response = await completeStepOnServerWithRetry(serverSync, step.id, payload);
-
-  if (response.step && response.execution && response.taskStatus === "WORKING") {
+  if (completion.step && completion.execution && completion.taskStatus === "WORKING") {
     logger.info("Recovery: launching next step {stepType}", {
       taskId: step.task_id,
-      stepType: response.step.type,
+      stepType: completion.step.type,
     });
-    if (task && executeTask) {
-      executeTask(task, response.step, response.execution);
+    if (deps.executeTask) {
+      deps.executeTask(task, completion.step, completion.execution);
     }
-    return;
   }
 
-  logger.info("Recovery: server returned terminal status {status}", {
-    taskId: step.task_id,
-    status: response.taskStatus,
-  });
-  await ctx.taskRepository.update(step.task_id, { status: response.taskStatus });
+  return outcome;
 };
 
 const resetStaleStep = async (ctx: LocalServerContext, step: StepWithTask): Promise<void> => {

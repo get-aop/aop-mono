@@ -8,8 +8,6 @@ export const SettingKey = {
   QUEUE_POLL_INTERVAL_SECS: "queue_poll_interval_secs",
   AGENT_TIMEOUT_SECS: "agent_timeout_secs",
   AGENT_PROVIDER: "agent_provider",
-  SERVER_URL: "server_url",
-  API_KEY: "api_key",
   FAST_MODE: "fast_mode",
 } as const;
 
@@ -21,8 +19,6 @@ export const DEFAULT_SETTINGS: Record<SettingKey, string> = {
   [SettingKey.QUEUE_POLL_INTERVAL_SECS]: "1",
   [SettingKey.AGENT_TIMEOUT_SECS]: "1800",
   [SettingKey.AGENT_PROVIDER]: "claude-code",
-  [SettingKey.SERVER_URL]: "",
-  [SettingKey.API_KEY]: "",
   [SettingKey.FAST_MODE]: "false",
 };
 

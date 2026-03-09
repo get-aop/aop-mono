@@ -203,7 +203,14 @@ export const createMockContext = (sessionRepository: SessionRepository): LocalSe
       remove: async () => false,
     },
     settingsRepository: {} as LocalServerContext["settingsRepository"],
+    workflowRepository: {} as LocalServerContext["workflowRepository"],
     taskEventEmitter: {} as LocalServerContext["taskEventEmitter"],
+    workflowService: {
+      listWorkflows: async () => [],
+      startTask: async () => ({ status: "READY" }),
+      completeStep: async () => ({ taskStatus: "DONE", step: null }),
+      resumeTask: async () => ({ taskStatus: "DONE", step: null }),
+    },
     taskRepository: {
       refresh: async () => {},
       create: async () => {

@@ -1,6 +1,6 @@
 # @aop/local-server
 
-Local HTTP server for the Agents Operating Platform. Manages task lifecycle, coordinates background operations, and provides the REST API for CLI and future dashboard.
+Local HTTP server for the Agents Operating Platform. It manages task lifecycle, coordinates background operations, and provides the REST API for the CLI and dashboard.
 
 ## Quick Start
 
@@ -38,7 +38,7 @@ The local server is a Hono HTTP server. All background work (watching, processin
 │                            │                                │
 │  ┌─────────────────────────▼─────────────────────────┐     │
 │  │                     SQLite                         │     │
-│  │  (repos, tasks, executions, settings)             │     │
+│  │  (repos, settings, sessions)                      │     │
 │  └───────────────────────────────────────────────────┘     │
 └────────────────────────────────────────────────────────────┘
                              │
@@ -77,9 +77,6 @@ The local server is a Hono HTTP server. All background work (watching, processin
 | `AOP_PORT` | HTTP server port | `3847` |
 | `AOP_DB_PATH` | SQLite database path | `~/.aop/aop.db` |
 | `AOP_LOG_LEVEL` | Log level (debug, info, warning, error) | `info` |
-| `AOP_SERVER_URL` | Remote AOP server URL (for sync) | - |
-| `AOP_API_KEY` | API key for remote server | - |
-
 ## Directory Structure
 
 ```
@@ -94,7 +91,6 @@ src/
     orchestrator.ts     # Main orchestrator (start/stop)
     watcher/            # File system watching and reconciliation
     queue/              # Task queue processor
-    sync/               # Remote server sync
   repo/                 # Repository domain (handlers, routes, repository)
   task/                 # Task domain (handlers, routes, repository, resolve)
   settings/             # Settings domain (handlers, routes, repository)
@@ -115,17 +111,11 @@ DRAFT → READY → WORKING → DONE
 4. **DONE**: Execution completed successfully
 5. **BLOCKED**: Execution failed or timed out
 
-## Database
+## Task Storage
 
-SQLite database stored at `~/.aop/aop.db` (configurable via `AOP_DB_PATH`):
+Task state lives in repository documents under `docs/tasks/<task-slug>/`.
 
-| Table | Description |
-|-------|-------------|
-| `repos` | Registered repositories |
-| `tasks` | Task records with status tracking |
-| `executions` | Execution history |
-| `step_executions` | Per-step execution details (agent PID, session ID) |
-| `settings` | Configuration key-value store |
+SQLite is limited to local app metadata such as registered repositories, settings, and interactive sessions.
 
 ## Graceful Shutdown
 

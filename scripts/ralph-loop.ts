@@ -8,8 +8,8 @@
  *   bun scripts/ralph-loop.ts "implement the next docs task"
  *   bun scripts/ralph-loop.ts --max 5 "implement the next docs task"
  *   bun scripts/ralph-loop.ts --prompt-file ./my-prompt.md
- *   bun scripts/ralph-loop.ts --done-keyword "DONE" "/aop:execute-full"
- *   bun scripts/ralph-loop.ts --done-keyword "<aop>FINISHED</aop>" --max 50 "/aop:implement <task-id>"
+ *   bun scripts/ralph-loop.ts --done-keyword "DONE" "run the task workflow to completion"
+ *   bun scripts/ralph-loop.ts --done-keyword "<aop>FINISHED</aop>" --max 50 "implement docs/tasks/my-task/001-slice.md"
  */
 
 import { configureLogging, getLogger, type Logger } from "@aop/infra";
@@ -120,7 +120,7 @@ Examples:
   bun scripts/ralph-loop.ts "implement the next docs task"
   bun scripts/ralph-loop.ts --max 10 "implement the next task"
   bun scripts/ralph-loop.ts --prompt-file ./tasks/feature.md --max 5
-  bun scripts/ralph-loop.ts --done-keyword "DONE" "/aop:execute-full"
+  bun scripts/ralph-loop.ts --done-keyword "DONE" "run the task workflow to completion"
 `;
 
 const printUsage = (log: Logger): void => {

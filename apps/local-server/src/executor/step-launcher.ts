@@ -11,7 +11,6 @@ import {
 } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
-import type { ServerSync } from "../orchestrator/sync/server-sync.ts";
 import { SettingKey } from "../settings/types.ts";
 import { isAgentRunning } from "./process-utils.ts";
 import type { ExecutorContext, StepWithTask } from "./types.ts";
@@ -30,7 +29,6 @@ export interface SpawnAgentOptions {
   taskId: string;
   repoId: string;
   signals?: SignalDefinition[];
-  serverSync?: ServerSync;
   provider?: LLMProvider;
 }
 
@@ -135,7 +133,6 @@ export const reattachToRunningAgent = async (
   buildContextFn: (ctx: LocalServerContext, task: Task) => Promise<ExecutorContext>,
   createWorktreeFn: (ctx: ExecutorContext) => Promise<WorktreeInfo>,
   onCompletion: HandleAgentCompletionFn,
-  serverSync?: ServerSync,
   provider?: LLMProvider,
 ): Promise<void> => {
   const task = await ctx.taskRepository.get(step.task_id);
@@ -171,12 +168,11 @@ export const reattachToRunningAgent = async (
       iteration: step.iteration ?? 1,
     },
     executionInfo: {
-      id: step.remote_execution_id ?? step.execution_id,
+      id: step.execution_id,
       workflowId: "",
     },
     taskId: step.task_id,
     repoId: task.repo_id,
-    serverSync,
     provider,
   };
 

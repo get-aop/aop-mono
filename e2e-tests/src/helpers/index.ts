@@ -1,6 +1,5 @@
 export {
   AOP_BIN,
-  API_KEY,
   DASHBOARD_DIST_PATH,
   DEFAULT_LOCAL_SERVER_PORT,
   DEFAULT_LOCAL_SERVER_URL,
@@ -9,9 +8,6 @@ export {
   getAopEnv,
   LOCAL_SERVER_BIN,
   LOCAL_SERVER_PORT_RANGE,
-  REMOTE_SERVER_BIN,
-  REMOTE_SERVER_PORT_RANGE,
-  SERVER_URL,
   TEST_REPO_PREFIX,
   WORKTREES_DIR,
 } from "./constants";
@@ -54,18 +50,6 @@ export {
   type TempWorktreeResult,
 } from "./repo";
 export {
-  checkDevEnvironment,
-  type DevEnvironmentCheck,
-  getServerExecutionStatus,
-  getServerTaskStatus,
-  getStepExecutionsForTask,
-  type ServerExecutionStatus,
-  type ServerTaskStatus,
-  type StepExecutionInfo,
-  type WaitForServerTaskOptions,
-  waitForServerTaskStatus,
-} from "./server";
-export {
   findTasksByStatus,
   findTasksForRepo,
   getFullStatus,
@@ -86,6 +70,5 @@ export {
   type DashboardContext,
   destroyTestContext,
   findFreePort,
-  type RemoteServerContext,
   type TestContext,
 } from "./test-context";

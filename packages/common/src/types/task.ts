@@ -19,8 +19,6 @@ export interface Task {
   status: TaskStatus;
   baseBranch: string | null;
   readyAt: Date | null;
-  remoteId: string | null;
-  syncedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

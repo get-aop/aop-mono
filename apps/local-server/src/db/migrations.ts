@@ -6,6 +6,7 @@ import type { Database } from "./schema.ts";
 export const runMigrations = async (db: Kysely<Database>): Promise<void> => {
   await createSettingsTable(db);
   await insertDefaultSettings(db);
+  await createWorkflowsTable(db);
   await createReposTable(db);
   await dropLegacyTaskTables(db);
   await createInteractiveSessionsTable(db);
@@ -31,6 +32,33 @@ const insertDefaultSettings = async (db: Kysely<Database>): Promise<void> => {
       .onConflict((oc) => oc.column("key").doNothing())
       .execute();
   }
+};
+
+const createWorkflowsTable = async (db: Kysely<Database>): Promise<void> => {
+  await db.schema
+    .createTable("workflows")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("name", "text", (col) => col.notNull().unique())
+    .addColumn("definition", "text", (col) => col.notNull())
+    .addColumn("version", "integer", (col) => col.notNull().defaultTo(1))
+    .addColumn("active", "integer", (col) => col.notNull().defaultTo(1))
+    .addColumn("created_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
+    .execute();
+
+  await db.schema
+    .createIndex("idx_workflows_name")
+    .ifNotExists()
+    .on("workflows")
+    .column("name")
+    .execute();
+
+  await db.schema
+    .createIndex("idx_workflows_active")
+    .ifNotExists()
+    .on("workflows")
+    .column("active")
+    .execute();
 };
 
 const createReposTable = async (db: Kysely<Database>): Promise<void> => {

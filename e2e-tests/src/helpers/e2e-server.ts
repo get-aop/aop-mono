@@ -1,4 +1,4 @@
-import { AOP_BIN, API_KEY, getAopEnv, SERVER_URL } from "./constants";
+import { AOP_BIN, getAopEnv } from "./constants";
 import {
   isLocalServerRunning,
   type LocalServerContext,
@@ -39,7 +39,6 @@ export const runAopCommand = async (
 };
 
 export interface E2EServerStartOptions {
-  configureServer?: boolean;
   dbPath?: string;
   aopHome?: string;
 }
@@ -47,7 +46,6 @@ export interface E2EServerStartOptions {
 export const startE2EServer = async (
   options: E2EServerStartOptions = {},
 ): Promise<E2EServerStartResult> => {
-  const { configureServer = true } = options;
   const env = getAopEnv();
 
   // Check if local server is already running
@@ -64,12 +62,6 @@ export const startE2EServer = async (
   const localServer = await startLocalServer({
     dbPath: options.dbPath,
   });
-
-  // Configure server connection if requested
-  if (configureServer) {
-    await runAopCommand(["config:set", "server_url", SERVER_URL]);
-    await runAopCommand(["config:set", "api_key", API_KEY]);
-  }
 
   return {
     success: true,

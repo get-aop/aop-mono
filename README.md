@@ -7,7 +7,7 @@ A platform for orchestrating AI agents. AOP manages agent lifecycle, coordinates
 AOP uses a client-server architecture with a local HTTP server for background task processing:
 
 - **Local Server**: HTTP server that manages task lifecycle and coordinates all background operations
-- **Orchestrator**: Initializes and coordinates the watcher, ticker, processor, and remote sync
+- **Orchestrator**: Initializes and coordinates the watcher, ticker, and queue processor
 - **Watcher**: Monitors `docs/tasks/` directories for task file changes
 - **Queue Processor**: Polls for READY tasks and dispatches to executor with concurrency control
 - **Executor**: Spawns Claude CLI agents in isolated git worktrees
@@ -104,6 +104,8 @@ cd <repository-directory>
 bun install
 ```
 
+The repository also vendors a minimal repo-local skill bundle under `.claude/skills` and `.codex/skills` so planning and execution workflows do not depend on machine-global installs.
+
 ### Usage
 
 **Start the local server** (required for all operations):
@@ -111,7 +113,7 @@ bun install
 # Start the local server (run in a separate terminal or as a service)
 bun run apps/local-server/src/run.ts
 
-# Or use the dev script which also starts the remote server
+# Or use the dev script which starts the local server and dashboard
 bun dev
 ```
 
@@ -136,25 +138,18 @@ aop config:set <key> <value>
 
 ### Development
 
-**Prerequisites for development:**
-- Docker (for PostgreSQL)
-
 **Start the dev environment:**
 ```bash
-# Start all services (PostgreSQL + Server + Local Server)
+# Start local server and dashboard
 bun dev
 
-# Start only the database
-bun dev --db-only
-
-# Start database and server (no local server)
-bun dev --no-cli
+# Start dashboard only
+bun dev --no-local
 ```
 
 This orchestrates:
-1. PostgreSQL via docker-compose
-2. AOP Server with auto-reload (port 3000)
-3. AOP Local Server (connected to remote server)
+1. AOP Local Server with auto-reload
+2. Dashboard with HMR
 
 **Other development commands:**
 ```bash
@@ -184,22 +179,10 @@ bun test:coverage # Tests with coverage report
 |----------|-------------|---------|
 | `AOP_URL` | URL of the local server | `http://localhost:3847` |
 | `AOP_PORT` | Port for local server (if `AOP_URL` not set) | `3847` |
-| `AOP_SERVER_URL` | URL of the remote AOP server | `https://api.aop.dev` |
-| `AOP_API_KEY` | API key for remote server authentication | Optional (enables sync) |
-
-**Remote Server (`apps/server`):**
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | Required |
-| `PORT` | HTTP server port | `3000` |
 
 **Development defaults (set by `bun dev`):**
 ```bash
 AOP_PORT=3847
-DATABASE_URL=postgres://aop:aop@localhost:5432/aop
-PORT=3000
-AOP_SERVER_URL=http://localhost:3000
-AOP_API_KEY=aop_test_key_dev
 ```
 
 ## Project Structure
@@ -208,13 +191,12 @@ AOP_API_KEY=aop_test_key_dev
 apps/
   cli/              # AOP command-line interface (thin HTTP client)
   local-server/     # Local HTTP server (Hono)
-    orchestrator/   #   Background services (watcher, queue, sync)
+    orchestrator/   #   Background services (watcher, queue)
     executor/       #   Agent spawning and execution tracking
     repo/           #   Repository domain
     task/           #   Task domain
     settings/       #   Settings domain
     db/             #   SQLite connection and migrations
-  server/           # Remote AOP server (workflow engine, prompt library)
 packages/
   common/           # Shared types (Task, TaskStatus, protocol schemas)
   git-manager/      # Git worktree lifecycle management

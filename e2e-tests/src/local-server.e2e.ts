@@ -17,7 +17,7 @@ describe("local server lifecycle", () => {
   let ctx: TestContext;
 
   beforeAll(async () => {
-    ctx = await createTestContext("local-server", { remoteServer: false });
+    ctx = await createTestContext("local-server");
   });
 
   afterAll(async () => {

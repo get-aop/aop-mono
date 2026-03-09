@@ -3,15 +3,12 @@
  * Dev Environment Orchestrator
  *
  * Starts all services needed for development:
- * 1. PostgreSQL via docker-compose
- * 2. AOP Server (apps/server) - remote API server
- * 3. AOP Local Server (apps/local-server) - local task orchestrator
- * 4. Dashboard (apps/dashboard) - web UI with HMR
+ * 1. AOP Local Server (apps/local-server) - local task orchestrator
+ * 2. Dashboard (apps/dashboard) - web UI with HMR
  *
  * Usage:
  *   bun dev                   # Start all services
- *   bun dev --db-only         # Start only PostgreSQL
- *   bun dev --no-local        # Start db + server (no local-server)
+ *   bun dev --no-local        # Start dashboard only
  *   bun dev --no-dashboard    # Start without dashboard
  */
 
@@ -92,7 +89,6 @@ import { configureLogging, getLogger } from "@aop/infra";
 const log = getLogger("orchestrator");
 
 interface ParsedArgs {
-  dbOnly: boolean;
   noLocal: boolean;
   noDashboard: boolean;
 }
@@ -228,69 +224,9 @@ const checkAndKillExistingServices = async (ports: number[]): Promise<void> => {
 const parseArgs = (): ParsedArgs => {
   const args = process.argv.slice(2);
   return {
-    dbOnly: args.includes("--db-only"),
     noLocal: args.includes("--no-local"),
     noDashboard: args.includes("--no-dashboard"),
   };
-};
-
-const waitForPostgres = async (maxAttempts = 30): Promise<boolean> => {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const result = await Bun.$`docker exec aop-postgres pg_isready -U aop -d aop`.quiet();
-      if (result.exitCode === 0) {
-        // Add extra delay to ensure Postgres is fully accepting connections
-        await Bun.sleep(2000);
-        return true;
-      }
-    } catch {
-      // Container may not be ready yet
-    }
-    await Bun.sleep(1000);
-  }
-  return false;
-};
-
-const checkDockerAvailability = async (): Promise<void> => {
-  try {
-    await Bun.$`docker version`.quiet();
-  } catch {
-    throw new Error(
-      "Docker is not installed or not in PATH. Install Docker Desktop from https://docs.docker.com/get-docker/",
-    );
-  }
-
-  try {
-    await Bun.$`docker info`.quiet();
-  } catch {
-    throw new Error("Docker daemon is not running. Start Docker Desktop and try again.");
-  }
-
-  try {
-    await Bun.$`docker compose version`.quiet();
-  } catch {
-    throw new Error(
-      "Docker Compose is not available. Install Docker Desktop (includes Compose) from https://docs.docker.com/get-docker/",
-    );
-  }
-};
-
-const startPostgres = async (): Promise<void> => {
-  log.info("Starting PostgreSQL...");
-  await checkDockerAvailability();
-  await Bun.$`docker compose up -d postgres`;
-
-  log.info("Waiting for PostgreSQL to be ready...");
-  const ready = await waitForPostgres();
-  if (!ready) {
-    throw new Error("PostgreSQL failed to start within timeout");
-  }
-  log.info("PostgreSQL is ready");
-};
-
-const stopPostgres = async (): Promise<void> => {
-  log.info("Stopping PostgreSQL...");
-  await Bun.$`docker compose down`.quiet();
 };
 
 interface ProcessHandle {
@@ -300,25 +236,12 @@ interface ProcessHandle {
 
 type Subprocess = ReturnType<typeof Bun.spawn>;
 
-const startServer = (): ProcessHandle => {
-  log.info("Starting AOP server...");
-  const proc = Bun.spawn(["bun", "run", "--watch", "./src/main.ts"], {
-    cwd: "./apps/server",
-    env: { ...process.env, AOP_LOG_FORMAT: "pretty" },
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  return { name: "server", proc };
-};
-
 const startLocalServer = (): ProcessHandle => {
   log.info("Starting AOP local server...");
   const proc = Bun.spawn(["bun", "run", "--watch", "./src/run.ts"], {
     cwd: "./apps/local-server",
     env: {
       ...process.env,
-      AOP_SERVER_URL: AOP_URLS.SERVER,
-      AOP_API_KEY: "aop_test_key_dev",
       AOP_TEST_MODE: "true",
     },
     stdout: "inherit",
@@ -341,7 +264,7 @@ const startDashboard = (): ProcessHandle => {
   return { name: "dashboard", proc };
 };
 
-const shutdown = async (processes: ProcessHandle[], includeDb: boolean): Promise<void> => {
+const shutdown = async (processes: ProcessHandle[]): Promise<void> => {
   log.info("Shutting down...");
 
   for (const { name, proc } of processes) {
@@ -350,43 +273,21 @@ const shutdown = async (processes: ProcessHandle[], includeDb: boolean): Promise
     await proc.exited;
   }
 
-  if (includeDb) {
-    await stopPostgres();
-  }
-
   log.info("Shutdown complete");
 };
 
 const main = async () => {
   await configureLogging({ format: "pretty", serviceName: "dev" });
 
-  const { dbOnly, noLocal, noDashboard } = parseArgs();
+  const { noLocal, noDashboard } = parseArgs();
 
   // Check for existing services on ports we need
   const portsToCheck: number[] = [];
-  if (!dbOnly) {
-    portsToCheck.push(AOP_PORTS.SERVER);
-    if (!noLocal) portsToCheck.push(AOP_PORTS.LOCAL_SERVER);
-    if (!noDashboard) portsToCheck.push(AOP_PORTS.DASHBOARD);
-  }
+  if (!noLocal) portsToCheck.push(AOP_PORTS.LOCAL_SERVER);
+  if (!noDashboard) portsToCheck.push(AOP_PORTS.DASHBOARD);
   await checkAndKillExistingServices(portsToCheck);
 
-  await startPostgres();
-
-  if (dbOnly) {
-    log.info("Database started. Press Ctrl+C to stop.");
-    process.on("SIGINT", async () => {
-      await stopPostgres();
-      process.exit(0);
-    });
-    await Bun.sleep(Number.MAX_SAFE_INTEGER);
-    return;
-  }
-
   const processes: ProcessHandle[] = [];
-
-  processes.push(startServer());
-  await Bun.sleep(2000);
 
   if (!noLocal) {
     processes.push(startLocalServer());
@@ -400,12 +301,12 @@ const main = async () => {
   log.info("Dev environment started. Press Ctrl+C to stop.");
 
   process.on("SIGINT", async () => {
-    await shutdown(processes, true);
+    await shutdown(processes);
     process.exit(0);
   });
 
   process.on("SIGTERM", async () => {
-    await shutdown(processes, true);
+    await shutdown(processes);
     process.exit(0);
   });
 

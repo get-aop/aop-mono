@@ -11,7 +11,7 @@ import type { RepoRepository } from "../../repo/repository.ts";
 import type { SettingsRepository } from "../../settings/repository.ts";
 import { SettingKey } from "../../settings/types.ts";
 import type { ConcurrencyLimits, TaskRepository } from "../../task/repository.ts";
-import type { MarkReadyOptions, ServerSync } from "../sync/server-sync.ts";
+import type { LocalWorkflowService } from "../../workflow/service.ts";
 
 const logger = getLogger("queue-processor");
 
@@ -24,7 +24,7 @@ export interface QueueProcessorDeps {
   repoRepository: RepoRepository;
   settingsRepository: SettingsRepository;
   executionRepository: ExecutionRepository;
-  serverSync?: ServerSync;
+  workflowService: LocalWorkflowService;
   executeTask: (
     task: Task,
     stepCommand: StepCommand,
@@ -49,7 +49,7 @@ export const createQueueProcessor = (
     repoRepository,
     settingsRepository,
     executionRepository,
-    serverSync,
+    workflowService,
     executeTask,
   } = deps;
   let running = false;
@@ -73,53 +73,15 @@ export const createQueueProcessor = (
     return repo?.max_concurrent_tasks ?? 3;
   };
 
-  const buildMarkReadyOptions = (task: Task): MarkReadyOptions | undefined => {
-    const options: MarkReadyOptions = {};
-    if (task.preferred_workflow) options.workflowName = task.preferred_workflow;
-    if (task.retry_from_step) options.retryFromStep = task.retry_from_step;
-    return Object.keys(options).length > 0 ? options : undefined;
-  };
-
-  const tryMarkTaskReady = async (task: Task): Promise<TaskReadyResponse | null> => {
-    if (!serverSync || serverSync.isDegraded()) {
-      return null;
-    }
-    if (serverSync.isTaskQueued(task.id)) {
-      return { status: task.status, queued: true };
-    }
-
-    try {
-      return await serverSync.markTaskReady(task.id, task.repo_id, buildMarkReadyOptions(task));
-    } catch (err) {
-      logger.warn("Failed to mark task ready on server: {error}", {
-        taskId: task.id,
-        error: String(err),
-      });
-      return null;
-    }
-  };
-
   interface ResolvedStep {
     step: StepCommand;
     execution: ExecutionInfo;
   }
 
   const resolveStep = async (task: Task): Promise<ResolvedStep | null> => {
-    const log = logger.with({ taskId: task.id });
-    const readyResult = await tryMarkTaskReady(task);
-
-    if (!readyResult) {
-      log.debug("No server connection, task stays READY");
-      return null;
-    }
-
-    if (readyResult.queued) {
-      log.debug("Task queued by server, skipping execution");
-      return null;
-    }
+    const readyResult: TaskReadyResponse = await workflowService.startTask(task);
 
     if (!readyResult.step || !readyResult.execution) {
-      log.warn("Server returned incomplete response, skipping execution");
       return null;
     }
 
@@ -128,11 +90,6 @@ export const createQueueProcessor = (
 
   const resolveResume = async (task: Task): Promise<ResolvedStep | null> => {
     const log = logger.with({ taskId: task.id });
-
-    if (!serverSync || serverSync.isDegraded()) {
-      log.debug("No server connection, task stays RESUMING");
-      return null;
-    }
 
     if (!task.resume_input) {
       log.error("No resume_input found for RESUMING task");
@@ -145,10 +102,9 @@ export const createQueueProcessor = (
       return null;
     }
 
-    const response = await serverSync.resumeStep(latestStep.id, task.resume_input);
+    const response = await workflowService.resumeTask(task, latestStep.id, task.resume_input);
 
     if (!response.step || !response.execution) {
-      log.warn("Server returned incomplete resume response");
       return null;
     }
 
