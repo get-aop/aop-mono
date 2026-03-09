@@ -35,8 +35,6 @@ COPY . /app
 
 WORKDIR /app
 
-RUN sed -i 's/"prepare": "lefthook install"/"prepare": ""/g' package.json
-
 RUN bun install
 
 WORKDIR /app/apps/dashboard
