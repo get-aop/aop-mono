@@ -20,7 +20,7 @@ digraph plan {
     rankdir=TB;
     read [label="Read input document" shape=box];
     gate [label="Research task?" shape=diamond];
-    redirect [label="Tell user to use\ntask-planner" shape=box];
+    redirect [label="Tell user to use\naop-task-planner" shape=box];
     context [label="Surface search\nfor context" shape=box];
     analyze [label="Analyze scope\n& constraints" shape=box];
     plan [label="Draft research plan" shape=box];
@@ -48,7 +48,7 @@ If critical ambiguities exist, ask the user to clarify **before** proceeding to 
 
 ### 2. Gate Check
 
-This is a research planner. If the input document is about building, implementing, or modifying code rather than investigating or comparing options, tell the user to use `task-planner` instead and stop.
+This is a research planner. If the input document is about building, implementing, or modifying code rather than investigating or comparing options, tell the user to use `aop-task-planner` instead and stop.
 
 ### 3. Surface Search for Context
 
@@ -154,7 +154,7 @@ The verification section items ALWAYS use `- [ ]` checkboxes. These are starting
 - **Always save the plan file** — The plan MUST be written to the output path. A plan only shown in chat is a failed invocation.
 - **Always present for approval** — After saving, show the file path and summary in chat, then explicitly ask the user to approve. Never silently save and move on.
 - **Plan, don't research** — Do NOT produce findings, deep analysis, or source citations. Surface searches for context are fine, but the deliverable is a plan of research tasks, not research itself.
-- **Research tasks only** — Every task checkbox must be a research task (investigate, compare, analyze, evaluate). Do NOT create implementation tasks (build, implement, create, deploy). If the input asks for implementation, redirect the user to `task-planner`.
+- **Research tasks only** — Every task checkbox must be a research task (investigate, compare, analyze, evaluate). Do NOT create implementation tasks (build, implement, create, deploy). If the input asks for implementation, redirect the user to `aop-task-planner`.
 - **Strict format only** — The plan file has exactly 5 top-level sections: `# Plan:`, `## Summary`, `## Context`, `## Tasks`, `## Verification`. Do NOT add extra sections like "Notes", "Success Criteria", "Deliverables", "Methodology", or anything else. All relevant information fits within the 5 required sections.
 - **No horizontal rules** — Do NOT use `---` between tasks. Tasks are separated by blank lines only.
 - **Clarify before planning, not during** — If the document has critical ambiguities, ask the user before drafting the plan. Don't embed unanswered questions into the plan itself.

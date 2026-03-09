@@ -104,7 +104,7 @@ cd <repository-directory>
 bun install
 ```
 
-The repository also vendors a minimal repo-local skill bundle under `.claude/skills` and `.codex/skills` so planning and execution workflows do not depend on machine-global installs.
+The repository also vendors a minimal repo-local AOP skill bundle under `.claude/skills` and `.codex/skills` so planning and execution workflows do not depend on machine-global installs.
 
 ### Usage
 
