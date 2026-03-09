@@ -97,11 +97,13 @@ export const parseTaskDoc = async (taskFilePath: string): Promise<TaskDoc> => {
   const stat = statSync(taskFilePath);
 
   return {
+    id: typeof frontmatter.id === "string" ? frontmatter.id : null,
     title: frontmatter.title || basename(taskFilePath, ".md"),
     status: normalizeTaskStatus(frontmatter.status),
     createdAt: frontmatter.created ?? stat.birthtime.toISOString(),
     updatedAt: stat.mtime.toISOString(),
     branch: frontmatter.branch ?? null,
+    changePath: typeof frontmatter.changePath === "string" ? frontmatter.changePath : null,
     description: sections.description,
     requirements: sections.requirements,
     acceptanceCriteria: parseAcceptanceCriteria(sections.acceptanceCriteria),

@@ -38,6 +38,12 @@ describe("create-task/service", () => {
   let mockClaude: MockClaudeSession;
   const cleanupDirs: string[] = [];
 
+  const createTestCwd = async (): Promise<string> => {
+    const dir = await mkdtemp(join(tmpdir(), "aop-create-task-"));
+    cleanupDirs.push(dir);
+    return dir;
+  };
+
   beforeEach(() => {
     sessionRepository = createInMemorySessionRepository();
     ctx = createMockContext(sessionRepository);
@@ -426,6 +432,8 @@ describe("create-task/service", () => {
   });
 
   test("finalize with createChange scaffolds task docs", async () => {
+    const testDir = await createTestCwd();
+
     mockClaude.queueSteps({
       method: "run",
       sessionId: "claude-session-1",
@@ -438,7 +446,7 @@ describe("create-task/service", () => {
 
     const started = await service.start({
       description: "Build a dashboard",
-      cwd: process.cwd(),
+      cwd: testDir,
     });
 
     expect(started.status).toBe("completed");
@@ -458,6 +466,8 @@ describe("create-task/service", () => {
   });
 
   test("finalize with createChange uses slugified task name", async () => {
+    const testDir = await createTestCwd();
+
     mockClaude.queueSteps({
       method: "run",
       sessionId: "claude-session-1",
@@ -470,7 +480,7 @@ describe("create-task/service", () => {
 
     const started = await service.start({
       description: "Build a dashboard",
-      cwd: process.cwd(),
+      cwd: testDir,
     });
 
     expect(started.status).toBe("completed");
@@ -525,6 +535,8 @@ describe("create-task/service", () => {
   });
 
   test("finalize completes without artifact generation phase", async () => {
+    const testDir = await createTestCwd();
+
     mockClaude.queueSteps({
       method: "run",
       sessionId: "claude-session-1",
@@ -535,7 +547,7 @@ describe("create-task/service", () => {
       createClaudeSession: () => mockClaude.session as never,
     });
 
-    const started = await service.start({ description: "Build a dashboard", cwd: process.cwd() });
+    const started = await service.start({ description: "Build a dashboard", cwd: testDir });
     expect(started.status).toBe("completed");
     if (started.status !== "completed") return;
 

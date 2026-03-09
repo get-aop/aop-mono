@@ -19,6 +19,16 @@ describe("task/repository", () => {
     await db.destroy();
   });
 
+  const createReadyTask = async (
+    id: string,
+    repoId: string,
+    changePath: string,
+    readyAt: string,
+  ): Promise<void> => {
+    await createTestTask(db, id, repoId, changePath, "READY");
+    await repo.update(id, { status: "READY", ready_at: readyAt });
+  };
+
   describe("create", () => {
     test("creates a task", async () => {
       const now = new Date().toISOString();
@@ -33,7 +43,7 @@ describe("task/repository", () => {
 
       expect(task.id).toBe("task-1");
       expect(task.repo_id).toBe("repo-1");
-      expect(task.change_path).toBe("changes/feat-1");
+      expect(task.change_path).toBe("docs/tasks/feat-1");
       expect(task.status).toBe("DRAFT");
     });
   });
@@ -88,6 +98,8 @@ describe("task/repository", () => {
       const repoWithEvents = createTaskRepository(db, { eventEmitter });
 
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "REMOVED");
+      await repoWithEvents.refresh();
+      events.length = 0;
 
       const now = new Date().toISOString();
       const result = await repoWithEvents.createIdempotent({
@@ -258,26 +270,18 @@ describe("task/repository", () => {
 
     test("orders by ready_at ascending", async () => {
       const now = new Date();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-1",
-          repo_id: "repo-1",
-          change_path: "changes/feat-1",
-          status: "READY",
-          ready_at: new Date(now.getTime() + 1000).toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-2",
-          repo_id: "repo-1",
-          change_path: "changes/feat-2",
-          status: "READY",
-          ready_at: new Date(now.getTime() - 1000).toISOString(),
-        })
-        .execute();
+      await createReadyTask(
+        "task-1",
+        "repo-1",
+        "changes/feat-1",
+        new Date(now.getTime() + 1000).toISOString(),
+      );
+      await createReadyTask(
+        "task-2",
+        "repo-1",
+        "changes/feat-2",
+        new Date(now.getTime() - 1000).toISOString(),
+      );
 
       const tasks = await repo.list({ orderByReadyAt: "asc" });
 
@@ -287,26 +291,18 @@ describe("task/repository", () => {
 
     test("orders by ready_at descending", async () => {
       const now = new Date();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-1",
-          repo_id: "repo-1",
-          change_path: "changes/feat-1",
-          status: "READY",
-          ready_at: new Date(now.getTime() - 1000).toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-2",
-          repo_id: "repo-1",
-          change_path: "changes/feat-2",
-          status: "READY",
-          ready_at: new Date(now.getTime() + 1000).toISOString(),
-        })
-        .execute();
+      await createReadyTask(
+        "task-1",
+        "repo-1",
+        "changes/feat-1",
+        new Date(now.getTime() - 1000).toISOString(),
+      );
+      await createReadyTask(
+        "task-2",
+        "repo-1",
+        "changes/feat-2",
+        new Date(now.getTime() + 1000).toISOString(),
+      );
 
       const tasks = await repo.list({ orderByReadyAt: "desc" });
 
@@ -348,16 +344,7 @@ describe("task/repository", () => {
   describe("getNextExecutable", () => {
     test("returns first READY task when under global limit", async () => {
       const now = new Date();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-1",
-          repo_id: "repo-1",
-          change_path: "changes/feat-1",
-          status: "READY",
-          ready_at: now.toISOString(),
-        })
-        .execute();
+      await createReadyTask("task-1", "repo-1", "changes/feat-1", now.toISOString());
 
       const limits = {
         globalMax: 5,
@@ -402,26 +389,18 @@ describe("task/repository", () => {
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
 
       const now = new Date();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-2",
-          repo_id: "repo-1",
-          change_path: "changes/feat-2",
-          status: "READY",
-          ready_at: new Date(now.getTime() - 1000).toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-3",
-          repo_id: "repo-2",
-          change_path: "changes/feat-3",
-          status: "READY",
-          ready_at: new Date(now.getTime() + 1000).toISOString(),
-        })
-        .execute();
+      await createReadyTask(
+        "task-2",
+        "repo-1",
+        "changes/feat-2",
+        new Date(now.getTime() - 1000).toISOString(),
+      );
+      await createReadyTask(
+        "task-3",
+        "repo-2",
+        "changes/feat-3",
+        new Date(now.getTime() + 1000).toISOString(),
+      );
 
       const limits = {
         globalMax: 5,
@@ -435,26 +414,18 @@ describe("task/repository", () => {
 
     test("orders READY tasks by ready_at ascending", async () => {
       const now = new Date();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-1",
-          repo_id: "repo-1",
-          change_path: "changes/feat-1",
-          status: "READY",
-          ready_at: new Date(now.getTime() + 1000).toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-2",
-          repo_id: "repo-1",
-          change_path: "changes/feat-2",
-          status: "READY",
-          ready_at: new Date(now.getTime() - 1000).toISOString(),
-        })
-        .execute();
+      await createReadyTask(
+        "task-1",
+        "repo-1",
+        "changes/feat-1",
+        new Date(now.getTime() + 1000).toISOString(),
+      );
+      await createReadyTask(
+        "task-2",
+        "repo-1",
+        "changes/feat-2",
+        new Date(now.getTime() - 1000).toISOString(),
+      );
 
       const limits = {
         globalMax: 5,
@@ -471,26 +442,18 @@ describe("task/repository", () => {
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
 
       const now = new Date();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-2",
-          repo_id: "repo-1",
-          change_path: "changes/feat-2",
-          status: "READY",
-          ready_at: new Date(now.getTime() - 2000).toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "task-3",
-          repo_id: "repo-2",
-          change_path: "changes/feat-3",
-          status: "READY",
-          ready_at: new Date(now.getTime() - 1000).toISOString(),
-        })
-        .execute();
+      await createReadyTask(
+        "task-2",
+        "repo-1",
+        "changes/feat-2",
+        new Date(now.getTime() - 2000).toISOString(),
+      );
+      await createReadyTask(
+        "task-3",
+        "repo-2",
+        "changes/feat-3",
+        new Date(now.getTime() - 1000).toISOString(),
+      );
 
       const limits = {
         globalMax: 5,
@@ -505,28 +468,10 @@ describe("task/repository", () => {
     test("excludes orphaned tasks whose repo no longer exists", async () => {
       // Create a READY task referencing a repo that doesn't exist
       const now = new Date();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "orphan-task",
-          repo_id: "deleted-repo",
-          change_path: "changes/orphan",
-          status: "READY",
-          ready_at: new Date(now.getTime() - 1000).toISOString(),
-        })
-        .execute();
+      await createTestTask(db, "orphan-task", "deleted-repo", "changes/orphan", "READY");
 
       // Create a valid READY task
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "valid-task",
-          repo_id: "repo-1",
-          change_path: "changes/valid",
-          status: "READY",
-          ready_at: now.toISOString(),
-        })
-        .execute();
+      await createReadyTask("valid-task", "repo-1", "changes/valid", now.toISOString());
 
       const limits = {
         globalMax: 5,
@@ -540,17 +485,7 @@ describe("task/repository", () => {
     });
 
     test("returns null when only orphaned tasks exist", async () => {
-      const now = new Date();
-      await db
-        .insertInto("tasks")
-        .values({
-          id: "orphan-task",
-          repo_id: "deleted-repo",
-          change_path: "changes/orphan",
-          status: "READY",
-          ready_at: now.toISOString(),
-        })
-        .execute();
+      await createTestTask(db, "orphan-task", "deleted-repo", "changes/orphan", "READY");
 
       const limits = {
         globalMax: 5,
@@ -670,100 +605,34 @@ describe("task/repository", () => {
       expect(metricsRepo2.successRate).toBeCloseTo(0.333, 2);
     });
 
-    test("calculates average duration for completed executions", async () => {
+    test("keeps average duration at zero without persisted execution history", async () => {
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DONE");
       await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "DONE");
 
-      const now = new Date();
-      await db
-        .insertInto("executions")
-        .values({
-          id: "exec-1",
-          task_id: "task-1",
-          status: "completed",
-          started_at: new Date(now.getTime() - 10000).toISOString(),
-          completed_at: now.toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("executions")
-        .values({
-          id: "exec-2",
-          task_id: "task-2",
-          status: "completed",
-          started_at: new Date(now.getTime() - 20000).toISOString(),
-          completed_at: now.toISOString(),
-        })
-        .execute();
-
       const metrics = await repo.getMetrics();
 
-      expect(metrics.avgDurationMs).toBeCloseTo(15000, -2);
+      expect(metrics.avgDurationMs).toBe(0);
     });
 
-    test("calculates average duration for failed executions", async () => {
+    test("keeps failed average duration at zero without persisted execution history", async () => {
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "BLOCKED");
       await createTestTask(db, "task-2", "repo-1", "changes/feat-2", "BLOCKED");
 
-      const now = new Date();
-      await db
-        .insertInto("executions")
-        .values({
-          id: "exec-1",
-          task_id: "task-1",
-          status: "failed",
-          started_at: new Date(now.getTime() - 5000).toISOString(),
-          completed_at: now.toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("executions")
-        .values({
-          id: "exec-2",
-          task_id: "task-2",
-          status: "failed",
-          started_at: new Date(now.getTime() - 15000).toISOString(),
-          completed_at: now.toISOString(),
-        })
-        .execute();
-
       const metrics = await repo.getMetrics();
 
-      expect(metrics.avgFailedDurationMs).toBeCloseTo(10000, -2);
+      expect(metrics.avgFailedDurationMs).toBe(0);
     });
 
-    test("filters execution durations by repoId", async () => {
+    test("reports zero execution durations for each repo", async () => {
       await createTestRepo(db, "repo-2", "/test/repo2");
       await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "DONE");
       await createTestTask(db, "task-2", "repo-2", "changes/feat-2", "DONE");
 
-      const now = new Date();
-      await db
-        .insertInto("executions")
-        .values({
-          id: "exec-1",
-          task_id: "task-1",
-          status: "completed",
-          started_at: new Date(now.getTime() - 10000).toISOString(),
-          completed_at: now.toISOString(),
-        })
-        .execute();
-      await db
-        .insertInto("executions")
-        .values({
-          id: "exec-2",
-          task_id: "task-2",
-          status: "completed",
-          started_at: new Date(now.getTime() - 30000).toISOString(),
-          completed_at: now.toISOString(),
-        })
-        .execute();
-
       const metricsRepo1 = await repo.getMetrics("repo-1");
       const metricsRepo2 = await repo.getMetrics("repo-2");
 
-      expect(metricsRepo1.avgDurationMs).toBeCloseTo(10000, -2);
-      expect(metricsRepo2.avgDurationMs).toBeCloseTo(30000, -2);
+      expect(metricsRepo1.avgDurationMs).toBe(0);
+      expect(metricsRepo2.avgDurationMs).toBe(0);
     });
   });
 });

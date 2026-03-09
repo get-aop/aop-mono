@@ -89,7 +89,8 @@ const normalizeTaskPath = (changePath: string): string => {
   return join(TASK_DIR, basename(changePath));
 };
 
-const taskDirFor = (repoPath: string, changePath: string): string => join(repoPath, changePath);
+const taskDirFor = (repoPath: string, changePath: string): string =>
+  join(repoPath, normalizeTaskPath(changePath));
 
 const buildTaskBody = (title: string): string =>
   [
@@ -156,6 +157,7 @@ const matchesFilters = (task: Task, filters?: ListFilters): boolean => {
 };
 
 const buildTaskFrontmatter = (task: NewTask, title: string): TaskDocFrontmatter => ({
+  id: task.id,
   title,
   status: task.status ?? TaskStatus.DRAFT,
   created: task.created_at ?? new Date().toISOString(),
@@ -187,13 +189,14 @@ export const createTaskRepository = (
     const normalizedChangePath = normalizeTaskPath(changePath);
     const taskFilePath = join(repoPath, normalizedChangePath, "task.md");
     const doc = await parseTaskDoc(taskFilePath);
-    const id = taskIdFor(repoId, normalizedChangePath);
+    const id = doc.id ?? taskIdFor(repoId, normalizedChangePath);
     const state = getRuntimeState(id);
+    const taskChangePath = doc.changePath ?? normalizedChangePath;
 
     return {
       id,
       repo_id: repoId,
-      change_path: normalizedChangePath,
+      change_path: taskChangePath,
       worktree_path: state.worktree_path,
       status: doc.status,
       ready_at: state.ready_at,
@@ -453,7 +456,8 @@ export const createTaskRepository = (
       await refreshCache();
       const changePath = normalizeTaskPath(task.change_path);
       const existing = [...cache.values()].find(
-        (entry) => entry.repo_id === task.repo_id && entry.change_path === changePath,
+        (entry) =>
+          entry.repo_id === task.repo_id && normalizeTaskPath(entry.change_path) === changePath,
       );
       if (existing) return existing;
       return createTaskRecord({ ...task, change_path: changePath });
@@ -466,7 +470,8 @@ export const createTaskRepository = (
       const normalizedChangePath = normalizeTaskPath(changePath);
       return (
         [...cache.values()].find(
-          (task) => task.repo_id === repoId && task.change_path === normalizedChangePath,
+          (task) =>
+            task.repo_id === repoId && normalizeTaskPath(task.change_path) === normalizedChangePath,
         ) ?? null
       );
     },

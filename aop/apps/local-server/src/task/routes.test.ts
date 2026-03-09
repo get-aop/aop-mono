@@ -303,7 +303,7 @@ describe("task/routes", () => {
       expect(body.error).toBe("Task not found");
     });
 
-    test("returns 422 when no .md files exist", async () => {
+    test("marks task ready when task.md already exists", async () => {
       await createTestRepo(db, "repo-1", "/path/to/repo");
       await createTestTask(db, "task-1", "repo-1", changePath, "DRAFT");
 
@@ -314,9 +314,9 @@ describe("task/routes", () => {
       });
       const body: AnyJson = await res.json();
 
-      expect(res.status).toBe(422);
-      expect(body.error).toContain("no .md files");
-      expect(body.changePath).toBe(changePath);
+      expect(res.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.taskId).toBe("task-1");
     });
 
     test("marks DRAFT task as ready", async () => {
@@ -899,9 +899,20 @@ describe("task/routes", () => {
       }
     });
 
+    const commitRepoState = async (message: string): Promise<void> => {
+      const addProc = Bun.spawn(["git", "add", "."], { cwd: testRepoPath });
+      await addProc.exited;
+
+      const commitProc = Bun.spawn(["git", "commit", "-m", message], {
+        cwd: testRepoPath,
+      });
+      await commitProc.exited;
+    };
+
     test("returns 404 for WORKTREE_NOT_FOUND", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       const res = await app.request("/api/repos/repo-1/tasks/task-1/apply", {
         method: "POST",
@@ -915,6 +926,7 @@ describe("task/routes", () => {
     test("returns NO_CHANGES when worktree has no changes", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       const gitManager = new GitManager({ repoPath: testRepoPath, repoId: "repo-1" });
       await gitManager.init();
@@ -933,6 +945,7 @@ describe("task/routes", () => {
     test("returns 409 for DIRTY_WORKING_DIRECTORY", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       const gitManager = new GitManager({ repoPath: testRepoPath, repoId: "repo-1" });
       await gitManager.init();
@@ -964,6 +977,7 @@ describe("task/routes", () => {
     test("applies with conflicts and returns conflicting files", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       const gitManager = new GitManager({ repoPath: testRepoPath, repoId: "repo-1" });
       await gitManager.init();
@@ -1003,6 +1017,7 @@ describe("task/routes", () => {
     test("successfully applies worktree changes", async () => {
       await createTestRepo(db, "repo-1", testRepoPath);
       await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
+      await commitRepoState("Add task docs");
 
       const gitManager = new GitManager({ repoPath: testRepoPath, repoId: "repo-1" });
       await gitManager.init();

@@ -1,9 +1,11 @@
 import type { TaskStatus } from "@aop/common";
 
 export interface TaskDocFrontmatter extends Record<string, unknown> {
+  id?: string;
   title: string;
   status: string;
   created?: string;
+  changePath?: string;
   priority?: string;
   tags?: string[];
   assignee?: string | null;
@@ -15,11 +17,13 @@ export interface TaskDocFrontmatter extends Record<string, unknown> {
 }
 
 export interface TaskDoc {
+  id: string | null;
   title: string;
   status: TaskStatus;
   createdAt: string;
   updatedAt: string;
   branch: string | null;
+  changePath: string | null;
   description: string;
   requirements: string;
   acceptanceCriteria: Array<{ text: string; checked: boolean }>;

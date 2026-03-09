@@ -29,16 +29,6 @@ describe("LogFlusher", () => {
   });
 
   const setupStep = async (stepId: string) => {
-    await db
-      .insertInto("tasks")
-      .values({ id: "task-1", repo_id: "repo-1", change_path: "c", status: "WORKING" })
-      .onConflict((oc) => oc.doNothing())
-      .execute();
-    await db
-      .insertInto("repos")
-      .values({ id: "repo-1", path: "/r", max_concurrent_tasks: 1 })
-      .onConflict((oc) => oc.doNothing())
-      .execute();
     await repo.createExecution({
       id: "exec-1",
       task_id: "task-1",

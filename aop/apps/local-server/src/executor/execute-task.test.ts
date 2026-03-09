@@ -102,11 +102,7 @@ describe("executeTask", () => {
     expect(updatedTask?.status).toBe("BLOCKED");
     expect(updatedTask?.worktree_path).toBe(aopPaths.worktree("repo-1", "task-exec-1"));
 
-    const executions = await db
-      .selectFrom("executions")
-      .selectAll()
-      .where("task_id", "=", "task-exec-1")
-      .execute();
+    const executions = await ctx.executionRepository.getExecutionsByTaskId("task-exec-1");
     expect(executions.length).toBe(1);
     expect(executions[0]?.status).toBe("completed");
   });
@@ -365,23 +361,14 @@ describe("executeTask", () => {
     );
 
     // Verify exactly 1 execution record was created
-    const executions = await db
-      .selectFrom("executions")
-      .selectAll()
-      .where("task_id", "=", "task-exec-6")
-      .execute();
+    const executions = await ctx.executionRepository.getExecutionsByTaskId("task-exec-6");
     expect(executions.length).toBe(1);
     expect(executions[0]?.status).toBe("completed");
 
     // Verify 2 step execution records were created under the same execution
     const executionId = executions[0]?.id;
     if (!executionId) throw new Error("Execution should have an id");
-    const steps = await db
-      .selectFrom("step_executions")
-      .selectAll()
-      .where("execution_id", "=", executionId)
-      .orderBy("started_at", "asc")
-      .execute();
+    const steps = await ctx.executionRepository.getStepExecutionsByExecutionId(executionId);
     expect(steps.length).toBe(2);
     expect(steps[0]?.step_type).toBe("implement");
     expect(steps[1]?.step_type).toBe("review");
