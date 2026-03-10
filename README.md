@@ -102,6 +102,8 @@ aop status
 aop task:ready <task-id>
 ```
 
+For the full command surface, see the dedicated CLI reference.
+
 ## Execution Model
 
 Task state lives in `docs/tasks/<task-slug>/`.
