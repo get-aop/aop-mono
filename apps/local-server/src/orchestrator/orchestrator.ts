@@ -105,21 +105,20 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
   };
 
   const resolveProviderForTask = async (task: Task): Promise<LLMProvider> => {
-    const providerKey =
-      task.preferred_provider ?? (await ctx.settingsRepository.get(SettingKey.AGENT_PROVIDER));
+    const providerKey = await ctx.settingsRepository.get(SettingKey.AGENT_PROVIDER);
 
     try {
       return createProvider(providerKey);
     } catch (err) {
       logger.warn(
-        "Invalid provider '{provider}' for task {taskId}, falling back to claude-code: {error}",
+        "Invalid provider '{provider}' for task {taskId}, falling back to codex: {error}",
         {
           taskId: task.id,
           provider: providerKey,
           error: String(err),
         },
       );
-      return createProvider("claude-code");
+      return createProvider("codex");
     }
   };
 

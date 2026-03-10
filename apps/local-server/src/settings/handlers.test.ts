@@ -67,6 +67,7 @@ describe("settings/handlers", () => {
     test("accepts valid agent_provider values", async () => {
       for (const value of [
         "claude-code",
+        "codex",
         "opencode:opencode/kimi-k2.5",
         "opencode:opencode/kimi-k2.5-free",
         "opencode:openai/gpt-5.3-codex/medium",
@@ -91,11 +92,11 @@ describe("settings/handlers", () => {
     });
 
     test("accepts valid agent_provider value", async () => {
-      const result = await setSetting(ctx, "agent_provider", "cursor-cli:composer-1.5");
+      const result = await setSetting(ctx, "agent_provider", "codex");
 
       expect(result.success).toBe(true);
       if (!result.success) return;
-      expect(result.value).toBe("cursor-cli:composer-1.5");
+      expect(result.value).toBe("codex");
     });
   });
 

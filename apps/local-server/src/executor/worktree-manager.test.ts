@@ -16,10 +16,10 @@ describe("createWorktree", () => {
     cleanupAopHome();
   });
 
-  test("creates a worktree from the task base branch when provided", async () => {
+  test("creates a worktree from the repo default branch", async () => {
     const worktree: WorktreeInfo = {
       path: "/tmp/worktree/task-1",
-      branch: "task-1",
+      branch: "restore-auth-flow",
       baseBranch: "release",
       baseCommit: "abc123",
     };
@@ -36,14 +36,15 @@ describe("createWorktree", () => {
       repoPath: "/tmp/repo-1",
       task: {
         id: "task-1",
+        change_path: "docs/tasks/restore-auth-flow",
         base_branch: "release",
       },
     } as ExecutorContext;
 
     await expect(createWorktree(ctx)).resolves.toEqual(worktree);
     expect(initSpy).toHaveBeenCalledTimes(1);
-    expect(getDefaultBranchSpy).not.toHaveBeenCalled();
-    expect(createWorktreeSpy).toHaveBeenCalledWith("task-1", "release");
+    expect(getDefaultBranchSpy).toHaveBeenCalledTimes(1);
+    expect(createWorktreeSpy).toHaveBeenCalledWith("task-1", "main", "restore-auth-flow");
   });
 
   test("returns the existing worktree path when the worktree already exists", async () => {
@@ -60,19 +61,20 @@ describe("createWorktree", () => {
       repoPath: "/tmp/repo-2",
       task: {
         id: "task-2",
+        change_path: "docs/tasks/ship-dashboard",
         base_branch: null,
       },
     } as ExecutorContext;
 
     await expect(createWorktree(ctx)).resolves.toEqual({
       path: aopPaths.worktree("repo-2", "task-2"),
-      branch: "task-2",
+      branch: "ship-dashboard",
       baseBranch: "main",
       baseCommit: "",
     });
     expect(initSpy).toHaveBeenCalledTimes(1);
     expect(getDefaultBranchSpy).toHaveBeenCalledTimes(1);
-    expect(createWorktreeSpy).toHaveBeenCalledWith("task-2", "main");
+    expect(createWorktreeSpy).toHaveBeenCalledWith("task-2", "main", "ship-dashboard");
   });
 
   test("rethrows unexpected worktree creation errors", async () => {
@@ -90,6 +92,7 @@ describe("createWorktree", () => {
       repoPath: "/tmp/repo-3",
       task: {
         id: "task-3",
+        change_path: "docs/tasks/ship-dashboard",
         base_branch: null,
       },
     } as ExecutorContext;
@@ -97,6 +100,6 @@ describe("createWorktree", () => {
     await expect(createWorktree(ctx)).rejects.toThrow("git failed");
     expect(initSpy).toHaveBeenCalledTimes(1);
     expect(getDefaultBranchSpy).toHaveBeenCalledTimes(1);
-    expect(createWorktreeSpy).toHaveBeenCalledWith("task-3", "main");
+    expect(createWorktreeSpy).toHaveBeenCalledWith("task-3", "main", "ship-dashboard");
   });
 });

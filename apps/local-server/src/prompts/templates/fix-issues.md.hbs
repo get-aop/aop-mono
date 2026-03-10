@@ -9,9 +9,9 @@ Address the issues identified in the review report.
 ### Process
 
 1. Read `agent-review-report.md` from the change directory (`{{task.changePath}}`)
-2. Address each issue systematically, starting with highest severity
-3. Verify each fix resolves the issue
-4. Run tests after fixes to ensure no regressions
+2. Fix the highest-impact confirmed issues first
+3. Keep the changes tightly scoped to those findings
+4. Run the smallest relevant verification commands before signaling completion
 
 ### Fix Guidelines
 
@@ -19,5 +19,8 @@ Address the issues identified in the review report.
 - Do not introduce new features or refactoring beyond what's needed
 - Ensure fixes don't break existing functionality
 - Update tests if needed to cover the fixes
+- Leave the fixes in the worktree state that best reflects the implementation; do not stop just because they are not committed to `HEAD`
+- Do not spend time creating commits for review purposes; automatic handoff will finalize git history later if the task reaches `DONE`
+- If a reported issue is not valid, verify that carefully and leave a short note in the review report instead of making unnecessary code changes
 
 {{> output-signals}}

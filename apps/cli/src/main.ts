@@ -6,7 +6,6 @@ import { resolve } from "node:path";
 import { configureLogging, type LoggingOptions, type LogLevel } from "@aop/infra";
 import cac, { type CAC } from "cac";
 import {
-  applyCommand,
   configGetCommand,
   configSetCommand,
   createTaskCommand,
@@ -19,7 +18,6 @@ import {
 } from "./commands/index.ts";
 
 type CommandHandlers = {
-  applyCommand: typeof applyCommand;
   configGetCommand: typeof configGetCommand;
   configSetCommand: typeof configSetCommand;
   createTaskCommand: typeof createTaskCommand;
@@ -45,7 +43,6 @@ type CliDependencies = {
 };
 
 const defaultCommandHandlers: CommandHandlers = {
-  applyCommand,
   configGetCommand,
   configSetCommand,
   createTaskCommand,
@@ -148,15 +145,9 @@ export const registerCommands = (
 
   cli
     .command("task:ready <identifier>", "Mark task as READY")
-    .option("--workflow <name>", "Workflow name")
-    .option("--base-branch <branch>", "Base branch for worktree creation")
-    .option("--provider <provider>", "LLM provider (e.g. opencode:openai/gpt-5.3-codex)")
     .option("--resume [stepId]", "Retry from last step, or a specific step")
     .action((identifier, options) =>
       commands.taskReadyCommand(identifier, {
-        workflow: options.workflow,
-        baseBranch: options.baseBranch,
-        provider: options.provider,
         retryFromStep: options.resume === true ? "last" : options.resume || undefined,
       }),
     );
@@ -167,10 +158,6 @@ export const registerCommands = (
     .action((identifier, options) =>
       commands.taskRemoveCommand(identifier, { force: options.force }),
     );
-
-  cli
-    .command("apply <taskId>", "Apply worktree changes to main repo")
-    .action((taskId) => commands.applyCommand(taskId));
 
   cli
     .command("create-task [description]", "Create a new task interactively")

@@ -11,6 +11,7 @@ export interface StatusOptions {
 type Task = SSETask;
 type RepoStatus = SSERepoWithTasks;
 type StatusResponse = SSEServerStatus;
+type ResolvedTaskResponse = { task: Record<string, unknown> };
 
 const writeJson = (data: unknown): void => {
   const encoder = new TextEncoder();
@@ -48,6 +49,17 @@ const matchesIdentifier = (task: Task, repo: RepoStatus, identifier: string): bo
 };
 
 const showSingleTask = async (identifier: string, options: StatusOptions): Promise<void> => {
+  if (options.json) {
+    const resolved = await fetchServer<ResolvedTaskResponse>(
+      `/api/tasks/resolve/${encodeURIComponent(identifier)}`,
+    );
+
+    if (resolved.ok && resolved.data.task) {
+      writeJson(resolved.data.task);
+      return;
+    }
+  }
+
   const result = await fetchServer<StatusResponse>("/api/status");
 
   if (!result.ok) {

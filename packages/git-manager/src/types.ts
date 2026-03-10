@@ -10,12 +10,12 @@ export interface WorktreeInfo {
   baseCommit: string;
 }
 
+export interface HandoffResult {
+  branch: string;
+  commitSha: string | null;
+}
+
 export interface SquashResult {
   targetBranch: string;
   commitSha: string;
-}
-
-export interface ApplyResult {
-  affectedFiles: string[];
-  conflictingFiles: string[];
 }

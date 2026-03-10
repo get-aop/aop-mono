@@ -17,12 +17,14 @@ interface AssistantTextOptions {
 }
 
 const isExplicitSuccess = (event: RawProviderEvent): boolean => {
+  if (event.type === "turn.completed") return true;
   if (event.type !== "result") return false;
   const subtype = String(event.subtype ?? event.status ?? "").toLowerCase();
   return subtype === "success" || subtype === "completed";
 };
 
 const isExplicitFailure = (event: RawProviderEvent): boolean => {
+  if (event.type === "turn.failed" || event.type === "error") return true;
   if (event.type !== "result") return false;
   const subtype = String(event.subtype ?? event.status ?? "").toLowerCase();
   return subtype === "error" || subtype === "failure" || subtype === "failed";

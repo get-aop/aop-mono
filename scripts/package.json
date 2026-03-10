@@ -2,6 +2,7 @@
   "name": "@aop/scripts",
   "type": "module",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

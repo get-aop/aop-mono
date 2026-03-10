@@ -116,14 +116,7 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
   }, [blockedTasks]);
 
   const handleRetry = (task: Task, stepId?: string) => {
-    markReady(
-      task.repoId,
-      task.id,
-      task.preferredWorkflow ?? undefined,
-      task.baseBranch ?? undefined,
-      task.preferredProvider ?? undefined,
-      stepId,
-    );
+    markReady(task.repoId, task.id, stepId);
   };
 
   const handleRegisterSelect = async (path: string) => {

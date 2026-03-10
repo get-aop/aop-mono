@@ -13,6 +13,70 @@ type AssistantText = Extract<NormalizedLogEvent, { kind: "assistant_text" }>;
 type ResultSuccess = Extract<NormalizedLogEvent, { kind: "result_success" }>;
 type ErrorEvent = Extract<NormalizedLogEvent, { kind: "error" }>;
 
+describe("normalizeRawEvent - codex provider", () => {
+  const createEntry = (event: RawProviderEvent): ParsedRawLogEntry => ({
+    index: 0,
+    raw: JSON.stringify(event),
+    event,
+    provider: "codex",
+  });
+
+  test("normalizes completed agent messages as assistant text", () => {
+    const entry = createEntry({
+      type: "item.completed",
+      item: {
+        type: "agent_message",
+        text: "Implemented the task\n<aop>TASK_COMPLETE</aop>",
+      },
+    });
+
+    expect(normalizeRawEvent(entry)).toEqual([
+      {
+        kind: "assistant_text",
+        provider: "codex",
+        text: "Implemented the task",
+      },
+      {
+        kind: "assistant_text",
+        provider: "codex",
+        text: "<aop>TASK_COMPLETE</aop>",
+      },
+    ]);
+  });
+
+  test("normalizes turn completion with last assistant message", () => {
+    const entry = createEntry({
+      type: "turn.completed",
+      "last-assistant-message": "Plan saved",
+    });
+
+    expect(normalizeRawEvent(entry)).toEqual([
+      {
+        kind: "assistant_text",
+        provider: "codex",
+        text: "Plan saved",
+      },
+      {
+        kind: "result_success",
+        provider: "codex",
+        text: undefined,
+      },
+    ]);
+  });
+
+  test("extracts assistant text from completed codex agent message", () => {
+    const result = extractAssistantTextFromRawEvent({
+      type: "item.completed",
+      item: {
+        type: "agent_message",
+        text: "Hello from Codex",
+      },
+    });
+
+    expect(result).toBe("Hello from Codex");
+  });
+});
+
 describe("normalizeRawEvent - claude-code provider", () => {
   const createEntry = (event: RawProviderEvent): ParsedRawLogEntry => ({
     index: 0,

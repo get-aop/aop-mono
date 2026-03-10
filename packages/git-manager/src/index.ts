@@ -4,7 +4,6 @@ export {
   DirtyWorkingDirectoryError,
   DirtyWorktreeError,
   GitConflictError,
-  NoChangesError,
   NoCommitsError,
   NotAGitRepositoryError,
   WorktreeExistsError,
@@ -12,8 +11,8 @@ export {
 } from "./errors.ts";
 export { GitManager } from "./git-manager.ts";
 export type {
-  ApplyResult,
   GitManagerOptions,
+  HandoffResult,
   SquashResult,
   WorktreeInfo,
 } from "./types.ts";

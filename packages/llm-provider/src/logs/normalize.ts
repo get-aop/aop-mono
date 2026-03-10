@@ -16,6 +16,11 @@ interface AssistantMessage {
   content?: ContentBlock[];
 }
 
+interface CodexItemMessage {
+  type?: string;
+  text?: string;
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return !!value && typeof value === "object" && !Array.isArray(value);
 };
@@ -113,6 +118,51 @@ const normalizeClaudeEvent = (entry: ParsedRawLogEntry): NormalizedLogEvent[] =>
   }
 
   return [{ kind: "noise", provider, reason: "claude-unhandled" }];
+};
+
+const normalizeCodexEvent = (entry: ParsedRawLogEntry): NormalizedLogEvent[] => {
+  const { event, provider } = entry;
+
+  if (
+    event.type === "item.completed" &&
+    isRecord(event.item) &&
+    (event.item as CodexItemMessage).type === "agent_message" &&
+    typeof (event.item as CodexItemMessage).text === "string"
+  ) {
+    return toTextLines((event.item as CodexItemMessage).text ?? "").map((text) => ({
+      kind: "assistant_text",
+      provider,
+      text,
+    }));
+  }
+
+  if (event.type === "turn.completed") {
+    const message = event["last-assistant-message"];
+    const assistantEvents: NormalizedLogEvent[] =
+      typeof message === "string"
+        ? toTextLines(message).map((text) => ({ kind: "assistant_text", provider, text }))
+        : [];
+
+    return [
+      ...assistantEvents,
+      {
+        kind: "result_success",
+        provider,
+      },
+    ];
+  }
+
+  if (event.type === "turn.failed" || event.type === "error") {
+    return [
+      {
+        kind: "error",
+        provider,
+        text: failureMessage(event),
+      },
+    ];
+  }
+
+  return [{ kind: "noise", provider, reason: "codex-unhandled" }];
 };
 
 const OPEN_CODE_SUCCESS_STATUSES = ["completed", "complete", "done", "success"];
@@ -220,6 +270,8 @@ export const normalizeRawEvent = (entry: ParsedRawLogEntry): NormalizedLogEvent[
   }
 
   switch (entry.provider) {
+    case "codex":
+      return normalizeCodexEvent(entry);
     case "opencode":
       return normalizeOpenCodeEvent(entry);
     case "cursor-cli":
@@ -236,6 +288,19 @@ export const normalizeRawEvents = (entries: ParsedRawLogEntry[]): NormalizedLogE
 };
 
 export const extractAssistantTextFromRawEvent = (event: RawProviderEvent): string => {
+  if (
+    event.type === "item.completed" &&
+    isRecord(event.item) &&
+    event.item.type === "agent_message" &&
+    typeof event.item.text === "string"
+  ) {
+    return event.item.text;
+  }
+
+  if (event.type === "turn.completed" && typeof event["last-assistant-message"] === "string") {
+    return event["last-assistant-message"];
+  }
+
   if (event.type === "text" && isRecord(event.part) && typeof event.part.text === "string") {
     return event.part.text;
   }

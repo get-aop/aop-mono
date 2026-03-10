@@ -30,9 +30,11 @@ Follow the repo guidelines to run tests, builds and correct way of verifying cha
 This repository vendors a small public-friendly skill bundle locally so task workflows do not depend on globally installed skills.
 
 Canonical skill paths:
-- `.claude/skills/brainstorming/SKILL.md`
+- `.claude/skills/aop-brainstorming/SKILL.md`
+- `.claude/skills/code-simplifier/SKILL.md`
 - `.claude/skills/create-task/SKILL.md`
 - `.claude/skills/task-planner/SKILL.md`
+- `.claude/skills/task-ready/SKILL.md`
 - `.claude/skills/task-review/SKILL.md`
 - `.claude/skills/code-review/SKILL.md`
 - `.claude/skills/remove-ai-slop/SKILL.md`
@@ -40,3 +42,7 @@ Canonical skill paths:
 - `.claude/skills/test-driven-development/SKILL.md`
 
 Matching copies also live under `.codex/skills/` for Codex-based runs.
+
+For AOP task creation:
+- Use `aop-brainstorming` for idea-first task creation under `docs/tasks/<task-slug>/`.
+- Do not use a generic `brainstorming` skill in this repo. Use `aop-brainstorming` only.

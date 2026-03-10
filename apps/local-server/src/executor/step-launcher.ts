@@ -4,7 +4,7 @@ import type { ExecutionInfo, SignalDefinition, StepCommand } from "@aop/common/p
 import type { WorktreeInfo } from "@aop/git-manager";
 import { getLogger } from "@aop/infra";
 import {
-  ClaudeCodeProvider,
+  CodexProvider,
   createProvider,
   inferRunOutcomeFromRawJsonl,
   type LLMProvider,
@@ -53,17 +53,13 @@ export const readRunResultFromLog = (logFile: string): { exitCode: number; timed
   return { exitCode: inferred.outcome === "success" ? 0 : 1 };
 };
 
-export const getProvider = async (ctx: LocalServerContext, task: Task): Promise<LLMProvider> => {
-  if (task.preferred_provider) {
-    return createProvider(task.preferred_provider);
-  }
-
+export const getProvider = async (ctx: LocalServerContext): Promise<LLMProvider> => {
   const providerKey = await ctx.settingsRepository.get(SettingKey.AGENT_PROVIDER);
   if (providerKey) {
     return createProvider(providerKey);
   }
 
-  return new ClaudeCodeProvider();
+  return new CodexProvider();
 };
 
 export const spawnAgentWithReaper = async (
@@ -84,7 +80,7 @@ export const spawnAgentWithReaper = async (
   if (!task) {
     throw new Error(`Task ${taskId} not found`);
   }
-  const provider = explicitProvider ?? (await getProvider(ctx, task));
+  const provider = explicitProvider ?? (await getProvider(ctx));
 
   const logFile = join(executorCtx.logsDir, `${stepId}.jsonl`);
   const timeoutMs = executorCtx.timeoutSecs * 1000;
@@ -209,6 +205,7 @@ const spawnAndReap = (
     let reaping = false;
     let pollInterval: Timer | undefined;
     let providerRunPromise: Promise<RunResultLike> | null = null;
+    let spawnedPid: number | null = null;
 
     const settle = (result: RunResultLike) => {
       if (settled) return;
@@ -230,6 +227,7 @@ const spawnAndReap = (
       logFilePath: opts.logFilePath,
       env: opts.env,
       onSpawn: async (pid) => {
+        spawnedPid = pid;
         await ctx.executionRepository.updateStepExecution(opts.stepId, {
           agent_pid: pid,
         });
@@ -253,8 +251,17 @@ const spawnAndReap = (
 
     providerRunPromise
       .then((runResult) => {
-        // provider.run() resolved — use its result directly (mock providers, or proc.exited worked)
-        settle(runResult);
+        if (!spawnedPid) {
+          settle(runResult);
+          return;
+        }
+
+        // Detached providers can resolve after writing the result line but before the
+        // agent process has actually exited. Wait for PID polling in that case so
+        // completion handlers do not remove an in-use worktree.
+        if (!isAgentRunning(spawnedPid)) {
+          settle(runResult);
+        }
       })
       .catch((err) => {
         if (!settled) reject(err);

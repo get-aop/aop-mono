@@ -83,21 +83,17 @@ describe("taskReadyCommand", () => {
     expect(mockFetchServer.mock.calls.at(1)?.at(1).method).toBe("POST");
   });
 
-  test("passes workflow, baseBranch, and provider options in body", async () => {
+  test("passes only retryFromStep in body when provided", async () => {
     mockFetchServer.mockResolvedValueOnce(makeStatusWithTask()).mockResolvedValueOnce({
       ok: true,
       data: { ok: true, taskId: "task-abc-123" },
     });
 
     await taskReadyCommand("task-abc", {
-      workflow: "deploy",
-      baseBranch: "develop",
-      provider: "opencode:openai/gpt-5.3-codex",
+      retryFromStep: "design_brief",
     });
     const body = JSON.parse(mockFetchServer.mock.calls.at(1)?.at(1).body);
-    expect(body.workflow).toBe("deploy");
-    expect(body.baseBranch).toBe("develop");
-    expect(body.provider).toBe("opencode:openai/gpt-5.3-codex");
+    expect(body).toEqual({ retryFromStep: "design_brief" });
   });
 
   test("sends empty body when no options provided", async () => {
@@ -130,17 +126,6 @@ describe("taskReadyCommand", () => {
 
     await expect(taskReadyCommand("task-abc")).rejects.toThrow("process.exit");
     expect(process.exit).toHaveBeenCalledWith(1);
-  });
-
-  test("passes retryFromStep in body when provided", async () => {
-    mockFetchServer.mockResolvedValueOnce(makeStatusWithTask()).mockResolvedValueOnce({
-      ok: true,
-      data: { ok: true, taskId: "task-abc-123" },
-    });
-
-    await taskReadyCommand("task-abc", { retryFromStep: "design_brief" });
-    const body = JSON.parse(mockFetchServer.mock.calls.at(1)?.at(1).body);
-    expect(body.retryFromStep).toBe("design_brief");
   });
 
   test("exits on generic ready error", async () => {

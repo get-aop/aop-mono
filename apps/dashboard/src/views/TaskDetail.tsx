@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, applyTask, blockTask, markReady, removeTask, resumeTask } from "../api/client";
-import { ApplyDialog } from "../components/ApplyDialog";
+import { ApiError, blockTask, markReady, removeTask, resumeTask } from "../api/client";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { type LogLine, LogViewer } from "../components/LogViewer";
 import { MarkReadyDialog } from "../components/MarkReadyDialog";
@@ -78,7 +77,6 @@ const useTaskLogs = (activeExecutionId: string | null) => {
 const useDialogs = (task: Task | undefined, onClose: () => void) => {
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
   const [showMarkReadyDialog, setShowMarkReadyDialog] = useState(false);
-  const [showApplyDialog, setShowApplyDialog] = useState(false);
   const [showBlockDialog, setShowBlockDialog] = useState(false);
   const [showResumeDialog, setShowResumeDialog] = useState(false);
   const [showRetryDialog, setShowRetryDialog] = useState(false);
@@ -93,35 +91,15 @@ const useDialogs = (task: Task | undefined, onClose: () => void) => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleMarkReadyConfirm = async (workflow: string, baseBranch: string, provider: string) => {
+  const handleMarkReadyConfirm = async () => {
     if (!task) return;
     try {
-      await markReady(task.repoId, task.id, workflow, baseBranch || undefined, provider);
+      await markReady(task.repoId, task.id);
       setShowMarkReadyDialog(false);
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to mark task as ready");
       setShowMarkReadyDialog(false);
     }
-  };
-
-  const handleApplyConfirm = async (targetBranch?: string) => {
-    if (!task) return;
-    try {
-      const result = await applyTask(task.repoId, task.id, targetBranch);
-      if (result.noChanges) {
-        showToast("No changes to apply", "success");
-      } else if (result.conflictingFiles.length > 0) {
-        showToast(
-          `Applied ${result.affectedFiles.length} file(s) with ${result.conflictingFiles.length} conflict(s) — resolve manually`,
-          "success",
-        );
-      } else {
-        showToast(`Applied ${result.affectedFiles.length} file(s) successfully`, "success");
-      }
-    } catch (err) {
-      showToast(err instanceof ApiError ? err.message : "Failed to apply changes");
-    }
-    setShowApplyDialog(false);
   };
 
   const handleRemove = async () => {
@@ -152,14 +130,7 @@ const useDialogs = (task: Task | undefined, onClose: () => void) => {
   const handleRetryConfirm = async (_task: Task, stepId?: string) => {
     if (!task) return;
     try {
-      await markReady(
-        task.repoId,
-        task.id,
-        task.preferredWorkflow ?? undefined,
-        task.baseBranch ?? undefined,
-        task.preferredProvider ?? undefined,
-        stepId,
-      );
+      await markReady(task.repoId, task.id, stepId);
       setShowRetryDialog(false);
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to retry task");
@@ -184,8 +155,6 @@ const useDialogs = (task: Task | undefined, onClose: () => void) => {
     setShowRemoveDialog,
     showMarkReadyDialog,
     setShowMarkReadyDialog,
-    showApplyDialog,
-    setShowApplyDialog,
     showBlockDialog,
     setShowBlockDialog,
     showResumeDialog,
@@ -197,7 +166,6 @@ const useDialogs = (task: Task | undefined, onClose: () => void) => {
     toastMessage,
     toastType,
     handleMarkReadyConfirm,
-    handleApplyConfirm,
     handleRetryConfirm,
     handleRemove,
     handleBlock,
@@ -228,17 +196,8 @@ const TaskDetailDialogs = ({
 
       <MarkReadyDialog
         open={dialogs.showMarkReadyDialog}
-        repoId={task.repoId}
         onConfirm={dialogs.handleMarkReadyConfirm}
         onCancel={() => dialogs.setShowMarkReadyDialog(false)}
-      />
-
-      <ApplyDialog
-        open={dialogs.showApplyDialog}
-        repoId={task.repoId}
-        defaultBranch={task.baseBranch}
-        onConfirm={dialogs.handleApplyConfirm}
-        onCancel={() => dialogs.setShowApplyDialog(false)}
       />
 
       <ResumeDialog
@@ -335,7 +294,6 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
           <TaskInfoCard
             task={task}
             onMarkReady={() => dialogs.setShowMarkReadyDialog(true)}
-            onApply={() => dialogs.setShowApplyDialog(true)}
             onRetry={() => dialogs.setShowRetryDialog(true)}
             onResume={() => dialogs.setShowResumeDialog(true)}
             onShowBlockDialog={() => dialogs.setShowBlockDialog(true)}
@@ -429,6 +387,7 @@ const ProviderIcon = () => (
 
 const formatProviderLabel = (provider: string): string => {
   if (provider === "claude-code") return "Opus 4.6";
+  if (provider === "codex") return "Codex CLI";
   if (provider === "opencode:opencode/kimi-k2.5") return "Kimi K2.5";
   if (provider === "opencode:opencode/kimi-k2.5-free") return "Kimi K2.5 Free";
   if (provider === "opencode:openai/gpt-5.3-codex/medium") return "GPT 5.3 Codex (Medium)";
@@ -449,7 +408,6 @@ const ProviderBadge = ({ provider }: { provider: string }) => (
 interface TaskActionsProps {
   task: Task;
   onMarkReady: () => void;
-  onApply: () => void;
   onRetry: () => void;
   onResume: () => void;
   onShowBlockDialog: () => void;
@@ -459,7 +417,6 @@ interface TaskActionsProps {
 const TaskActions = ({
   task,
   onMarkReady,
-  onApply,
   onRetry,
   onResume,
   onShowBlockDialog,
@@ -510,16 +467,6 @@ const TaskActions = ({
         Resume
       </button>
     )}
-    {task.status === "DONE" && (
-      <button
-        type="button"
-        onClick={onApply}
-        data-testid="apply-button"
-        className="cursor-pointer rounded-aop bg-aop-amber px-3 py-1 font-mono text-[10px] text-aop-black transition-colors hover:bg-aop-amber/90"
-      >
-        Apply
-      </button>
-    )}
     {task.status === "WORKING" && (
       <button
         type="button"
@@ -544,7 +491,6 @@ const TaskActions = ({
 interface TaskInfoCardProps {
   task: Task;
   onMarkReady: () => void;
-  onApply: () => void;
   onRetry: () => void;
   onResume: () => void;
   onShowBlockDialog: () => void;
@@ -554,7 +500,6 @@ interface TaskInfoCardProps {
 const TaskInfoCard = ({
   task,
   onMarkReady,
-  onApply,
   onRetry,
   onResume,
   onShowBlockDialog,
@@ -578,7 +523,6 @@ const TaskInfoCard = ({
         <TaskActions
           task={task}
           onMarkReady={onMarkReady}
-          onApply={onApply}
           onRetry={onRetry}
           onResume={onResume}
           onShowBlockDialog={onShowBlockDialog}

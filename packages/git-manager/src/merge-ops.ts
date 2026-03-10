@@ -78,7 +78,8 @@ export class MergeOps {
   }
 
   private async hasCommitsBeyondBase(taskId: string, baseCommit: string): Promise<boolean> {
-    const headCommit = await this.branchOps.getCommit(taskId);
+    const metadata = await this.metadata.get(taskId);
+    const headCommit = await this.branchOps.getCommit(metadata.branch);
     return headCommit !== baseCommit;
   }
 

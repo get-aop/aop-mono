@@ -1,5 +1,7 @@
+import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { delimiter } from "node:path";
 import type { Subprocess } from "bun";
 import {
   DASHBOARD_DEV_BIN,
@@ -8,6 +10,7 @@ import {
   E2E_TEST_HOME_DIR,
   LOCAL_SERVER_PORT_RANGE,
 } from "./constants";
+import { runAopCommand } from "./e2e-server";
 import { type LocalServerContext, startLocalServer, stopLocalServer } from "./local-server";
 
 export interface DashboardContext {
@@ -32,6 +35,32 @@ export interface TestContext {
 export interface CreateTestContextOptions {
   localServerEnv?: Record<string, string>;
 }
+
+const E2E_AGENT_PROVIDER_CANDIDATES = [
+  { command: "codex", provider: "codex" },
+  { command: "agent", provider: "cursor-cli:composer-1.5" },
+  { command: "claude", provider: "claude-code" },
+  { command: "opencode", provider: "opencode:opencode/kimi-k2.5-free" },
+] as const;
+
+const isExecutableInPath = (command: string, pathValue: string | undefined): boolean => {
+  if (!pathValue) return false;
+
+  return pathValue
+    .split(delimiter)
+    .filter((segment) => segment.length > 0)
+    .some((segment) => existsSync(join(segment, command)));
+};
+
+export const resolveE2EAgentProvider = (pathValue = process.env.PATH): string | null => {
+  for (const candidate of E2E_AGENT_PROVIDER_CANDIDATES) {
+    if (isExecutableInPath(candidate.command, pathValue)) {
+      return candidate.provider;
+    }
+  }
+
+  return null;
+};
 
 export const findFreePort = async (rangeStart: number, rangeEnd: number): Promise<number> => {
   const range = rangeEnd - rangeStart + 1;
@@ -145,6 +174,21 @@ export const createTestContext = async (
     AOP_LOCAL_SERVER_URL: localServerUrl,
     AOP_DB_PATH: dbPath,
   };
+
+  const provider = resolveE2EAgentProvider(env.PATH);
+  if (provider) {
+    const { exitCode, stderr } = await runAopCommand(
+      ["config:set", "agent_provider", provider],
+      undefined,
+      env,
+    );
+
+    if (exitCode !== 0) {
+      throw new Error(
+        `Failed to configure E2E agent provider "${provider}": ${stderr || "unknown error"}`,
+      );
+    }
+  }
 
   return {
     localServerPort,

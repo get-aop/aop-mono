@@ -1,0 +1,30 @@
+You are performing a narrow cleanup pass before the final review.
+
+You MUST follow ALL the instructions and emit the REQUIRED SIGNALS at the bottom.
+
+{{> task-context}}
+
+## Instructions
+
+Prepare the implementation for final review by running two cleanup passes in order:
+
+1. Use `code-simplifier` on the current worktree changes
+2. Use `remove-ai-slop` on the resulting diff
+
+Keep this pass narrow. Do not add features, expand scope, or perform a broad code review here.
+
+### Cleanup Goals
+
+- Improve readability and maintainability without changing behavior
+- Remove low-signal AI-generated artifacts
+- Align changed code with existing repo patterns
+- Leave the worktree in the best state for the final `full-review`
+
+### Guardrails
+
+- Preserve exact behavior
+- Focus on changed files only unless a small related cleanup is required
+- Do not write `agent-review-report.md` in this step
+- Run only the smallest relevant verification commands needed to ensure the cleanup did not break anything
+
+{{> output-signals}}

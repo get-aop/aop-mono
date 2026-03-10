@@ -2,7 +2,7 @@
   "name": "aop",
   "version": "0.1.0",
   "type": "module",
-  "private": true,
+  "license": "MIT",
   "bin": {
     "aop": "./apps/cli/src/main.ts"
   },
@@ -13,7 +13,7 @@
     "e2e-tests"
   ],
   "scripts": {
-    "build": "bun run --sequential --filter '!@aop/electron' build",
+    "build": "bun run --sequential --filter '*' build",
     "build:dashboard": "bun run --filter @aop/dashboard build",
     "dev": "bun run ./scripts/dev.ts",
     "dev:dashboard": "bun run --filter @aop/dashboard dev",

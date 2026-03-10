@@ -2,6 +2,7 @@
   "name": "@aop/git-manager",
   "version": "0.1.0",
   "type": "module",
+  "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
     "./test-utils": "./src/test-utils.ts"

@@ -47,7 +47,6 @@ aop repo:remove [path]        # Unregister a repository
 ```bash
 aop task:ready <task-id>      # Mark task as READY for execution
 aop task:remove <task-id>     # Remove task from backlog
-aop apply <task-id>           # Apply worktree changes to main repo
 ```
 
 ### Configuration Commands
@@ -92,7 +91,6 @@ src/
     client.ts     # Server connection helpers
     status.ts     # GET /api/status
     repo-init.ts  # POST /api/repos
-    apply.ts      # POST /api/repos/:id/tasks/:taskId/apply
     ...
   main.ts         # Entry point with command registration
 ```

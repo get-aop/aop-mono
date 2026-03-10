@@ -34,6 +34,7 @@ export {
 export { createOutputLogger, extractAssistantText, formatToolInput } from "./output-logger";
 export { createProvider } from "./provider-factory";
 export { ClaudeCodeProvider } from "./providers/claude-code";
+export { CodexProvider } from "./providers/codex";
 export { CursorCliProvider } from "./providers/cursor-cli";
 export { OpenCodeProvider } from "./providers/opencode";
 export type { LLMProvider, RunOptions, RunResult } from "./types";

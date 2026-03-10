@@ -69,23 +69,21 @@ describe("step-launcher", () => {
   });
 
   describe("getProvider", () => {
-    test("returns provider from task preferred_provider when set", async () => {
-      const task = createMockTask({ preferred_provider: "claude-code" });
-      const provider = await getProvider(ctx, task);
-      expect(provider.name).toBe("claude-code");
+    test("returns provider from settings even when task has a preferred_provider value", async () => {
+      await ctx.settingsRepository.set("agent_provider", "codex");
+      const provider = await getProvider(ctx);
+      expect(provider.name).toBe("codex");
     });
 
     test("returns provider from settings when task has no preferred_provider", async () => {
-      await ctx.settingsRepository.set("agent_provider", "claude-code");
-      const task = createMockTask();
-      const provider = await getProvider(ctx, task);
-      expect(provider.name).toBe("claude-code");
+      await ctx.settingsRepository.set("agent_provider", "codex");
+      const provider = await getProvider(ctx);
+      expect(provider.name).toBe("codex");
     });
 
-    test("returns ClaudeCodeProvider as default when no setting or preference", async () => {
-      const task = createMockTask();
-      const provider = await getProvider(ctx, task);
-      expect(provider.name).toBe("claude-code");
+    test("returns CodexProvider as default when no setting or preference", async () => {
+      const provider = await getProvider(ctx);
+      expect(provider.name).toBe("codex");
     });
   });
 
@@ -208,6 +206,87 @@ describe("step-launcher", () => {
       expect(capturedOpts?.prompt).toBe("implement the feature");
       expect(capturedOpts?.fastMode).toBe(true);
       expect(capturedOpts?.env).toEqual({ AOP_TASK_ID: "task-1", AOP_STEP_ID: "step-1" });
+      expect(onCompletion).toHaveBeenCalledTimes(1);
+    });
+
+    test("waits for the spawned process to exit before completing when provider.run resolves early", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: StepExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+
+      let sleeperPid: number | null = null;
+      const fastResolvingProvider: LLMProvider = {
+        name: "mock-provider",
+        run: async (opts: RunOptions) => {
+          const sleeper = Bun.spawn(["/bin/sh", "-c", "sleep 5"]);
+          sleeperPid = sleeper.pid;
+          await opts.onSpawn?.(sleeper.pid);
+          return { exitCode: 0, sessionId: "sess-1" };
+        },
+      };
+
+      const onCompletion = mock(() => Promise.resolve());
+
+      const executorCtx: ExecutorContext = {
+        task: createMockTask(),
+        repoId: "repo-1",
+        repoPath: "/test/repo",
+        changePath: "/test/repo/changes/feat-1",
+        worktreePath: "/test/worktree",
+        logsDir: testLogsDir,
+        timeoutSecs: 300,
+        fastMode: false,
+      };
+
+      const launchPromise = spawnAgentWithReaper(
+        {
+          ctx,
+          executorCtx,
+          worktreeInfo: {
+            path: "/test/worktree",
+            branch: "task-1",
+            baseBranch: "main",
+            baseCommit: "abc",
+          },
+          prompt: "implement the feature",
+          stepId: "step-1",
+          executionId: "exec-1",
+          stepCommand: {
+            id: "step-1",
+            type: "implement",
+            promptTemplate: "",
+            signals: [],
+            attempt: 1,
+            iteration: 1,
+          },
+          executionInfo: { id: "exec-1", workflowId: "wf-1" },
+          taskId: "task-1",
+          repoId: "repo-1",
+          provider: fastResolvingProvider,
+        },
+        onCompletion,
+      );
+
+      await Bun.sleep(100);
+      expect(onCompletion).not.toHaveBeenCalled();
+
+      if (sleeperPid) {
+        process.kill(sleeperPid);
+      }
+      await launchPromise;
+
       expect(onCompletion).toHaveBeenCalledTimes(1);
     });
   });
