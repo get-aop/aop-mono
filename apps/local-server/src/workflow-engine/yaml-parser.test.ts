@@ -331,6 +331,7 @@ describe("aop-default workflow integration", () => {
     expect(workflow.name).toBe("aop-default");
     expect(workflow.initialStep).toBe("iterate");
     expect(Object.keys(workflow.steps).sort()).toEqual([
+      "cleanup-review",
       "fix-issues",
       "full-review",
       "iterate",
@@ -350,31 +351,64 @@ describe("aop-default workflow integration", () => {
     expect(step?.transitions).toContainEqual({ condition: "CHUNK_DONE", target: "iterate" });
     expect(step?.transitions).toContainEqual({
       condition: "ALL_TASKS_DONE",
+      target: "cleanup-review",
+    });
+  });
+
+  test("cleanup-review step routes directly to full-review", async () => {
+    const workflow = await loadOfficialWorkflow("aop-default");
+    const step = workflow.steps["cleanup-review"];
+
+    expect(step?.signals).toEqual([
+      {
+        name: "CLEANUP_COMPLETE",
+        description: "low-signal cleanup and simplification pass is done",
+      },
+    ]);
+    expect(step?.transitions).toContainEqual({
+      condition: "CLEANUP_COMPLETE",
+      target: "full-review",
+    });
+    expect(step?.transitions).toContainEqual({
+      condition: "__none__",
       target: "full-review",
     });
   });
 
-  test("full-review step has maxIterations constraint", async () => {
+  test("full-review step routes directly to fix-issues without its own loop cap", async () => {
     const workflow = await loadOfficialWorkflow("aop-default");
     const step = workflow.steps["full-review"];
     const failTransition = step?.transitions.find(
       (transition) => transition.condition === "REVIEW_FAILED",
     );
 
-    expect(failTransition?.maxIterations).toBe(2);
-    expect(failTransition?.onMaxIterations).toBe("__blocked__");
+    expect(failTransition?.target).toBe("fix-issues");
+    expect(failTransition?.maxIterations).toBeUndefined();
+    expect(failTransition?.onMaxIterations).toBeUndefined();
   });
 
-  test("fix-issues step has afterIteration conditional routing", async () => {
+  test("fix-issues step always returns to quick-review", async () => {
     const workflow = await loadOfficialWorkflow("aop-default");
     const step = workflow.steps["fix-issues"];
     const fixTransition = step?.transitions.find(
       (transition) => transition.condition === "FIX_COMPLETE",
     );
 
-    expect(fixTransition?.afterIteration).toBe(1);
     expect(fixTransition?.target).toBe("quick-review");
-    expect(fixTransition?.thenTarget).toBe("full-review");
+    expect(fixTransition?.afterIteration).toBeUndefined();
+    expect(fixTransition?.thenTarget).toBeUndefined();
+  });
+
+  test("quick-review failure transition owns the review loop cap", async () => {
+    const workflow = await loadOfficialWorkflow("aop-default");
+    const step = workflow.steps["quick-review"];
+    const failTransition = step?.transitions.find(
+      (transition) => transition.condition === "REVIEW_FAILED",
+    );
+
+    expect(failTransition?.target).toBe("fix-issues");
+    expect(failTransition?.maxIterations).toBe(2);
+    expect(failTransition?.onMaxIterations).toBe("__blocked__");
   });
 
   test("complete workflow execution flow: happy path", async () => {
@@ -398,7 +432,15 @@ describe("aop-default workflow integration", () => {
         signal: "ALL_TASKS_DONE",
       }),
     );
-    expect(afterAllTasks.stepId).toBe("full-review");
+    expect(afterAllTasks.stepId).toBe("cleanup-review");
+
+    const afterCleanup = asStepResult(
+      sm.evaluateTransition("cleanup-review", {
+        status: "success",
+        signal: "CLEANUP_COMPLETE",
+      }),
+    );
+    expect(afterCleanup.stepId).toBe("full-review");
 
     const afterReviewPass = sm.evaluateTransition("full-review", {
       status: "success",
@@ -410,7 +452,16 @@ describe("aop-default workflow integration", () => {
   test("workflow flow: review fails then fix then quick-review passes", async () => {
     const workflow = await loadOfficialWorkflow("aop-default");
     const sm = createWorkflowStateMachine(workflow);
-    const ctx = { iteration: 0, visitedSteps: ["iterate", "full-review"] };
+    const ctx = { iteration: 0, visitedSteps: ["iterate", "cleanup-review", "full-review"] };
+
+    const afterCleanup = asStepResult(
+      sm.evaluateTransition(
+        "cleanup-review",
+        { status: "success", signal: "CLEANUP_COMPLETE" },
+        ctx,
+      ),
+    );
+    expect(afterCleanup.stepId).toBe("full-review");
 
     const afterReviewFail = asStepResult(
       sm.evaluateTransition("full-review", { status: "success", signal: "REVIEW_FAILED" }, ctx),
@@ -432,31 +483,31 @@ describe("aop-default workflow integration", () => {
     expect(afterQuickPass.type).toBe("done");
   });
 
-  test("workflow flow: second iteration routes fix to full-review", async () => {
+  test("workflow flow: second iteration still routes fix back to quick-review", async () => {
     const workflow = await loadOfficialWorkflow("aop-default");
     const sm = createWorkflowStateMachine(workflow);
     const ctx = {
       iteration: 1,
-      visitedSteps: ["iterate", "full-review", "fix-issues", "quick-review"],
+      visitedSteps: ["iterate", "cleanup-review", "full-review", "fix-issues", "quick-review"],
     };
 
     const afterFix = asStepResult(
       sm.evaluateTransition("fix-issues", { status: "success", signal: "FIX_COMPLETE" }, ctx),
     );
-    expect(afterFix.stepId).toBe("full-review");
+    expect(afterFix.stepId).toBe("quick-review");
     expect(afterFix.shouldIncrementIteration).toBe(true);
   });
 
-  test("workflow blocks after maxIterations exceeded", async () => {
+  test("workflow blocks after quick-review loop cap is exceeded", async () => {
     const workflow = await loadOfficialWorkflow("aop-default");
     const sm = createWorkflowStateMachine(workflow);
     const ctx = {
       iteration: 2,
-      visitedSteps: ["iterate", "full-review", "fix-issues", "quick-review"],
+      visitedSteps: ["iterate", "cleanup-review", "full-review", "fix-issues", "quick-review"],
     };
 
     const result = sm.evaluateTransition(
-      "full-review",
+      "quick-review",
       { status: "success", signal: "REVIEW_FAILED" },
       ctx,
     );

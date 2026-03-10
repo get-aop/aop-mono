@@ -67,29 +67,12 @@ export const getStatus = async (): Promise<{
   };
 };
 
-export const fetchBranches = async (
-  repoId: string,
-): Promise<{ branches: string[]; current: string }> => {
-  return request<{ branches: string[]; current: string }>(`/repos/${repoId}/branches`);
-};
-
-export const fetchWorkflows = async (): Promise<string[]> => {
-  const data = await request<{ workflows: string[] }>("/workflows");
-  return data.workflows;
-};
-
 export const markReady = async (
   repoId: string,
   taskId: string,
-  workflow?: string,
-  baseBranch?: string,
-  provider?: string,
   retryFromStep?: string,
 ): Promise<{ taskId: string }> => {
   const body: Record<string, string> = {};
-  if (workflow) body.workflow = workflow;
-  if (baseBranch) body.baseBranch = baseBranch;
-  if (provider) body.provider = provider;
   if (retryFromStep) body.retryFromStep = retryFromStep;
   return request<{ ok: boolean; taskId: string }>(`/repos/${repoId}/tasks/${taskId}/ready`, {
     method: "POST",
@@ -159,26 +142,6 @@ export const registerRepo = async (path: string): Promise<RegisterRepoResponse> 
   return request<RegisterRepoResponse>("/repos", {
     method: "POST",
     body: JSON.stringify({ path }),
-  });
-};
-
-export interface ApplyTaskResponse {
-  ok: boolean;
-  affectedFiles: string[];
-  conflictingFiles: string[];
-  noChanges?: boolean;
-}
-
-export const applyTask = async (
-  repoId: string,
-  taskId: string,
-  targetBranch?: string,
-): Promise<ApplyTaskResponse> => {
-  const body: Record<string, string> = {};
-  if (targetBranch) body.targetBranch = targetBranch;
-  return request<ApplyTaskResponse>(`/repos/${repoId}/tasks/${taskId}/apply`, {
-    method: "POST",
-    body: JSON.stringify(body),
   });
 };
 

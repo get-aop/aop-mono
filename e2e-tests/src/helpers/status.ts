@@ -71,6 +71,25 @@ export const waitForTask = async (
   return null;
 };
 
+export const waitForTaskMatch = async (
+  taskId: string,
+  matcher: (task: TaskInfo) => boolean,
+  options: WaitForTaskOptions = {},
+): Promise<TaskInfo | null> => {
+  const { timeout = 300_000, pollInterval = 1000, localServerUrl } = options;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeout) {
+    const task = await getTaskStatus(taskId, localServerUrl);
+    if (task && matcher(task)) {
+      return task;
+    }
+    await Bun.sleep(pollInterval);
+  }
+
+  return null;
+};
+
 interface SSETaskRaw {
   id: string;
   repoId: string;

@@ -63,7 +63,7 @@ export class DirtyWorkingDirectoryError extends Error {
 
 export class NoChangesError extends Error {
   constructor(public readonly taskId: string) {
-    super(`Worktree has no changes to apply: ${taskId}`);
+    super(`Worktree has no changes to hand off: ${taskId}`);
     this.name = "NoChangesError";
   }
 }

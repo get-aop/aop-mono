@@ -125,7 +125,7 @@ export const handleAgentCompletion = async (
   cleanupLogFile(logFile);
 
   const currentTask = await ctx.taskRepository.get(taskId);
-  if (currentTask && currentTask.status !== "WORKING") {
+  if (currentTask && currentTask.status !== "WORKING" && currentTask.status !== "DONE") {
     logger.info("Task status changed to {status}, skipping next step", {
       taskId,
       status: currentTask.status,

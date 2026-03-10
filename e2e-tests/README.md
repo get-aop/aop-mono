@@ -5,13 +5,13 @@ End-to-end tests for the AOP CLI. These tests exercise the full system with real
 ## Test Cases
 
 ### Task Execution
-- **runAndApply.e2e.ts**: Tests `aop run` and `aop apply` commands - creates worktree, spawns agent, and transfers changes back to main repo
+- **automatic-handoff.e2e.ts**: Tests the orchestrator-owned flow from `task:ready` through automatic DONE handoff into the main repo branch
 
 ### Local Server Lifecycle
 - **local-server.e2e.ts**: Tests local server start/stop lifecycle, health checks, graceful shutdown
 
 ### Backlog Management
-- **backlog.e2e.ts**: Tests full task flow from DRAFT to READY to DONE through the queue processor
+- **backlog.e2e.ts**: Tests full task flow from DRAFT to READY to DONE through the queue processor, including automatic worktree handoff
 - **concurrency.e2e.ts**: Tests global concurrency limit enforcement across multiple repositories
 
 ## Running Tests

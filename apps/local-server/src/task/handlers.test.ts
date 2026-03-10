@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { GitManager } from "@aop/git-manager";
 import { aopPaths, useTestAopHome } from "@aop/infra";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
 import {
-  applyTask,
   blockTask,
   getTaskById,
   markTaskReady,
@@ -169,46 +166,23 @@ describe("task/handlers", () => {
       }
     });
 
-    test("sets preferred_workflow when provided", async () => {
+    test("clears per-task workflow, branch, and provider overrides when marking ready", async () => {
       await createTestRepo(db, TEST_REPO_ID, "/test/repo");
       await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
       createPromptFile();
-
-      const result = await markTaskReady(ctx, "task-1", {
-        workflow: "custom-flow",
+      await ctx.taskRepository.update("task-1", {
+        preferred_workflow: "custom-flow",
+        base_branch: "feature/foo",
+        preferred_provider: "cursor-cli:composer-1.5",
       });
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.task.preferred_workflow).toBe("custom-flow");
-      }
-    });
-
-    test("sets base_branch when provided", async () => {
-      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
-      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
-      createPromptFile();
-
-      const result = await markTaskReady(ctx, "task-1", {
-        baseBranch: "feature/foo",
-      });
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.task.base_branch).toBe("feature/foo");
-      }
-    });
-
-    test("sets base_branch to null when not provided", async () => {
-      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
-      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
-      createPromptFile();
 
       const result = await markTaskReady(ctx, "task-1");
 
       expect(result.success).toBe(true);
       if (result.success) {
+        expect(result.task.preferred_workflow).toBeNull();
         expect(result.task.base_branch).toBeNull();
+        expect(result.task.preferred_provider).toBeNull();
       }
     });
 
@@ -490,275 +464,4 @@ describe("task/handlers", () => {
     });
   });
 
-  describe("applyTask", () => {
-    let testRepoPath: string;
-
-    beforeEach(async () => {
-      testRepoPath = join(tmpdir(), `aop-test-apply-${Date.now()}`);
-      mkdirSync(testRepoPath, { recursive: true });
-
-      const initProc = Bun.spawn(["git", "init", "-b", "main"], {
-        cwd: testRepoPath,
-      });
-      await initProc.exited;
-
-      const configName = Bun.spawn(["git", "config", "user.name", "Test"], {
-        cwd: testRepoPath,
-      });
-      await configName.exited;
-
-      const configEmail = Bun.spawn(["git", "config", "user.email", "test@test.com"], {
-        cwd: testRepoPath,
-      });
-      await configEmail.exited;
-
-      writeFileSync(join(testRepoPath, "README.md"), "# Test");
-      const addProc = Bun.spawn(["git", "add", "."], { cwd: testRepoPath });
-      await addProc.exited;
-
-      const commitProc = Bun.spawn(["git", "commit", "-m", "Initial commit"], {
-        cwd: testRepoPath,
-      });
-      await commitProc.exited;
-    });
-
-    afterEach(() => {
-      if (existsSync(testRepoPath)) {
-        rmSync(testRepoPath, { recursive: true });
-      }
-    });
-
-    const commitRepoState = async (message: string): Promise<void> => {
-      const addProc = Bun.spawn(["git", "add", "."], { cwd: testRepoPath });
-      await addProc.exited;
-
-      const commitProc = Bun.spawn(["git", "commit", "-m", message], {
-        cwd: testRepoPath,
-      });
-      await commitProc.exited;
-    };
-
-    test("returns NOT_FOUND when task does not exist", async () => {
-      const result = await applyTask(ctx, "non-existent");
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("NOT_FOUND");
-        expect((result.error as { identifier: string }).identifier).toBe("non-existent");
-      }
-    });
-
-    test("returns INVALID_STATUS for DRAFT task", async () => {
-      await createTestRepo(db, "repo-1", testRepoPath);
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DRAFT");
-
-      const result = await applyTask(ctx, "task-1");
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("INVALID_STATUS");
-        expect((result.error as { status: string }).status).toBe("DRAFT");
-      }
-    });
-
-    test("returns INVALID_STATUS for READY task", async () => {
-      await createTestRepo(db, "repo-1", testRepoPath);
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "READY");
-
-      const result = await applyTask(ctx, "task-1");
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("INVALID_STATUS");
-        expect((result.error as { status: string }).status).toBe("READY");
-      }
-    });
-
-    test("returns INVALID_STATUS for WORKING task", async () => {
-      await createTestRepo(db, "repo-1", testRepoPath);
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "WORKING");
-
-      const result = await applyTask(ctx, "task-1");
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("INVALID_STATUS");
-        expect((result.error as { status: string }).status).toBe("WORKING");
-      }
-    });
-
-    test("returns NOT_FOUND when repo is removed before apply", async () => {
-      await createTestRepo(db, "repo-1", testRepoPath);
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
-      await commitRepoState("Add task docs");
-
-      await ctx.repoRepository.remove("repo-1");
-
-      const result = await applyTask(ctx, "task-1");
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("NOT_FOUND");
-        expect((result.error as { identifier: string }).identifier).toBe("task-1");
-      }
-    });
-
-    test("returns WORKTREE_NOT_FOUND when worktree does not exist", async () => {
-      await createTestRepo(db, "repo-1", testRepoPath);
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
-      await commitRepoState("Add task docs");
-
-      const result = await applyTask(ctx, "task-1");
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("WORKTREE_NOT_FOUND");
-      }
-    });
-
-    test("returns NO_CHANGES when worktree has no changes", async () => {
-      await createTestRepo(db, "repo-1", testRepoPath);
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
-      await commitRepoState("Add task docs");
-
-      const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
-      await gitManager.init();
-      await gitManager.createWorktree("task-1", "main");
-
-      const result = await applyTask(ctx, "task-1");
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("NO_CHANGES");
-      }
-    });
-
-    test("successfully applies worktree changes", async () => {
-      await createTestRepo(db, "repo-1", testRepoPath);
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
-      await commitRepoState("Add task docs");
-
-      const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
-      await gitManager.init();
-      const worktreeInfo = await gitManager.createWorktree("task-1", "main");
-
-      writeFileSync(join(worktreeInfo.path, "new-file.txt"), "New content");
-
-      const addProc = Bun.spawn(["git", "add", "."], {
-        cwd: worktreeInfo.path,
-      });
-      await addProc.exited;
-
-      const commitProc = Bun.spawn(["git", "commit", "-m", "Add new file"], {
-        cwd: worktreeInfo.path,
-      });
-      await commitProc.exited;
-
-      const result = await applyTask(ctx, "task-1");
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.affectedFiles).toContain("new-file.txt");
-      }
-    });
-
-    test("applies BLOCKED task", async () => {
-      await createTestRepo(db, "repo-1", testRepoPath);
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "BLOCKED");
-      await commitRepoState("Add task docs");
-
-      const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
-      await gitManager.init();
-      const worktreeInfo = await gitManager.createWorktree("task-1", "main");
-
-      writeFileSync(join(worktreeInfo.path, "blocked-file.txt"), "Blocked content");
-
-      const addProc = Bun.spawn(["git", "add", "."], {
-        cwd: worktreeInfo.path,
-      });
-      await addProc.exited;
-
-      const commitProc = Bun.spawn(["git", "commit", "-m", "Add blocked file"], {
-        cwd: worktreeInfo.path,
-      });
-      await commitProc.exited;
-
-      const result = await applyTask(ctx, "task-1");
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.affectedFiles).toContain("blocked-file.txt");
-      }
-    });
-
-    test("returns DIRTY_WORKING_DIRECTORY when main repo has uncommitted changes", async () => {
-      await createTestRepo(db, "repo-1", testRepoPath);
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
-      await commitRepoState("Add task docs");
-
-      const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
-      await gitManager.init();
-      const worktreeInfo = await gitManager.createWorktree("task-1", "main");
-
-      writeFileSync(join(worktreeInfo.path, "new-file.txt"), "New content");
-
-      const addProc = Bun.spawn(["git", "add", "."], {
-        cwd: worktreeInfo.path,
-      });
-      await addProc.exited;
-
-      const commitProc = Bun.spawn(["git", "commit", "-m", "Add new file"], {
-        cwd: worktreeInfo.path,
-      });
-      await commitProc.exited;
-
-      writeFileSync(join(testRepoPath, "dirty-file.txt"), "Uncommitted");
-
-      const result = await applyTask(ctx, "task-1");
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("DIRTY_WORKING_DIRECTORY");
-      }
-    });
-
-    test("applies with conflicts and returns conflicting files", async () => {
-      await createTestRepo(db, "repo-1", testRepoPath);
-      await createTestTask(db, "task-1", "repo-1", "changes/feat", "DONE");
-      await commitRepoState("Add task docs");
-
-      const gitManager = new GitManager({ repoPath: testRepoPath, repoId: TEST_REPO_ID });
-      await gitManager.init();
-      const worktreeInfo = await gitManager.createWorktree("task-1", "main");
-
-      writeFileSync(join(worktreeInfo.path, "README.md"), "# Modified in worktree");
-
-      const addProc = Bun.spawn(["git", "add", "."], {
-        cwd: worktreeInfo.path,
-      });
-      await addProc.exited;
-
-      const commitProc = Bun.spawn(["git", "commit", "-m", "Modify README"], {
-        cwd: worktreeInfo.path,
-      });
-      await commitProc.exited;
-
-      writeFileSync(join(testRepoPath, "README.md"), "# Modified in main");
-      const addMainProc = Bun.spawn(["git", "add", "."], { cwd: testRepoPath });
-      await addMainProc.exited;
-
-      const commitMainProc = Bun.spawn(["git", "commit", "-m", "Modify README in main"], {
-        cwd: testRepoPath,
-      });
-      await commitMainProc.exited;
-
-      const result = await applyTask(ctx, "task-1");
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.affectedFiles).toContain("README.md");
-        expect(result.conflictingFiles).toContain("README.md");
-      }
-    });
-  });
 });

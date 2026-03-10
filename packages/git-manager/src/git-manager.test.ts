@@ -114,6 +114,19 @@ describe("GitManager", () => {
 
       await expect(manager.createWorktree("", "main")).rejects.toThrow("cannot be empty");
     });
+
+    test("uses the provided branch name instead of the task id", async () => {
+      const manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });
+      await manager.init();
+
+      const result = await manager.createWorktree("task_auth_001", "main", "feat-auth");
+
+      expect(result.path).toBe(aopPaths.worktree(TEST_REPO_ID, "task_auth_001"));
+      expect(result.branch).toBe("feat-auth");
+
+      const branchResult = await Bun.$`git branch --list feat-auth`.cwd(repoPath).text();
+      expect(branchResult.trim()).toContain("feat-auth");
+    });
   });
 
   describe("squashMerge", () => {
@@ -276,6 +289,70 @@ describe("GitManager", () => {
 
       const branchResult = await Bun.$`git branch --list pr/feat-auth`.cwd(repoPath).text();
       expect(branchResult.trim()).toContain("pr/feat-auth");
+    });
+  });
+
+  describe("handoffWorktree", () => {
+    test("preserves the branch and removes the worktree", async () => {
+      const manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });
+      await manager.init();
+
+      const worktree = await manager.createWorktree("task_auth_002", "main", "feat-auth");
+      const result = await manager.handoffWorktree("task_auth_002", "Complete feat-auth");
+
+      expect(result.branch).toBe("feat-auth");
+
+      const dirResult = await Bun.$`test -d ${worktree.path}`.quiet().nothrow();
+      expect(dirResult.exitCode).not.toBe(0);
+
+      const branchResult = await Bun.$`git branch --list feat-auth`.cwd(repoPath).text();
+      expect(branchResult.trim()).toContain("feat-auth");
+    });
+
+    test("commits pending worktree changes before preserving the branch", async () => {
+      const manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });
+      await manager.init();
+
+      const worktree = await manager.createWorktree("task_auth_003", "main", "feat-auth");
+      await Bun.$`echo "feature" > feature.txt`.cwd(worktree.path).quiet();
+
+      const result = await manager.handoffWorktree("task_auth_003", "Complete feat-auth");
+
+      expect(result.commitSha).toMatch(/^[a-f0-9]{40}$/);
+
+      const show = await Bun.$`git show --stat --oneline feat-auth`.cwd(repoPath).text();
+      expect(show).toContain("Complete feat-auth");
+      expect(show).toContain("feature.txt");
+
+      const currentBranch = await Bun.$`git branch --show-current`.cwd(repoPath).text();
+      expect(currentBranch.trim()).toBe("feat-auth");
+
+      const featureFile = await Bun.file(`${repoPath}/feature.txt`).text();
+      expect(featureFile.trim()).toBe("feature");
+    });
+
+    test("keeps sibling worktrees valid after handing off one worktree", async () => {
+      const manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });
+      await manager.init();
+
+      const worktree1 = await manager.createWorktree("task_auth_004", "main", "feat-auth-1");
+      const worktree2 = await manager.createWorktree("task_auth_005", "main", "feat-auth-2");
+
+      await Bun.$`echo "feature one" > feature-one.txt`.cwd(worktree1.path).quiet();
+      await Bun.$`echo "feature two" > feature-two.txt`.cwd(worktree2.path).quiet();
+
+      await manager.handoffWorktree("task_auth_004", "Complete feat-auth-1");
+
+      expect(await Bun.file(`${repoPath}/.git/HEAD`).exists()).toBe(true);
+      expect(await Bun.file(`${repoPath}/README.md`).exists()).toBe(true);
+
+      const siblingStatus = await Bun.$`git status --short`
+        .cwd(worktree2.path)
+        .quiet()
+        .nothrow();
+
+      expect(siblingStatus.exitCode).toBe(0);
+      expect(siblingStatus.stdout.toString()).toContain("feature-two.txt");
     });
   });
 });

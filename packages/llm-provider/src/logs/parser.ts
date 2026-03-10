@@ -11,6 +11,7 @@ const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
 const detectProvider = (event: RawProviderEvent): LogProvider => {
   if ("part" in event) return "opencode";
   if (event.type === "tool_call" || "tool_call" in event) return "cursor-cli";
+  if (isCodexEvent(event)) return "codex";
 
   const type = typeof event.type === "string" ? event.type : "";
   if (["assistant", "tool_use", "tool_result", "result", "system", "user"].includes(type)) {
@@ -18,6 +19,16 @@ const detectProvider = (event: RawProviderEvent): LogProvider => {
   }
 
   return "unknown";
+};
+
+const isCodexEvent = (event: RawProviderEvent): boolean => {
+  const type = typeof event.type === "string" ? event.type : "";
+  return (
+    type.startsWith("thread.") ||
+    type.startsWith("turn.") ||
+    type.startsWith("item.") ||
+    type === "error"
+  );
 };
 
 const parseCandidate = (candidate: string): RawProviderEvent | null => {

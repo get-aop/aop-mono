@@ -4,14 +4,19 @@ You are verifying that fixes address previously identified issues.
 
 ## Instructions
 
-Verify the fixes made in the previous step address the issues from the review report.
+Verify that the latest fixes resolve the issues already recorded in the review report.
+
+This is not another full review. Focus on the existing findings, the files changed to address them, and any obvious regressions introduced by those fixes.
 
 ### Verification Steps
 
-1. Read `agent-review-report.md` from the change directory (`{{task.changePath}}`) to see the original issues
-2. Verify each issue has been addressed
-3. Run tests to ensure fixes work correctly
-4. Check for any new issues introduced by the fixes
+1. Read `agent-review-report.md` from the change directory (`{{task.changePath}}`)
+2. Inspect the current worktree state, including staged, unstaged, and untracked changes
+3. Verify each reported issue is fixed
+4. Run the smallest relevant verification commands for the touched code
+5. Record any remaining or newly introduced issues only if they are clear and important
+
+Do not require fixes to be committed to `HEAD` during review. In AOP execution, automatic handoff performs the final commit/branch handoff after the task reaches `DONE`.
 
 ### AOP Audit Checklist
 
@@ -25,8 +30,8 @@ Verify the fixes made in the previous step address the issues from the review re
 Update `agent-review-report.md` in the change directory (`{{task.changePath}}`) with:
 
 1. Iteration number: {{step.iteration}}
-2. Which issues were fixed
-3. Any remaining issues
+2. Which prior issues were fixed
+3. Any remaining issues or important new regressions
 4. Overall assessment for this iteration
 
 {{> output-signals}}

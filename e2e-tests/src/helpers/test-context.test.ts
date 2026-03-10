@@ -1,5 +1,8 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { findFreePort } from "./test-context";
+import { findFreePort, resolveE2EAgentProvider } from "./test-context";
 
 describe("findFreePort", () => {
   test("finds a free port within the given range", async () => {
@@ -29,5 +32,49 @@ describe("findFreePort", () => {
     } finally {
       listener.stop(true);
     }
+  });
+});
+
+describe("resolveE2EAgentProvider", () => {
+  test("prefers codex when codex is available", async () => {
+    const binDir = await mkdtemp(join(tmpdir(), "aop-e2e-codex-"));
+
+    try {
+      await writeFile(join(binDir, "codex"), "");
+      await writeFile(join(binDir, "agent"), "");
+      await writeFile(join(binDir, "claude"), "");
+
+      expect(resolveE2EAgentProvider(binDir)).toBe("codex");
+    } finally {
+      await rm(binDir, { recursive: true, force: true });
+    }
+  });
+
+  test("falls back to cursor-cli when codex is unavailable but agent exists", async () => {
+    const binDir = await mkdtemp(join(tmpdir(), "aop-e2e-agent-"));
+
+    try {
+      await writeFile(join(binDir, "agent"), "");
+
+      expect(resolveE2EAgentProvider(binDir)).toBe("cursor-cli:composer-1.5");
+    } finally {
+      await rm(binDir, { recursive: true, force: true });
+    }
+  });
+
+  test("falls back to claude-code when claude is the only available binary", async () => {
+    const binDir = await mkdtemp(join(tmpdir(), "aop-e2e-claude-"));
+
+    try {
+      await writeFile(join(binDir, "claude"), "");
+
+      expect(resolveE2EAgentProvider(binDir)).toBe("claude-code");
+    } finally {
+      await rm(binDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns null when no supported provider binary is available", () => {
+    expect(resolveE2EAgentProvider("/definitely/missing")).toBeNull();
   });
 });

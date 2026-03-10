@@ -24,6 +24,7 @@ If no usable source is provided, ask for the ticket or document before proceedin
 - Do not invoke brainstorming or any other planning command or skill.
 - Only ask follow-up questions for blocking ambiguities the source does not answer.
 - If GitHub or Linear is not connected, use pasted text or a local file without changing the workflow.
+- After writing the task files, ask whether the task should be started now.
 
 ## Process
 
@@ -34,7 +35,9 @@ If no usable source is provided, ask for the ticket or document before proceedin
 5. Write `docs/tasks/<task-slug>/task.md` with the extracted requirements and acceptance criteria.
 6. Write `docs/tasks/<task-slug>/plan.md` with the implementation checklist, context, and verification steps.
 7. Add numbered subtask files under `docs/tasks/<task-slug>/` when the work needs multiple executable slices.
-8. Present the task slug, written files, and a short summary for review.
+8. Ask whether the task should be started now.
+9. If the answer is yes, invoke the `task-ready` skill to promote the task to `READY`.
+10. Present the task slug, written files, final status, and a short summary for review.
 
 ## Guardrails
 

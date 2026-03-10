@@ -204,7 +204,6 @@ describe("registerCommands", () => {
     expect(commandNames).toContain("repo:remove");
     expect(commandNames).toContain("task:ready");
     expect(commandNames).toContain("task:remove");
-    expect(commandNames).toContain("apply");
     expect(commandNames).toContain("create-task");
     expect(commandNames).toContain("run-task");
     expect(commandNames).toContain("config:get");
@@ -231,17 +230,15 @@ describe("registerCommands", () => {
     expect(optionNames).toContain("force");
   });
 
-  test("task:ready command has --workflow, --base-branch, --provider, and --resume options", () => {
+  test("task:ready command has only the --resume option", () => {
     const cli = cac("test-aop");
     registerCommands(cli);
 
     const cmd = cli.commands.find((c) => c.name === "task:ready");
     expect(cmd).toBeDefined();
     const optionNames = cmd?.options.map((opt) => opt.name);
-    expect(optionNames).toContain("workflow");
-    expect(optionNames).toContain("baseBranch");
-    expect(optionNames).toContain("provider");
     expect(optionNames).toContain("resume");
+    expect(optionNames).toHaveLength(1);
   });
 
   test("task:remove command has --force option", () => {
@@ -262,7 +259,6 @@ describe("registerCommands", () => {
       repoRemoveCommand: mock(() => undefined),
       taskReadyCommand: mock(() => undefined),
       taskRemoveCommand: mock(() => undefined),
-      applyCommand: mock(() => undefined),
       createTaskCommand: mock(async () => undefined),
       runTaskCommand: mock(() => undefined),
       configGetCommand: mock(() => undefined),
@@ -285,14 +281,8 @@ describe("registerCommands", () => {
     getCommandAction("status")("task-1", { json: true });
     getCommandAction("repo:init")("/repo");
     getCommandAction("repo:remove")("/repo", { force: true });
-    getCommandAction("task:ready")("task-123", {
-      workflow: "default",
-      baseBranch: "main",
-      provider: "opencode:openai/gpt-5.3-codex",
-      resume: "design_brief",
-    });
+    getCommandAction("task:ready")("task-123", { resume: "design_brief" });
     getCommandAction("task:remove")("task-123", { force: false });
-    getCommandAction("apply")("task-123");
     await getCommandAction("create-task")("build feature", { debug: true, raw: true });
     getCommandAction("run-task")("change-name");
     getCommandAction("config:get")("max_concurrent_tasks");
@@ -302,13 +292,9 @@ describe("registerCommands", () => {
     expect(handlers.repoInitCommand).toHaveBeenCalledWith("/repo");
     expect(handlers.repoRemoveCommand).toHaveBeenCalledWith("/repo", { force: true });
     expect(handlers.taskReadyCommand).toHaveBeenCalledWith("task-123", {
-      workflow: "default",
-      baseBranch: "main",
-      provider: "opencode:openai/gpt-5.3-codex",
       retryFromStep: "design_brief",
     });
     expect(handlers.taskRemoveCommand).toHaveBeenCalledWith("task-123", { force: false });
-    expect(handlers.applyCommand).toHaveBeenCalledWith("task-123");
     expect(handlers.createTaskCommand).toHaveBeenCalledWith("build feature", {
       debug: true,
       raw: true,

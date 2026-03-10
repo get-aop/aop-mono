@@ -60,6 +60,7 @@ const SETTING_META: Record<string, SettingMeta> = {
     description: "Which LLM provider the orchestrator uses for agents",
     type: "select",
     options: [
+      { value: "codex", label: "Codex CLI" },
       { value: "claude-code", label: "Opus 4.6" },
       { value: "opencode:opencode/kimi-k2.5", label: "Kimi K2.5" },
       { value: "opencode:opencode/kimi-k2.5-free", label: "Kimi K2.5 Free" },

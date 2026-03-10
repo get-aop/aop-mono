@@ -60,6 +60,7 @@ export {
   type WaitForRepoOptions,
   type WaitForTaskOptions,
   type WaitForTasksInRepoOptions,
+  waitForTaskMatch,
   waitForRepoInStatus,
   waitForTask,
   waitForTasksInRepo,

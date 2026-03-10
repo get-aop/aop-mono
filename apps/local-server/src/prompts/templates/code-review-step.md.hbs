@@ -8,7 +8,9 @@ Review the code changes at {{worktree.path}} for the task in `{{task.changePath}
 
 1. Perform a thorough review
 2. Clean up low-signal AI-generated code issues
-3. Check for:
+3. Treat staged, unstaged, and untracked worktree changes as valid review input
+4. Do not require changes to be committed to `HEAD`; automatic handoff finalizes git history later
+5. Check for:
    - Correctness: Does the implementation match the requirements?
    - Code quality: Is the code clean and maintainable?
    - Test coverage: Are there adequate tests?

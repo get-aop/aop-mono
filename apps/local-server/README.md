@@ -63,7 +63,6 @@ The local server is a Hono HTTP server. All background work (watching, processin
 | `/api/repos/:id` | DELETE | Remove a repository |
 | `/api/repos/:id/tasks` | GET | List tasks for a repository |
 | `/api/repos/:id/tasks/:taskId/ready` | POST | Mark task as READY |
-| `/api/repos/:id/tasks/:taskId/apply` | POST | Apply worktree changes to main repo |
 | `/api/repos/:id/tasks/:taskId` | DELETE | Remove a task |
 | `/api/tasks/resolve/:identifier` | GET | Resolve task by id/name/index |
 | `/api/settings` | GET | Get all settings |
@@ -107,8 +106,8 @@ DRAFT → READY → WORKING → DONE
 
 1. **DRAFT**: Task discovered via watcher, not yet ready for execution
 2. **READY**: Task queued for execution (set via API)
-3. **WORKING**: Agent actively executing in worktree
-4. **DONE**: Execution completed successfully
+3. **WORKING**: Agent actively executing in a `.aop/worktrees/...` worktree
+4. **DONE**: Execution completed successfully and the worktree is handed off automatically
 5. **BLOCKED**: Execution failed or timed out
 
 ## Task Storage

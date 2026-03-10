@@ -4,7 +4,6 @@ import type { LocalServerContext } from "../context.ts";
 import { getRepoById } from "../repo/handlers.ts";
 import { handleListFiles, handleReadFile } from "./change-files.ts";
 import {
-  applyTask,
   blockTask,
   getTaskById,
   markTaskReady,
@@ -71,18 +70,10 @@ export const createTaskRoutes = (ctx: LocalServerContext) => {
       return c.json({ error: "Task not found" }, 404);
     }
 
-    const body = await c.req
-      .json<{ workflow?: string; baseBranch?: string; provider?: string; retryFromStep?: string }>()
-      .catch(() => ({
-        workflow: undefined,
-        baseBranch: undefined,
-        provider: undefined,
-        retryFromStep: undefined,
-      }));
+    const body = await c.req.json<{ retryFromStep?: string }>().catch(() => ({
+      retryFromStep: undefined,
+    }));
     const result = await markTaskReady(ctx, taskId, {
-      workflow: body.workflow,
-      baseBranch: body.baseBranch,
-      provider: body.provider,
       retryFromStep: body.retryFromStep,
     });
 
@@ -112,51 +103,6 @@ export const createTaskRoutes = (ctx: LocalServerContext) => {
     }
 
     return c.json({ ok: true, taskId: result.task.id });
-  });
-
-  routes.post("/:taskId/apply", async (c) => {
-    const repoId = c.req.param("repoId") as string;
-    const taskId = c.req.param("taskId");
-
-    const repo = await getRepoById(ctx, repoId);
-    if (!repo) {
-      return c.json({ error: "Repo not found" }, 404);
-    }
-
-    const task = await getTaskById(ctx, taskId);
-    if (!task || task.repo_id !== repoId) {
-      return c.json({ error: "Task not found" }, 404);
-    }
-
-    const body = await c.req
-      .json<{ targetBranch?: string }>()
-      .catch(() => ({ targetBranch: undefined }));
-    const result = await applyTask(ctx, taskId, body.targetBranch);
-
-    if (!result.success) {
-      switch (result.error.code) {
-        case "NOT_FOUND":
-          return c.json({ error: "Task not found" }, 404);
-        case "INVALID_STATUS":
-          return c.json({ error: "Invalid task status", status: result.error.status }, 409);
-        case "REPO_NOT_FOUND":
-          return c.json({ error: "Repository not found" }, 404);
-        case "DIRTY_WORKING_DIRECTORY":
-          return c.json({ error: "Main repository has uncommitted changes" }, 409);
-        case "NO_CHANGES":
-          return c.json({ ok: true, affectedFiles: [], noChanges: true });
-        case "WORKTREE_NOT_FOUND":
-          return c.json({ error: "Worktree not found" }, 404);
-        case "BRANCH_NOT_FOUND":
-          return c.json({ error: "Branch not found", branch: result.error.branch }, 404);
-      }
-    }
-
-    return c.json({
-      ok: true,
-      affectedFiles: result.affectedFiles,
-      conflictingFiles: result.conflictingFiles,
-    });
   });
 
   routes.post("/:taskId/block", async (c) => {

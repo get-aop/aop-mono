@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
-  AOP_BIN,
   copyFixture,
   createTempRepo,
   createTestContext,
@@ -10,16 +9,16 @@ import {
   runAopCommand,
   type TestContext,
   triggerServerRefresh,
-  waitForTask,
+  waitForTaskMatch,
 } from "./helpers";
 
 const E2E_TIMEOUT = 600_000;
 
-describe("aop task workflow and apply", () => {
+describe("automatic task handoff", () => {
   let ctx: TestContext;
 
   beforeAll(async () => {
-    ctx = await createTestContext("run-apply");
+    ctx = await createTestContext("automatic-handoff");
   });
 
   afterAll(async () => {
@@ -27,14 +26,10 @@ describe("aop task workflow and apply", () => {
   });
 
   test(
-    "transfers changes from worktree to main repo",
+    "hands off DONE task changes into the main repo branch automatically",
     async () => {
-      const repo = await createTempRepo("run-apply", ctx.reposDir);
+      const repo = await createTempRepo("automatic-handoff", ctx.reposDir);
       const changePath = await copyFixture("backlog-test", repo.path);
-
-      // Don't commit the fixture — the reconciler will relocate it to the global path.
-      // Committing creates conflicts because the reconciler deletes repo-local files,
-      // and the agent modifies them in the worktree, making the diff unapplicable.
 
       try {
         const { exitCode: initExit } = await runAopCommand(
@@ -45,7 +40,6 @@ describe("aop task workflow and apply", () => {
         expect(initExit).toBe(0);
 
         await triggerServerRefresh(ctx.localServerUrl);
-
         await Bun.sleep(3000);
 
         const { exitCode: statusInitExit, stdout: statusInitOut } = await runAopCommand(
@@ -66,38 +60,24 @@ describe("aop task workflow and apply", () => {
         );
         expect(readyExit).toBe(0);
 
-        const completedTask = await waitForTask(taskId, ["DONE", "BLOCKED"], {
+        const completedTask = await waitForTaskMatch(
+          taskId,
+          (task) => task.status === "DONE" && task.worktree_path === null,
+          {
           timeout: 300_000,
           pollInterval: 2000,
           localServerUrl: ctx.localServerUrl,
-        });
+          },
+        );
         expect(completedTask).not.toBeNull();
         expect(completedTask?.status).toBe("DONE");
-
-        const worktreePath = completedTask?.worktree_path;
-        expect(worktreePath).not.toBeNull();
-        if (!worktreePath) throw new Error("worktree_path is null");
-        const helloInWorktree = join(worktreePath, "hello.txt");
-        expect(existsSync(helloInWorktree)).toBe(true);
-
-        const applyProc = Bun.spawn({
-          cmd: [process.execPath, AOP_BIN, "apply", taskId],
-          stdout: "inherit",
-          stderr: "inherit",
-          stdin: "inherit",
-          cwd: repo.path,
-          env: ctx.env,
-        });
-
-        const applyExitCode = await applyProc.exited;
-        expect(applyExitCode).toBe(0);
+        expect(completedTask?.worktree_path).toBeNull();
 
         const helloInMainPath = join(repo.path, "hello.txt");
         expect(existsSync(helloInMainPath)).toBe(true);
 
-        const gitStatusResult = await Bun.$`git status --porcelain`.cwd(repo.path).quiet();
-        const gitStatus = gitStatusResult.stdout.toString();
-        expect(gitStatus.length).toBeGreaterThan(0);
+        const branchResult = await Bun.$`git branch --list backlog-test`.cwd(repo.path).text();
+        expect(branchResult.trim()).toContain("backlog-test");
 
         const { exitCode: statusAfterExit, stdout: statusAfterStdout } = await runAopCommand(
           ["status", taskId, "--json"],
@@ -105,9 +85,10 @@ describe("aop task workflow and apply", () => {
           ctx.env,
         );
         expect(statusAfterExit).toBe(0);
-        const statusAfterApply = JSON.parse(statusAfterStdout);
-        expect(statusAfterApply.id).toStartWith("task_");
-        expect(statusAfterApply.status).toBe("DONE");
+        const finalStatus = JSON.parse(statusAfterStdout);
+        expect(finalStatus.id).toStartWith("task_");
+        expect(finalStatus.status).toBe("DONE");
+        expect(finalStatus.worktree_path).toBeNull();
       } finally {
         await repo.cleanup();
       }

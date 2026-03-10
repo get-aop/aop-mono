@@ -1,12 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   ApiError,
-  applyTask,
   blockTask,
   cleanupWorktrees,
-  fetchBranches,
   fetchExecutions,
-  fetchWorkflows,
   getMetrics,
   getPauseContext,
   getSettings,
@@ -132,47 +129,8 @@ describe("getStatus", () => {
   });
 });
 
-describe("fetchBranches", () => {
-  test("fetches branches for a repo", async () => {
-    mockFetch.mockResolvedValueOnce(
-      jsonResponse({ branches: ["main", "feature-a", "develop"], current: "main" }),
-    );
-
-    const result = await fetchBranches("repo-1");
-
-    expect(result.branches).toEqual(["main", "feature-a", "develop"]);
-    expect(result.current).toBe("main");
-    expect(mockFetch).toHaveBeenCalledWith("/api/repos/repo-1/branches", expect.any(Object));
-  });
-
-  test("throws ApiError on failure", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "Repo not found" }, 404));
-
-    await expect(fetchBranches("bad-repo")).rejects.toThrow(ApiError);
-  });
-});
-
-describe("fetchWorkflows", () => {
-  test("fetches workflow names", async () => {
-    mockFetch.mockResolvedValueOnce(
-      jsonResponse({ workflows: ["aop-default", "custom-workflow"] }),
-    );
-
-    const result = await fetchWorkflows();
-
-    expect(result).toEqual(["aop-default", "custom-workflow"]);
-    expect(mockFetch).toHaveBeenCalledWith("/api/workflows", expect.any(Object));
-  });
-
-  test("throws ApiError on failure", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "Server error" }, 500));
-
-    await expect(fetchWorkflows()).rejects.toThrow(ApiError);
-  });
-});
-
 describe("markReady", () => {
-  test("marks task as ready without workflow", async () => {
+  test("marks task as ready without retry step", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true, taskId: "task-1" }));
 
     const result = await markReady("repo-1", "task-1");
@@ -187,36 +145,10 @@ describe("markReady", () => {
     );
   });
 
-  test("marks task as ready with workflow", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true, taskId: "task-1" }));
-
-    await markReady("repo-1", "task-1", "custom-workflow");
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/api/repos/repo-1/tasks/task-1/ready",
-      expect.objectContaining({
-        body: JSON.stringify({ workflow: "custom-workflow" }),
-      }),
-    );
-  });
-
-  test("marks task as ready with workflow and baseBranch", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true, taskId: "task-1" }));
-
-    await markReady("repo-1", "task-1", "custom-workflow", "feature-branch");
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/api/repos/repo-1/tasks/task-1/ready",
-      expect.objectContaining({
-        body: JSON.stringify({ workflow: "custom-workflow", baseBranch: "feature-branch" }),
-      }),
-    );
-  });
-
   test("marks task as ready with retryFromStep", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true, taskId: "task-1" }));
 
-    await markReady("repo-1", "task-1", undefined, undefined, undefined, "full-review");
+    await markReady("repo-1", "task-1", "full-review");
 
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/repos/repo-1/tasks/task-1/ready",
@@ -387,72 +319,6 @@ describe("blockTask", () => {
       "/api/repos/repo-1/tasks/task-1/block",
       expect.objectContaining({ method: "POST" }),
     );
-  });
-});
-
-describe("applyTask", () => {
-  test("applies task without target branch", async () => {
-    mockFetch.mockResolvedValueOnce(
-      jsonResponse({
-        ok: true,
-        affectedFiles: ["src/index.ts", "src/utils.ts"],
-        conflictingFiles: [],
-      }),
-    );
-
-    const result = await applyTask("repo-1", "task-1");
-
-    expect(result.ok).toBe(true);
-    expect(result.affectedFiles).toEqual(["src/index.ts", "src/utils.ts"]);
-    expect(result.conflictingFiles).toEqual([]);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/api/repos/repo-1/tasks/task-1/apply",
-      expect.objectContaining({
-        method: "POST",
-        body: "{}",
-      }),
-    );
-  });
-
-  test("applies task with target branch", async () => {
-    mockFetch.mockResolvedValueOnce(
-      jsonResponse({ ok: true, affectedFiles: ["src/index.ts"], conflictingFiles: [] }),
-    );
-
-    await applyTask("repo-1", "task-1", "feature-branch");
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/api/repos/repo-1/tasks/task-1/apply",
-      expect.objectContaining({
-        body: JSON.stringify({ targetBranch: "feature-branch" }),
-      }),
-    );
-  });
-
-  test("returns noChanges when no files affected", async () => {
-    mockFetch.mockResolvedValueOnce(
-      jsonResponse({ ok: true, affectedFiles: [], conflictingFiles: [], noChanges: true }),
-    );
-
-    const result = await applyTask("repo-1", "task-1");
-
-    expect(result.noChanges).toBe(true);
-    expect(result.affectedFiles).toEqual([]);
-  });
-
-  test("returns conflicting files on success", async () => {
-    mockFetch.mockResolvedValueOnce(
-      jsonResponse({
-        ok: true,
-        affectedFiles: ["src/a.ts"],
-        conflictingFiles: ["src/a.ts"],
-      }),
-    );
-
-    const result = await applyTask("repo-1", "task-1");
-
-    expect(result.ok).toBe(true);
-    expect(result.conflictingFiles).toEqual(["src/a.ts"]);
   });
 });
 

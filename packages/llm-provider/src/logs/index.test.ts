@@ -29,6 +29,18 @@ describe("logs parser", () => {
     expect(parsed.entries).toHaveLength(0);
     expect(parsed.hasTrailingPartial).toBe(true);
   });
+
+  test("detects codex json events", () => {
+    const content = JSON.stringify({
+      type: "turn.completed",
+      "turn-id": "turn_123",
+      "last-assistant-message": "done",
+    });
+
+    const parsed = parseRawJsonlContent(content);
+    expect(parsed.entries).toHaveLength(1);
+    expect(parsed.entries[0]?.provider).toBe("codex");
+  });
 });
 
 describe("logs renderer", () => {

@@ -18,6 +18,22 @@ steps:
       - condition: __none__
         target: iterate
       - condition: ALL_TASKS_DONE
+        target: cleanup-review
+      - condition: failure
+        target: __blocked__
+
+  cleanup-review:
+    id: cleanup-review
+    type: review
+    promptTemplate: cleanup-review.md.hbs
+    maxAttempts: 1
+    signals:
+      - name: CLEANUP_COMPLETE
+        description: low-signal cleanup and simplification pass is done
+    transitions:
+      - condition: CLEANUP_COMPLETE
+        target: full-review
+      - condition: __none__
         target: full-review
       - condition: failure
         target: __blocked__
@@ -37,8 +53,6 @@ steps:
         target: __done__
       - condition: REVIEW_FAILED
         target: fix-issues
-        maxIterations: 2
-        onMaxIterations: __blocked__
       - condition: failure
         target: __blocked__
 
@@ -53,8 +67,6 @@ steps:
     transitions:
       - condition: FIX_COMPLETE
         target: quick-review
-        afterIteration: 1
-        thenTarget: full-review
       - condition: failure
         target: __blocked__
 
@@ -73,6 +85,8 @@ steps:
         target: __done__
       - condition: REVIEW_FAILED
         target: fix-issues
+        maxIterations: 2
+        onMaxIterations: __blocked__
       - condition: failure
         target: __blocked__
 terminalStates:

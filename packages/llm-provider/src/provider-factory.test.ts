@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createProvider } from "./provider-factory";
 import { ClaudeCodeProvider } from "./providers/claude-code";
+import { CodexProvider } from "./providers/codex";
 import { CursorCliProvider } from "./providers/cursor-cli";
 import { OpenCodeProvider } from "./providers/opencode";
 
@@ -30,6 +31,12 @@ describe("createProvider", () => {
     expect(provider).toBeInstanceOf(CursorCliProvider);
     expect(provider.name).toBe("cursor-cli");
     expect((provider as CursorCliProvider).model).toBe("Composer 1.5");
+  });
+
+  test("returns CodexProvider for 'codex'", () => {
+    const provider = createProvider("codex");
+    expect(provider).toBeInstanceOf(CodexProvider);
+    expect(provider.name).toBe("codex");
   });
 
   test("throws for unknown provider key", () => {

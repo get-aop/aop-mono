@@ -1,4 +1,5 @@
 export interface WorktreeMetadata {
+  branch: string;
   baseBranch: string;
   baseCommit: string;
 }

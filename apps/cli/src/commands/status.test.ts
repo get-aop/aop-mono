@@ -147,7 +147,18 @@ describe("statusCommand - single task", () => {
   });
 
   test("outputs found task as JSON when json option set", async () => {
-    mockFetchServer.mockResolvedValue(makeStatusResponse());
+    mockFetchServer
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          task: {
+            id: "task-abc-123",
+            status: "DONE",
+            worktree_path: null,
+          },
+        },
+      })
+      .mockResolvedValue(makeStatusResponse());
 
     let written = "";
     Bun.write = mock((_dest: unknown, data: Uint8Array) => {
@@ -159,5 +170,7 @@ describe("statusCommand - single task", () => {
     const parsed = JSON.parse(written.trim());
     expect(parsed.id).toBe("task-abc-123");
     expect(parsed.status).toBe("DONE");
+    expect(parsed.worktree_path).toBeNull();
+    expect(mockFetchServer).toHaveBeenCalledWith("/api/tasks/resolve/task-abc-123");
   });
 });

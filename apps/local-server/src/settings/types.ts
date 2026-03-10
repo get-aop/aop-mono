@@ -18,7 +18,7 @@ export const DEFAULT_SETTINGS: Record<SettingKey, string> = {
   [SettingKey.WATCHER_POLL_INTERVAL_SECS]: "30",
   [SettingKey.QUEUE_POLL_INTERVAL_SECS]: "1",
   [SettingKey.AGENT_TIMEOUT_SECS]: "1800",
-  [SettingKey.AGENT_PROVIDER]: "claude-code",
+  [SettingKey.AGENT_PROVIDER]: "codex",
   [SettingKey.FAST_MODE]: "false",
 };
 
@@ -30,6 +30,7 @@ export const isValidSettingKey = (key: string): key is SettingKey => {
 
 export const VALID_PROVIDER_VALUES = [
   "claude-code",
+  "codex",
   "opencode:opencode/kimi-k2.5",
   "opencode:opencode/kimi-k2.5-free",
   "opencode:openai/gpt-5.3-codex/medium",

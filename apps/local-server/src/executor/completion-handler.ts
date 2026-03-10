@@ -4,6 +4,7 @@ import { getLogger } from "@aop/infra";
 import { extractAssistantSignalTextFromRawJsonl } from "@aop/llm-provider";
 import type { LocalServerContext } from "../context.ts";
 import { detectSignal } from "../orchestrator/sync/signal-detector.ts";
+import { handoffCompletedTask } from "../task/handoff.ts";
 import type { ExecuteResult } from "./types.ts";
 
 const logger = getLogger("executor");
@@ -125,6 +126,17 @@ export const finalizeExecutionAndGetNextStep = async (
     signal: result.signal,
     pauseContext: result.pauseContext,
   });
+
+  if (completion.taskStatus === "DONE") {
+    try {
+      await handoffCompletedTask(ctx, taskId);
+    } catch (error) {
+      logger.error("Automatic task handoff failed: {error}", {
+        taskId,
+        error: String(error),
+      });
+    }
+  }
 
   if (completion.step && completion.execution && completion.taskStatus === "WORKING") {
     return {

@@ -1,12 +1,11 @@
 import { aopPaths, getLogger } from "@aop/infra";
-import { ApplyOps } from "./apply-ops.ts";
 import { BranchOps } from "./branch-ops.ts";
 import { syncEnvFiles } from "./env-sync.ts";
 import { NotAGitRepositoryError } from "./errors.ts";
 import { GitExecutor } from "./git-executor.ts";
 import { MergeOps } from "./merge-ops.ts";
 import { MetadataStore } from "./metadata.ts";
-import type { ApplyResult, GitManagerOptions, SquashResult, WorktreeInfo } from "./types.ts";
+import type { GitManagerOptions, HandoffResult, SquashResult, WorktreeInfo } from "./types.ts";
 import { WorktreeOps } from "./worktree-ops.ts";
 
 const logger = getLogger("git-manager");
@@ -17,7 +16,6 @@ export class GitManager {
   private readonly metadata: MetadataStore;
   private readonly worktreeOps: WorktreeOps;
   private readonly mergeOps: MergeOps;
-  private readonly applyOps: ApplyOps;
   private readonly repoPath: string;
 
   constructor(options: GitManagerOptions) {
@@ -31,13 +29,6 @@ export class GitManager {
     this.mergeOps = new MergeOps(this.executor, this.branchOps, this.metadata, (taskId) =>
       this.worktreeOps.exists(taskId),
     );
-    this.applyOps = new ApplyOps(
-      this.repoPath,
-      worktreesDir,
-      this.metadata,
-      (taskId) => this.worktreeOps.exists(taskId),
-      this.executor,
-    );
   }
 
   async init(): Promise<void> {
@@ -48,8 +39,8 @@ export class GitManager {
     logger.debug("GitManager initialized for {path}", { path: this.repoPath });
   }
 
-  async createWorktree(taskId: string, baseBranch: string): Promise<WorktreeInfo> {
-    const info = await this.worktreeOps.create(taskId, baseBranch);
+  async createWorktree(taskId: string, baseBranch: string, branchName = taskId): Promise<WorktreeInfo> {
+    const info = await this.worktreeOps.create(taskId, baseBranch, branchName);
     await syncEnvFiles(this.executor, this.repoPath, info.path);
     return info;
   }
@@ -66,11 +57,8 @@ export class GitManager {
     return this.worktreeOps.forceRemove(taskId);
   }
 
-  async applyWorktree(taskId: string, targetBranch?: string): Promise<ApplyResult> {
-    if (targetBranch) {
-      return this.applyOps.applyWorktreeToTarget(taskId, targetBranch);
-    }
-    return this.applyOps.applyWorktree(taskId);
+  async handoffWorktree(taskId: string, commitMessage: string): Promise<HandoffResult> {
+    return this.worktreeOps.handoff(taskId, commitMessage);
   }
 
   async listLocalBranches(): Promise<{ branches: string[]; current: string }> {

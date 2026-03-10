@@ -15,7 +15,7 @@ import {
   type TestContext,
   triggerServerRefresh,
   waitForRepoInStatus,
-  waitForTask,
+  waitForTaskMatch,
   waitForTasksInRepo,
 } from "./helpers";
 
@@ -76,20 +76,24 @@ describe("backlog full flow", () => {
       const updatedTask = updatedTasks[0] as TaskInfo;
       expect(["READY", "WORKING"]).toContain(updatedTask.status);
 
-      const completedTask = await waitForTask(task.id, ["DONE", "BLOCKED"], {
+      const completedTask = await waitForTaskMatch(
+        task.id,
+        (currentTask) => currentTask.status === "DONE" && currentTask.worktree_path === null,
+        {
         timeout: 300_000,
         pollInterval: 2000,
         localServerUrl: ctx.localServerUrl,
-      });
+        },
+      );
       expect(completedTask).not.toBeNull();
       if (!completedTask) throw new Error("Completed task should not be null");
       expect(completedTask.status).toBe("DONE");
 
-      const worktreePath = completedTask.worktree_path;
-      expect(worktreePath).not.toBeNull();
-      if (!worktreePath) throw new Error("worktree_path is null");
-      const helloPath = join(worktreePath, "hello.txt");
+      expect(completedTask.worktree_path).toBeNull();
+      const helloPath = join(repo.path, "hello.txt");
       expect(existsSync(helloPath)).toBe(true);
+      const branchResult = await Bun.$`git branch --list backlog-test`.cwd(repo.path).text();
+      expect(branchResult.trim()).toContain("backlog-test");
     },
     E2E_TIMEOUT,
   );

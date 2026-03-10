@@ -15,6 +15,7 @@ describe("TemplateLoader", () => {
       "review.md.hbs",
       "debug.md.hbs",
       "iterate.md.hbs",
+      "cleanup-review.md.hbs",
       "full-review.md.hbs",
       "quick-review.md.hbs",
       "fix-issues.md.hbs",
@@ -87,6 +88,14 @@ describe("TemplateLoader", () => {
       };
 
       expect(extractContext(backend)).toBe(extractContext(frontend));
+    });
+
+    test("full-review template treats worktree changes as reviewable state", async () => {
+      const template = await loader.load("full-review.md.hbs");
+
+      expect(template).toContain("Review the current worktree state, including staged, unstaged, and untracked changes.");
+      expect(template).toContain("Do not require changes to be committed to `HEAD` during review.");
+      expect(template).not.toContain("git diff main...HEAD");
     });
   });
 

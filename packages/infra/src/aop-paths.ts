@@ -9,9 +9,7 @@ export const aopPaths = {
   logs: () => join(getAopHome(), "logs"),
   repoDir: (repoId: string) => join(getAopHome(), "repos", repoId),
   relativeTaskDocs: () => join("docs", "tasks"),
-  worktrees: (repoId: string) => join(getAopHome(), "repos", repoId, "worktrees"),
-  worktree: (repoId: string, taskId: string) =>
-    join(getAopHome(), "repos", repoId, "worktrees", taskId),
-  worktreeMetadata: (repoId: string) =>
-    join(getAopHome(), "repos", repoId, "worktrees", ".metadata"),
+  worktrees: (repoId: string) => join(getAopHome(), "worktrees", repoId),
+  worktree: (repoId: string, taskId: string) => join(getAopHome(), "worktrees", repoId, taskId),
+  worktreeMetadata: (repoId: string) => join(getAopHome(), "worktrees", repoId, ".metadata"),
 };
