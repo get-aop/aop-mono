@@ -117,6 +117,15 @@ bun run apps/local-server/src/run.ts
 bun dev
 ```
 
+**Task creation from Claude/Codex**:
+```text
+/aop:from-scratch <idea>
+/aop:from-ticket <github-issue|linear-ticket|file|pasted-text>
+```
+
+Use `/aop:from-scratch` when there is no existing ticket and the agent needs to clarify the work inline.
+Use `/aop:from-ticket` when the requirements already exist and you want to skip brainstorming.
+
 **CLI commands** (require local server running):
 ```bash
 # Register a repository for task processing
