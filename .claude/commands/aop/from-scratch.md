@@ -19,17 +19,18 @@ If no input is provided, ask the user what they want to build before proceeding.
 - Keep all clarification inside this command.
 - Do not invoke other planning or brainstorming commands or skills.
 - Ask only the minimum questions needed to produce a solid task file.
-- Save all notes with the task, never under `.leo/brainstorm`.
+- Save all notes with the task folder.
 
 ## Process
 
 1. Read the request and inspect the relevant codebase areas.
 2. Clarify only what materially changes the implementation plan.
 3. Derive a kebab-case task slug.
-4. Create `openspec/changes/<task-slug>/` if it does not exist.
-5. Write `openspec/changes/<task-slug>/brainstorm.md` with a short decision summary.
-6. Write `openspec/changes/<task-slug>/tasks.md` with a self-contained implementation checklist.
-7. Present the task slug, written files, and a short summary for review.
+4. Create `docs/tasks/<task-slug>/` if it does not exist.
+5. Write `docs/tasks/<task-slug>/task.md` with the task description, requirements, and acceptance criteria.
+6. Write `docs/tasks/<task-slug>/plan.md` with a short decision summary, implementation context, and verification steps.
+7. Add numbered subtask files under `docs/tasks/<task-slug>/` when the work needs multiple executable slices.
+8. Present the task slug, written files, and a short summary for review.
 
 ## Guardrails
 

@@ -30,10 +30,11 @@ If no usable source is provided, ask for the ticket or document before proceedin
 1. Read the source material.
 2. Verify the source against the codebase and fix stale assumptions in the plan.
 3. Derive a kebab-case task slug from the source title.
-4. Create `openspec/changes/<task-slug>/` if it does not exist.
-5. Write `openspec/changes/<task-slug>/source.md` with the extracted requirements.
-6. Write `openspec/changes/<task-slug>/tasks.md` with a self-contained implementation checklist.
-7. Present the task slug, written files, and a short summary for review.
+4. Create `docs/tasks/<task-slug>/` if it does not exist.
+5. Write `docs/tasks/<task-slug>/task.md` with the extracted requirements and acceptance criteria.
+6. Write `docs/tasks/<task-slug>/plan.md` with the implementation checklist, context, and verification steps.
+7. Add numbered subtask files under `docs/tasks/<task-slug>/` when the work needs multiple executable slices.
+8. Present the task slug, written files, and a short summary for review.
 
 ## Guardrails
 

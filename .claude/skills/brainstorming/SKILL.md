@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: "Use before shaping new behavior in AOP. Clarifies intent, constraints, and success criteria before planning or implementation. For AOP task creation, prefer `/aop:from-scratch` as the public entrypoint."
+description: "Use before shaping new behavior in AOP. Clarifies intent, constraints, and success criteria before planning or implementation."
 ---
 
 # Brainstorming
@@ -14,8 +14,6 @@ Help turn an idea into a validated design before any task planning or coding sta
 3. Propose 2-3 approaches with trade-offs.
 4. Recommend one approach and explain why it best fits the current codebase.
 5. Present the design in small sections and validate each section with the user.
-
-For AOP task creation specifically, do not use this as the public entrypoint. Use `/aop:from-scratch` instead.
 
 ## Output Contract
 
