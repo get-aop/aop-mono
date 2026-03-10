@@ -81,7 +81,7 @@ detect_platform() {
   echo "Detected platform: ${OS}-${ARCH}"
 }
 
-# --- Linux Dependencies (required for Electron/WebView on Linux) ---
+# --- Linux Dependencies ---
 
 install_linux_deps() {
   if [ "$OS" != "linux" ]; then
@@ -89,7 +89,7 @@ install_linux_deps() {
   fi
 
   if ! command -v apt-get >/dev/null 2>&1; then
-    echo "Note: apt-get not found. If the app fails to start, install libnss3, libnspr4, libasound2t64" >&2
+    echo "Note: apt-get not found. If the compiled binary fails to start, install libnss3, libnspr4, libasound2t64" >&2
     return
   fi
 

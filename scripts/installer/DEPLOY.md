@@ -169,5 +169,4 @@ bun run build:release -- --target linux-x64
 - **SQLite**: Bundled in the Bun runtime, no external dependency
 - **Dashboard**: Pre-built and embedded in the binary, served automatically
 - **Data directory**: `~/.aop/` (database, logs, PID file)
-- **macOS Gatekeeper**: Unsigned binary triggers a warning. Workaround: `xattr -d com.apple.quarantine ./aop`
 - **No Windows support**: Bun compile doesn't support Windows yet

@@ -2,6 +2,7 @@
   "name": "@aop/cli",
   "version": "0.1.0",
   "type": "module",
+  "license": "MIT",
   "exports": {
     ".": "./src/main.ts",
     "./commands": "./src/main.ts"

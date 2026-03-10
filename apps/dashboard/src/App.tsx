@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { ElectronTitleBar } from "./components/ElectronTitleBar";
 import type { Task } from "./types";
 import { KanbanBoard } from "./views/KanbanBoard";
 import { MetricsPage } from "./views/MetricsPage";
@@ -81,7 +80,6 @@ export const App = () => {
 
   return (
     <div className="flex h-screen flex-col">
-      <ElectronTitleBar />
       <div className="flex-1 overflow-hidden">{renderContent()}</div>
     </div>
   );

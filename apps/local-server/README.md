@@ -127,39 +127,6 @@ The server handles SIGTERM and SIGINT for graceful shutdown:
 
 ## Running as a Service
 
-### macOS (launchd)
-
-Create `~/Library/LaunchAgents/com.aop.local-server.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.aop.local-server</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/path/to/bun</string>
-        <string>run</string>
-        <string>/path/to/aop-mono/apps/local-server/src/run.ts</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/aop-local-server.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/aop-local-server.log</string>
-</dict>
-</plist>
-```
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.aop.local-server.plist
-```
-
 ### Linux (systemd)
 
 Create `~/.config/systemd/user/aop-local-server.service`:
