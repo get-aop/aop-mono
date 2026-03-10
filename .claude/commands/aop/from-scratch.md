@@ -23,7 +23,7 @@ If no input is provided, ask the user what they want to build before proceeding.
 
 ## Process
 
-1. Read the request and inspect the relevant codebase areas.
+1. Read the request.
 2. Run the `brainstorming` skill to clarify intent, constraints, and success criteria.
 3. Continue after the brainstorming output is finished and use the agreed direction as the source of truth for task creation.
 4. Derive a kebab-case task slug.
