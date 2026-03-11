@@ -46,27 +46,25 @@ describe("aopPaths", () => {
     expect(aopPaths.relativeTaskDocs()).toBe(join("docs", "tasks"));
   });
 
-  test("worktrees returns <home>/repos/<repoId>/worktrees", () => {
-    expect(aopPaths.worktrees("repo_abc123")).toBe(
-      join(DEFAULT_AOP_HOME, "repos", "repo_abc123", "worktrees"),
-    );
+  test("worktrees returns <home>/worktrees/<repoId>", () => {
+    expect(aopPaths.worktrees("repo_abc123")).toBe(join(DEFAULT_AOP_HOME, "worktrees", "repo_abc123"));
   });
 
-  test("worktree returns <home>/repos/<repoId>/worktrees/<taskId>", () => {
+  test("worktree returns <home>/worktrees/<repoId>/<taskId>", () => {
     expect(aopPaths.worktree("repo_abc123", "task_xyz789")).toBe(
-      join(DEFAULT_AOP_HOME, "repos", "repo_abc123", "worktrees", "task_xyz789"),
+      join(DEFAULT_AOP_HOME, "worktrees", "repo_abc123", "task_xyz789"),
     );
   });
 
-  test("worktreeMetadata returns <home>/repos/<repoId>/worktrees/.metadata", () => {
+  test("worktreeMetadata returns <home>/worktrees/<repoId>/.metadata", () => {
     expect(aopPaths.worktreeMetadata("repo_abc123")).toBe(
-      join(DEFAULT_AOP_HOME, "repos", "repo_abc123", "worktrees", ".metadata"),
+      join(DEFAULT_AOP_HOME, "worktrees", "repo_abc123", ".metadata"),
     );
   });
 
   test("all paths use AOP_HOME when set", () => {
     process.env.AOP_HOME = "/tmp/test-aop";
     expect(aopPaths.repoDir("r1")).toBe("/tmp/test-aop/repos/r1");
-    expect(aopPaths.worktrees("r1")).toBe("/tmp/test-aop/repos/r1/worktrees");
+    expect(aopPaths.worktrees("r1")).toBe("/tmp/test-aop/worktrees/r1");
   });
 });

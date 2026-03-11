@@ -36,10 +36,17 @@ export const BlockedBanner = ({
             const changeName = task.changePath?.split("/").pop() ?? task.changePath ?? "";
 
             return (
-              <button
-                type="button"
+              <div
                 key={task.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onTaskClick?.(task)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onTaskClick?.(task);
+                  }
+                }}
                 data-testid={`blocked-task-${task.id}`}
                 className="flex min-w-[280px] cursor-pointer flex-col rounded-aop border border-aop-blocked/50 bg-aop-dark p-4 text-left transition-colors hover:border-aop-blocked/80 hover:bg-aop-dark/80"
               >
@@ -81,7 +88,7 @@ export const BlockedBanner = ({
                     {task.errorMessage}
                   </span>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>

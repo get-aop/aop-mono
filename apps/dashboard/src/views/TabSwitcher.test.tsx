@@ -1,21 +1,9 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { TaskStatus } from "@aop/common";
-import { Window } from "happy-dom";
+import { setupDashboardDom } from "../test/setup-dom";
 import { type DetailTab, TabSwitcher } from "./TabSwitcher";
 
-if (!globalThis.document || !("defaultView" in globalThis.document)) {
-  const win = new Window({ url: "http://localhost" });
-  for (const key of Object.getOwnPropertyNames(win)) {
-    if (!(key in globalThis)) {
-      Object.defineProperty(globalThis, key, {
-        value: (win as unknown as Record<string, unknown>)[key],
-        configurable: true,
-        writable: true,
-      });
-    }
-  }
-  globalThis.document = win.document as unknown as Document;
-}
+setupDashboardDom();
 
 const { render, screen, cleanup } = await import("@testing-library/react");
 
