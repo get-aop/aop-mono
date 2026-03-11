@@ -1,6 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { ReactElement } from "react";
+import { setupDashboardDom } from "../test/setup-dom";
 import { type LogLine, LogViewer } from "./LogViewer";
+
+setupDashboardDom();
+
+const { render, screen, cleanup } = await import("@testing-library/react");
+
+afterEach(cleanup);
 
 const renderToString = async (component: ReactElement): Promise<string> => {
   const { renderToStaticMarkup } = await import("react-dom/server");
@@ -44,36 +51,17 @@ describe("LogViewer", () => {
   });
 
   test("auto-scrolls to bottom when lines are added", async () => {
-    const { Window } = await import("happy-dom");
-    const window = new Window();
-    const document = window.document;
+    const { rerender } = render(<LogViewer lines={[]} />);
+    const viewer = screen.getByTestId("log-viewer") as HTMLDivElement;
+    Object.defineProperty(viewer, "scrollHeight", {
+      value: 240,
+      configurable: true,
+    });
 
-    // Patch globals for react-dom/client
-    const origDocument = globalThis.document;
-    const origWindow = globalThis.window;
-    Object.assign(globalThis, { document, window });
+    rerender(<LogViewer lines={[makeLine("line 1"), makeLine("line 2")]} />);
 
-    try {
-      const { createRoot } = await import("react-dom/client");
-      const container = document.createElement("div");
-      document.body.appendChild(container);
-
-      const lines = [makeLine("line 1"), makeLine("line 2")];
-
-      await new Promise<void>((resolve) => {
-        const root = createRoot(container as unknown as HTMLElement);
-        root.render(<LogViewer lines={lines} />);
-        setTimeout(resolve, 50);
-      });
-
-      const viewer = container.querySelector(
-        "[data-testid='log-viewer']",
-      ) as unknown as HTMLElement;
-      expect(viewer).toBeTruthy();
-      expect(viewer.textContent).toContain("line 1");
-      expect(viewer.textContent).toContain("line 2");
-    } finally {
-      Object.assign(globalThis, { document: origDocument, window: origWindow });
-    }
+    expect(viewer.textContent).toContain("line 1");
+    expect(viewer.textContent).toContain("line 2");
+    expect(viewer.scrollTop).toBe(240);
   });
 });

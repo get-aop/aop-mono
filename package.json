@@ -19,6 +19,7 @@
     "dev:dashboard": "bun run --filter @aop/dashboard dev",
     "dev:workspaces": "bun run --filter '*' dev",
     "test": "bun test",
+    "test:ci": "bun test apps packages scripts",
     "test:e2e": "bun test --concurrency 1 ./e2e-tests/src/*.e2e.ts",
     "test:coverage": "bun test --coverage apps packages scripts",
     "typecheck": "bun run --filter '*' typecheck",

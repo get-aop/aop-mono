@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 concurrency:
   group: aop-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -31,8 +32,8 @@ jobs:
       - name: Prepare environment
         run: cp .env.example .env
 
-      - name: Run tests
-        run: bun test
+      - name: Run non-E2E tests
+        run: bun run test:ci
 
       - name: Upload test artifacts
         if: failure()

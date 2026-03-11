@@ -23,10 +23,17 @@ export const PausedBanner = ({ tasks, onResume, onTaskClick }: PausedBannerProps
             const changeName = task.changePath?.split("/").pop() ?? task.changePath ?? "";
 
             return (
-              <button
-                type="button"
+              <div
                 key={task.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onTaskClick?.(task)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onTaskClick?.(task);
+                  }
+                }}
                 data-testid={`paused-task-${task.id}`}
                 className="flex min-w-[280px] cursor-pointer flex-col rounded-aop border border-aop-amber/50 bg-aop-dark p-4 text-left transition-colors hover:border-aop-amber/80 hover:bg-aop-dark/80"
               >
@@ -45,7 +52,7 @@ export const PausedBanner = ({ tasks, onResume, onTaskClick }: PausedBannerProps
                   </button>
                 </div>
                 <span className="mt-1 font-mono text-[10px] text-aop-slate-dark">{repoName}</span>
-              </button>
+              </div>
             );
           })}
         </div>

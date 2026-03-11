@@ -1,20 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { Window } from "happy-dom";
+import { setupDashboardDom } from "../test/setup-dom";
 import { FileTreeFlyout } from "./FileTreeFlyout";
 
-if (!globalThis.document || !("defaultView" in globalThis.document)) {
-  const win = new Window({ url: "http://localhost" });
-  for (const key of Object.getOwnPropertyNames(win)) {
-    if (!(key in globalThis)) {
-      Object.defineProperty(globalThis, key, {
-        value: (win as unknown as Record<string, unknown>)[key],
-        configurable: true,
-        writable: true,
-      });
-    }
-  }
-  globalThis.document = win.document as unknown as Document;
-}
+setupDashboardDom();
 
 const { render, screen, cleanup, fireEvent } = await import("@testing-library/react");
 
