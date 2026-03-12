@@ -5,19 +5,15 @@ Command-line interface for the Agents Operating Platform. A thin HTTP client tha
 ## Installation
 
 ```bash
-# From repository root
-bun install
-
-# Run directly
-bun apps/cli/src/main.ts <command>
-
-# Or build and install globally
-cd apps/cli && bun run build
+# From the monorepo root
+./install
 ```
 
 ## Prerequisites
 
-The CLI requires a running local server. Start it before using any commands:
+The CLI requires a running local server. `./install` links `aop` globally and installs the local server as a per-user background service on Linux and macOS.
+
+If you need to start it manually:
 
 ```bash
 bun run apps/local-server/src/run.ts

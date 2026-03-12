@@ -1,99 +1,75 @@
-# AOP - Agents Operating Platform
+# AOP
 
-AOP is a local-first platform for planning, queuing, and executing agent-driven tasks from repo-local task documents. It runs a local server, watches `docs/tasks/`, creates isolated git worktrees, executes tasks through configured LLM CLIs, and automatically hands completed work back to the main repository.
+AOP is a local-first operating layer for teams shipping software with AI agents. It turns task docs, workflow modules, and background orchestration into a repeatable delivery loop: capture work, queue it, run it in isolated git worktrees, and keep status visible from the CLI.
 
-## Architecture
+## What The App Brings
 
-AOP uses a client-server architecture with a local HTTP server for background task processing:
+### Workflow modules instead of one-off prompting
 
-- **Local Server**: HTTP server that manages task lifecycle and coordinates all background operations
-- **Orchestrator**: Initializes and coordinates the watcher, ticker, and queue processor
-- **Watcher**: Monitors `docs/tasks/` directories for task file changes
-- **Queue Processor**: Polls for READY tasks and dispatches to executor with concurrency control
-- **Executor**: Spawns configured agent CLIs in isolated git worktrees
-- **CLI**: Thin client that communicates with the local server via REST API
+AOP is built around workflow modules that move work through implementation, testing, review, retry, and completion. That gives teams a system for execution, not just a prompt library.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Local Server (HTTP)                          │
-│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐        │
-│  │   Watcher   │────▶│   Queue     │────▶│  Executor   │        │
-│  │ (fs events) │     │ (processor) │     │ (agent spawn)│       │
-│  └─────────────┘     └─────────────┘     └─────────────┘        │
-│          │                  │                    │               │
-│          └──────────────────┴────────────────────┘               │
-│                             │                                    │
-│                      ┌──────▼──────┐                             │
-│                      │   SQLite    │                             │
-│                      └─────────────┘                             │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │ REST API
-                        ┌──────▼──────┐
-                        │   CLI       │
-                        │ (thin client)│
-                        └─────────────┘
-```
+### Repo-local task operations
 
-## Documentation
+Task state lives in repository documents under `docs/tasks/<task-slug>/`. AOP watches those docs, tracks lifecycle changes, and turns them into executable work.
 
-- **[Workflow](docs/WORKFLOW.md)** - Task document workflow and execution model
-- **[Local Server](apps/local-server/README.md)** - HTTP server, orchestrator, and API reference
-- **[CLI Reference](apps/cli/README.md)** - thin-client command reference
+### Local-first execution
 
-## Quick Start
+Agents run on your machine, in local git worktrees, against your real repository. The local server handles orchestration so the CLI can stay fast and focused.
+
+### Import and planning flows
+
+AOP supports idea-first planning with `/aop:from-scratch` and requirements-driven ingestion with `/aop:from-ticket`, including Linear-powered flows for teams managing work outside the repo.
+
+### Operational visibility
+
+You can inspect status, task progress, and background capacity from the CLI while the local server continues running after the terminal closes.
+
+## Install
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) v1.3.8 or later
-- Git 2.40+
-- At least one supported agent CLI installed locally. Current providers in this repo include `codex` and `claude-code`.
+- Bun
+- Git
+- At least one supported agent CLI installed locally
+- macOS or Linux
 
-### Installation
+### One-command setup
 
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd <repository-directory>
-
-# Install dependencies
-bun install
+./install
 ```
 
-The repository also vendors repo-local skill bundles under `.claude/skills` and `.codex/skills` so planning and execution workflows do not depend on machine-global installs.
+`./install` installs dependencies, links the `aop` CLI globally, initializes OpenSpec tooling, and starts the local server as a per-user background service.
 
-### Usage
+## Run The App
 
-**Start the local server**:
+After install, the local server should already be running.
+
 ```bash
-# Start the local server
-bun run apps/local-server/src/run.ts
+# Check the system
+aop status
 
-# Or start the local server and dashboard together
-bun dev
-```
-
-**Register the current repository once**:
-```bash
+# Register the current repository
 aop repo:init .
+
+# Mark a task ready for execution
+aop task:ready <task-id>
 ```
 
-**Create task docs from Claude/Codex commands**:
+### Main creation flows
+
 ```text
 /aop:from-scratch <idea>
 /aop:from-ticket <github-issue|linear-ticket|file|pasted-text>
 ```
 
-`/aop:from-scratch` runs the AOP brainstorming flow, writes the task under `docs/tasks/<task-slug>/`, and can mark it `READY` at the end.
+`/aop:from-scratch` is the idea-first path. `/aop:from-ticket` is the import path for existing requirements, including Linear-backed work.
 
-`/aop:from-ticket` skips brainstorming, writes the task from existing requirements, and then asks whether the imported tasks should be started now.
+### Linear OAuth
 
-Linear imports support:
-- one ref like `ENG-123`
-- one Linear URL
-- one range like `ENG-123..ENG-130`
-- a mixed comma-separated list of refs, URLs, and ranges
-
-For Linear, AOP prefers the local OAuth flow. Start it from the CLI with:
+For interactive use, configure Linear from the dashboard Settings page or from the CLI:
 
 ```bash
 aop linear:configure --client-id <linear-client-id> --callback-url http://127.0.0.1:25150/api/linear/callback
@@ -103,118 +79,34 @@ aop linear:unlock
 aop linear:disconnect
 ```
 
-You can also configure the same values in the dashboard under Settings. OAuth tokens are stored in the OS credential store on macOS and Linux. For CI or headless usage, `LINEAR_API_KEY` remains available as a read-only fallback. Environment variables `AOP_LINEAR_CLIENT_ID` and `AOP_LINEAR_CALLBACK_BASE` still work as fallbacks, but the preferred interactive flow is to save the client ID and callback URL through the dashboard or `aop linear:configure`.
+OAuth tokens are stored in the OS credential store on macOS and Linux. For CI or headless usage, `LINEAR_API_KEY` remains available as a read-only fallback. Environment variables `AOP_LINEAR_CLIENT_ID` and `AOP_LINEAR_CALLBACK_BASE` still work as fallbacks, but the preferred interactive flow is to save the client ID and callback URL through the dashboard or `aop linear:configure`.
 
-When an imported Linear issue is blocked by another Linear issue, AOP auto-imports the missing blocker as a draft dependency task. Import always creates or updates the local task docs first. If you choose to start imported work immediately afterward, unrelated tasks can run in parallel while dependent tasks stay `READY` until all blocker tasks are `DONE`.
+### Service checks
 
-Once a task is `READY`, the orchestrator picks it up automatically.
-
-The CLI still exists, but the main product flow is:
-1. Start the local server
-2. Register the repo
-3. Create or update task docs under `docs/tasks/`
-4. Mark tasks `READY`
-5. Let the orchestrator execute and hand off completed work automatically
-
-The most commonly used CLI commands are:
 ```bash
-aop status
-aop task:ready <task-id>
+# Linux
+systemctl --user status aop-local-server
+
+# macOS
+launchctl list | grep com.aop.local-server
 ```
 
-For the full command surface, see the dedicated CLI reference.
+## How AOP Improves The Delivery Loop
 
-## Execution Model
+1. Work is captured in repo-local task docs.
+2. The watcher detects task changes and keeps the backlog current.
+3. Tasks move through states such as `DRAFT`, `READY`, `WORKING`, `DONE`, and `BLOCKED`.
+4. Workflow modules decide how implementation, verification, review, and failure handling progress.
+5. The executor runs agents in isolated worktrees so the main branch stays stable while work is in flight.
+6. The local server keeps the system alive in the background while the CLI remains a thin control surface.
 
-Task state lives in `docs/tasks/<task-slug>/`.
+The result is a more disciplined way to run AI-assisted development across repositories without collapsing into manual orchestration.
 
-The normal lifecycle is:
+## Contributing
 
-```text
-DRAFT -> READY -> WORKING -> DONE
-                     |
-                     -> BLOCKED
-```
+- Run `bun check` before opening a PR.
+- Add or update relevant tests with every change.
+- Keep functions and modules focused.
+- Preserve the local-first, thin-CLI architecture.
 
-When a task starts, AOP creates a worktree under `.aop/worktrees/` from the main branch and uses a task-derived branch name. When a task reaches `DONE`, AOP automatically hands the worktree changes back into the main repository branch and removes the temporary worktree. `BLOCKED` tasks are preserved for inspection and retry.
-
-By default, AOP uses Codex as the local agent provider when `codex` is available.
-
-### Development
-
-**Start the dev environment:**
-```bash
-# Start local server and dashboard
-bun dev
-
-# Start dashboard only
-bun dev --no-local
-```
-
-This starts:
-1. AOP local server with auto-reload
-2. Dashboard with HMR
-
-**Other development commands:**
-```bash
-# Build all packages
-bun build
-
-# Type-check the workspaces
-bun run typecheck
-```
-
-**Running tests:**
-```bash
-bun test          # All unit/integration tests
-bun test:e2e      # E2E tests (requires a supported agent CLI)
-bun test:coverage # Tests with coverage report
-```
-
-### Environment Variables
-
-**Local Server (`apps/local-server`):**
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AOP_PORT` | Port for the local HTTP server | `3847` |
-
-**CLI (`apps/cli`):**
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AOP_URL` | URL of the local server | `http://localhost:3847` |
-| `AOP_PORT` | Port for local server (if `AOP_URL` not set) | `3847` |
-
-**Development defaults (set by `bun dev`):**
-```bash
-AOP_PORT=3847
-```
-
-## Project Structure
-
-```
-apps/
-  cli/              # AOP command-line interface (thin HTTP client)
-  dashboard/        # Web dashboard for local status and task management
-  local-server/     # Local HTTP server (Hono)
-    orchestrator/   #   Background services (watcher, queue)
-    executor/       #   Agent spawning and execution tracking
-    repo/           #   Repository domain
-    task/           #   Task domain
-    settings/       #   Settings domain
-    db/             #   SQLite connection and migrations
-packages/
-  common/           # Shared types (Task, TaskStatus, protocol schemas)
-  git-manager/      # Git worktree lifecycle management
-  infra/            # Logging, TypeID utilities
-  llm-provider/     # Agent CLI provider interfaces and log parsing
-e2e-tests/          # End-to-end tests with real agents
-scripts/            # Development scripts
-```
-
-## Contribution Guidelines
-
-1. Run the relevant tests for the area you changed
-2. Keep files under 300 lines, functions under 50 lines
-3. Colocate tests with source files
-4. Follow TypeScript strict mode
-5. Use meaningful commit messages
+For the technical contributor guide, architecture notes, workspace layout, and tooling setup, see [`aop/README.md`](./aop/README.md).
