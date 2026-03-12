@@ -40,6 +40,25 @@ export interface TasksTable {
   updated_at: Generated<string>;
 }
 
+export interface TaskSourcesTable {
+  task_id: string;
+  repo_id: string;
+  provider: "linear";
+  external_id: string;
+  external_ref: string;
+  external_url: string;
+  title_snapshot: string;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface TaskDependenciesTable {
+  task_id: string;
+  depends_on_task_id: string;
+  source: "linear_blocks";
+  created_at: Generated<string>;
+}
+
 export interface ExecutionsTable {
   id: string;
   task_id: string;
@@ -112,6 +131,8 @@ export interface Database {
   workflows: WorkflowsTable;
   repos: ReposTable;
   tasks: TasksTable;
+  task_sources: TaskSourcesTable;
+  task_dependencies: TaskDependenciesTable;
   executions: ExecutionsTable;
   step_executions: StepExecutionsTable;
   step_logs: StepLogsTable;
@@ -133,6 +154,13 @@ export type RepoUpdate = Updateable<ReposTable>;
 export type Task = Selectable<TasksTable>;
 export type NewTask = Insertable<TasksTable>;
 export type TaskUpdate = Updateable<TasksTable>;
+
+export type TaskSource = Selectable<TaskSourcesTable>;
+export type NewTaskSource = Insertable<TaskSourcesTable>;
+export type TaskSourceUpdate = Updateable<TaskSourcesTable>;
+
+export type TaskDependency = Selectable<TaskDependenciesTable>;
+export type NewTaskDependency = Insertable<TaskDependenciesTable>;
 
 export type Execution = Selectable<ExecutionsTable>;
 export type NewExecution = Insertable<ExecutionsTable>;

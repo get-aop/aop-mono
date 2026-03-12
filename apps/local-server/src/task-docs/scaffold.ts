@@ -1,9 +1,11 @@
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { TaskStatus } from "@aop/common";
 import { aopPaths } from "@aop/infra";
 import type { BrainstormingResult } from "../create-task/brainstorm-parser.ts";
 import { serializeFrontmatter } from "./frontmatter.ts";
+import { parseTaskDoc } from "./task.ts";
 import type { TaskDocFrontmatter } from "./types.ts";
 
 interface SubtaskSeed {
@@ -11,6 +13,9 @@ interface SubtaskSeed {
   description: string;
   dependencies: number[];
 }
+
+const CHECKBOX_ITEM_REGEX = /^-\s+\[[ xX]\]\s+(.+)$/;
+const BULLET_ITEM_REGEX = /^-\s+(.+)$/;
 
 export interface ScaffoldTaskResult {
   taskName: string;
@@ -34,6 +39,34 @@ export const getTaskDocsRoot = (repoRoot: string): string =>
 
 export const getTaskDir = (repoRoot: string, taskName: string): string =>
   join(getTaskDocsRoot(repoRoot), taskName);
+
+export const ensureExecutionPlanArtifacts = async (taskDir: string): Promise<string[]> => {
+  const planPath = join(taskDir, "plan.md");
+  const existingSubtaskFiles = listSubtaskFiles(taskDir);
+
+  if (existsSync(planPath) && existingSubtaskFiles.length > 0) {
+    return [];
+  }
+
+  const taskDoc = await parseTaskDoc(join(taskDir, "task.md"));
+  const subtasks = await buildLegacySubtaskSeeds(taskDir, taskDoc);
+  if (subtasks.length === 0) {
+    return [];
+  }
+
+  const taskSlug = basename(taskDir);
+  const createdFiles: string[] = [];
+
+  if (!existsSync(planPath)) {
+    createdFiles.push(await writePlanFile(taskDir, taskSlug, subtasks, taskDoc.createdAt));
+  }
+
+  if (existingSubtaskFiles.length === 0) {
+    createdFiles.push(...(await writeSubtaskFiles(taskDir, subtasks)));
+  }
+
+  return createdFiles;
+};
 
 export const scaffoldTaskFromBrainstorm = async (
   repoRoot: string,
@@ -82,6 +115,60 @@ const buildSubtaskSeeds = (requirements: BrainstormingResult): SubtaskSeed[] => 
     dependencies: index === 0 ? [] : [index],
   }));
 };
+
+const listSubtaskFiles = (taskDir: string): string[] => {
+  try {
+    return readdirSync(taskDir).filter((file) => /^\d{3}-.*\.md$/.test(file));
+  } catch {
+    return [];
+  }
+};
+
+const buildLegacySubtaskSeeds = async (
+  taskDir: string,
+  taskDoc: Awaited<ReturnType<typeof parseTaskDoc>>,
+): Promise<SubtaskSeed[]> => {
+  const tasksChecklistPath = join(taskDir, "tasks.md");
+  const checklistItems = existsSync(tasksChecklistPath)
+    ? parseChecklistItems(await Bun.file(tasksChecklistPath).text())
+    : [];
+  const candidateItems =
+    checklistItems.length > 0
+      ? checklistItems
+      : [
+          ...taskDoc.acceptanceCriteria.map((criterion) => criterion.text),
+          ...parseBulletList(taskDoc.requirements),
+        ];
+
+  const uniqueItems = [...new Set(candidateItems.map((item) => item.trim()).filter(Boolean))];
+  if (uniqueItems.length > 0) {
+    return uniqueItems.map((item, index) => ({
+      title: item,
+      description: item,
+      dependencies: index === 0 ? [] : [index],
+    }));
+  }
+
+  return [
+    {
+      title: taskDoc.title,
+      description: taskDoc.description || taskDoc.title,
+      dependencies: [],
+    },
+  ];
+};
+
+const parseChecklistItems = (content: string): string[] =>
+  content.split("\n").flatMap((line) => {
+    const match = line.match(CHECKBOX_ITEM_REGEX);
+    return match?.[1] ? [match[1].trim()] : [];
+  });
+
+const parseBulletList = (content: string): string[] =>
+  content.split("\n").flatMap((line) => {
+    const match = line.match(BULLET_ITEM_REGEX);
+    return match?.[1] ? [match[1].trim()] : [];
+  });
 
 const writeTaskFile = async (
   taskDir: string,

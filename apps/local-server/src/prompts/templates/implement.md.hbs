@@ -10,27 +10,35 @@ Implement the task defined in the task folder, always working on `{{worktree.pat
 
 ### Pacing
 
-Complete exactly one ready numbered subtask file, then stop and signal.
+Complete exactly one ready implementation chunk, then stop and signal.
 
-After completing a subtask:
-1. Update its frontmatter to `status: DONE`
+When numbered subtask files exist:
+1. Update the completed subtask frontmatter to `status: DONE`
 2. Fill `### Result` with what changed
 3. Add any reviewer notes to `### Review` if useful
 4. Run the self-check
 5. Signal completion and stop
 
+When only `tasks.md` exists:
+1. Complete one unchecked checklist item
+2. Update `tasks.md` to mark that item done
+3. Update `task.md` status when the task is fully complete
+4. Run the self-check
+5. Signal completion and stop
+
 ### Implementation Process
 
-1. Read `task.md`, `plan.md`, and all numbered subtask files in `{{task.changePath}}`
-2. Choose the next subtask whose status is `PENDING` and whose dependencies are satisfied
-3. Implement only that subtask
-4. If all subtasks are complete, update `task.md` status to `DONE`
+1. Read `task.md`, `plan.md` when present, numbered subtask files when present, and `tasks.md` when present
+2. If numbered subtask files exist, choose the next subtask whose status is `PENDING` and whose dependencies are satisfied
+3. Otherwise, choose the next unchecked checklist item from `tasks.md` or the smallest unfinished requirement implied by `task.md`
+4. Implement only that one chunk of work
+5. If all required work is complete, update `task.md` status to `DONE`
 
 ### Self-Check
 
 Before signaling, verify:
 - Relevant tests or direct checks for the changed code pass
-- The implementation matches the selected subtask only
+- The implementation matches the selected chunk only
 - No TODO comments were left behind
 - The task docs accurately reflect the completed work
 - The final diff is clean and low-noise

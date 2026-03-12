@@ -36,5 +36,6 @@ export { createProvider } from "./provider-factory";
 export { ClaudeCodeProvider } from "./providers/claude-code";
 export { CodexProvider } from "./providers/codex";
 export { CursorCliProvider } from "./providers/cursor-cli";
+export { E2EFixtureProvider } from "./providers/e2e-fixture";
 export { OpenCodeProvider } from "./providers/opencode";
 export type { LLMProvider, RunOptions, RunResult } from "./types";

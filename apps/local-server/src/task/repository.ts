@@ -6,7 +6,7 @@ import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
 import type { Database, NewTask, Task, TaskUpdate } from "../db/schema.ts";
 import type { TaskEventEmitter } from "../events/task-events.ts";
-import { createRepoRepository, type RepoRepository } from "../repo/repository.ts";
+import { createRepoRepository } from "../repo/repository.ts";
 import { toSSETask } from "../status/handlers.ts";
 import { parseTaskDoc, updateTaskDocStatus, writeTaskDoc } from "../task-docs/task.ts";
 import type { TaskDocFrontmatter } from "../task-docs/types.ts";
@@ -32,6 +32,14 @@ export interface ConcurrencyLimits {
   getRepoMax: (repoId: string) => Promise<number>;
 }
 
+export type DependencyState = "ready" | "waiting" | "blocked";
+
+export interface TaskDependencyState {
+  dependencyState: DependencyState;
+  blockedByTaskIds: string[];
+  blockedByRefs: string[];
+}
+
 export interface TaskRepository {
   refresh: () => Promise<void>;
   create: (task: NewTask) => Promise<Task>;
@@ -42,6 +50,7 @@ export interface TaskRepository {
   markRemoved: (id: string) => Promise<boolean>;
   list: (filters?: ListFilters) => Promise<Task[]>;
   countWorking: (repoId?: string) => Promise<number>;
+  getDependencyState: (taskId: string) => Promise<TaskDependencyState>;
   getNextExecutable: (limits: ConcurrencyLimits) => Promise<Task | null>;
   getNextResumable: (limits: ConcurrencyLimits) => Promise<Task | null>;
   resetStaleWorkingTasks: () => Promise<number>;
@@ -50,6 +59,11 @@ export interface TaskRepository {
 
 export interface TaskRepositoryOptions {
   eventEmitter?: TaskEventEmitter;
+}
+
+interface DependencyRow {
+  dependsOnTaskId: string;
+  externalRef: string | null;
 }
 
 interface RuntimeTaskState {
@@ -156,12 +170,95 @@ const buildTaskFrontmatter = (task: NewTask, title: string): TaskDocFrontmatter 
   branch: undefined,
 });
 
+const EMPTY_DEPENDENCY_STATE: TaskDependencyState = {
+  dependencyState: "ready",
+  blockedByTaskIds: [],
+  blockedByRefs: [],
+};
+
+const summarizeDependencyRows = (
+  dependencyRows: DependencyRow[],
+  tasksById: Map<string, Task>,
+): TaskDependencyState => {
+  const blockedByTaskIds: string[] = [];
+  const blockedByRefs = new Set<string>();
+  const waitingTaskIds: string[] = [];
+  const waitingRefs = new Set<string>();
+
+  for (const dependency of dependencyRows) {
+    const task = tasksById.get(dependency.dependsOnTaskId);
+    if (isTerminalDependency(task)) {
+      blockedByTaskIds.push(dependency.dependsOnTaskId);
+      addDependencyRef(blockedByRefs, dependency.externalRef);
+      continue;
+    }
+
+    if (!task) {
+      continue;
+    }
+
+    if (task.status !== TaskStatus.DONE) {
+      waitingTaskIds.push(dependency.dependsOnTaskId);
+      addDependencyRef(waitingRefs, dependency.externalRef);
+    }
+  }
+
+  if (blockedByTaskIds.length > 0) {
+    return {
+      dependencyState: "blocked",
+      blockedByTaskIds,
+      blockedByRefs: [...blockedByRefs],
+    };
+  }
+
+  if (waitingTaskIds.length > 0) {
+    return {
+      dependencyState: "waiting",
+      blockedByTaskIds: waitingTaskIds,
+      blockedByRefs: [...waitingRefs],
+    };
+  }
+
+  return EMPTY_DEPENDENCY_STATE;
+};
+
+const isTerminalDependency = (task: Task | undefined): boolean =>
+  !task || task.status === TaskStatus.BLOCKED || task.status === TaskStatus.REMOVED;
+
+const addDependencyRef = (refs: Set<string>, externalRef: string | null): void => {
+  if (externalRef) {
+    refs.add(externalRef);
+  }
+};
+
+const canRunTask = async (
+  task: Task,
+  desiredStatus: TaskStatusType,
+  workingByRepo: Map<string, number>,
+  limits: ConcurrencyLimits,
+  isTaskExecutable: (task: Task) => Promise<boolean>,
+): Promise<boolean> => {
+  const hasCapacity = await limits.getRepoMax(task.repo_id).then((repoMax) => {
+    const repoWorking = workingByRepo.get(task.repo_id) ?? 0;
+    return repoWorking < repoMax;
+  });
+  if (!hasCapacity) {
+    return false;
+  }
+
+  if (desiredStatus !== TaskStatus.READY) {
+    return true;
+  }
+
+  return isTaskExecutable(task);
+};
+
 export const createTaskRepository = (
-  source: RepoRepository | Kysely<Database>,
+  db: Kysely<Database>,
   options: TaskRepositoryOptions = {},
 ): TaskRepository => {
   const { eventEmitter } = options;
-  const repoRepository = "getAll" in source ? source : createRepoRepository(source);
+  const repoRepository = createRepoRepository(db);
   const runtime = new Map<string, RuntimeTaskState>();
   const cache = new Map<string, Task>();
 
@@ -339,14 +436,34 @@ export const createTaskRepository = (
     };
   };
 
-  const hasRepoCapacity = async (
-    task: Task,
-    workingByRepo: Map<string, number>,
-    limits: ConcurrencyLimits,
-  ): Promise<boolean> => {
-    const repoWorking = workingByRepo.get(task.repo_id) ?? 0;
-    const repoMax = await limits.getRepoMax(task.repo_id);
-    return repoWorking < repoMax;
+  const getDependencyRows = async (taskId: string): Promise<DependencyRow[]> =>
+    db
+      .selectFrom("task_dependencies as dependencies")
+      .leftJoin("task_sources as sources", (join) =>
+        join
+          .onRef("sources.task_id", "=", "dependencies.depends_on_task_id")
+          .on("sources.provider", "=", "linear"),
+      )
+      .select([
+        "dependencies.depends_on_task_id as dependsOnTaskId",
+        "sources.external_ref as externalRef",
+      ])
+      .where("dependencies.task_id", "=", taskId)
+      .execute();
+
+  const getDependencyState = async (taskId: string): Promise<TaskDependencyState> => {
+    await refreshCache();
+    const dependencyRows = await getDependencyRows(taskId);
+    if (dependencyRows.length === 0) {
+      return EMPTY_DEPENDENCY_STATE;
+    }
+
+    return summarizeDependencyRows(dependencyRows, cache);
+  };
+
+  const isTaskExecutable = async (task: Task): Promise<boolean> => {
+    const dependencyState = await getDependencyState(task.id);
+    return dependencyState.dependencyState === "ready";
   };
 
   const pickNextTask = async (
@@ -367,9 +484,14 @@ export const createTaskRepository = (
     }
 
     for (const task of tasks) {
-      if (await hasRepoCapacity(task, workingByRepo, limits)) {
-        return task;
-      }
+      const readyToRun = await canRunTask(
+        task,
+        desiredStatus,
+        workingByRepo,
+        limits,
+        isTaskExecutable,
+      );
+      if (readyToRun) return task;
     }
 
     return null;
@@ -476,6 +598,8 @@ export const createTaskRepository = (
       const tasks = await filterTasks({ status: TaskStatus.WORKING, repo_id: repoId });
       return tasks.length;
     },
+
+    getDependencyState,
 
     getNextExecutable: (limits: ConcurrencyLimits) => pickNextTask(limits, TaskStatus.READY, "asc"),
 

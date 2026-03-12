@@ -50,6 +50,7 @@ const TaskStatusEnum = z.enum([
   "DONE",
   "REMOVED",
 ]);
+const TaskDependencyStateEnum = z.enum(["ready", "waiting", "blocked"]);
 
 const ErrorCodeEnum = z.enum([
   "agent_timeout",
@@ -164,6 +165,9 @@ const TaskExecutionStatusSchema = z.object({
 export const TaskStatusResponseSchema = z.object({
   status: TaskStatusEnum,
   execution: TaskExecutionStatusSchema.optional(),
+  dependencyState: TaskDependencyStateEnum.optional(),
+  blockedByTaskIds: z.array(z.string()).optional(),
+  blockedByRefs: z.array(z.string()).optional(),
 });
 
 export type TaskStatusResponse = z.infer<typeof TaskStatusResponseSchema>;

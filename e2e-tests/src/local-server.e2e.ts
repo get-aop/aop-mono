@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import {
   createTestContext,
   destroyTestContext,
@@ -73,8 +74,16 @@ describe("local server lifecycle", () => {
         LOCAL_SERVER_PORT_RANGE.min,
         LOCAL_SERVER_PORT_RANGE.max,
       );
-      const secondServer = await startLocalServer({ port: secondPort, dbPath: ctx.dbPath });
-      const secondUrl = secondServer.url;
+      const secondDbPath = join(ctx.baseDir, "second-server.sqlite");
+      const secondUrl = `http://localhost:${secondPort}`;
+      const secondServer = await startLocalServer({
+        port: secondPort,
+        dbPath: secondDbPath,
+        env: {
+          AOP_DASHBOARD_URL: ctx.dashboardUrl,
+          AOP_LOCAL_SERVER_URL: secondUrl,
+        },
+      });
 
       expect(await isLocalServerRunning(secondUrl)).toBe(true);
 

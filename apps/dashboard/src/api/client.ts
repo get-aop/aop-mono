@@ -179,6 +179,22 @@ export interface SettingEntry {
   value: string;
 }
 
+export interface LinearStatus {
+  connected: boolean;
+  locked: boolean;
+}
+
+export interface LinearConnectResponse {
+  authorizeUrl: string;
+}
+
+export interface LinearConnectionInfo {
+  ok: boolean;
+  organizationName: string;
+  userName: string;
+  userEmail: string;
+}
+
 export const getSettings = async (): Promise<SettingEntry[]> => {
   const data = await request<{ settings: SettingEntry[] }>("/settings");
   return data.settings;
@@ -198,6 +214,36 @@ export interface CleanupResult {
 
 export const cleanupWorktrees = async (): Promise<CleanupResult> => {
   return request<CleanupResult>("/settings/cleanup-worktrees", { method: "POST" });
+};
+
+export const getLinearStatus = async (): Promise<LinearStatus> => {
+  return request<LinearStatus>("/linear/status");
+};
+
+export const connectLinear = async (passphrase: string): Promise<LinearConnectResponse> => {
+  return request<LinearConnectResponse>("/linear/connect", {
+    method: "POST",
+    body: JSON.stringify({ passphrase }),
+  });
+};
+
+export const unlockLinear = async (passphrase: string): Promise<void> => {
+  await request("/linear/unlock", {
+    method: "POST",
+    body: JSON.stringify({ passphrase }),
+  });
+};
+
+export const testLinearConnection = async (): Promise<LinearConnectionInfo> => {
+  return request<LinearConnectionInfo>("/linear/test-connection", {
+    method: "POST",
+  });
+};
+
+export const disconnectLinear = async (): Promise<void> => {
+  await request("/linear/disconnect", {
+    method: "POST",
+  });
 };
 
 export const fetchChangeFiles = async (repoId: string, taskId: string): Promise<string[]> => {

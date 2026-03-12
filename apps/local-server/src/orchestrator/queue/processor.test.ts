@@ -9,6 +9,7 @@ import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../../context.ts";
 import type { Database, Task } from "../../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../../db/test-utils.ts";
+import { SettingKey } from "../../settings/types.ts";
 import { createQueueProcessor } from "./processor.ts";
 
 describe("QueueProcessor", () => {
@@ -147,6 +148,65 @@ describe("QueueProcessor", () => {
     expect(result).toBeNull();
     expect(executeTask).not.toHaveBeenCalled();
     expect((await ctx.taskRepository.get("task-1"))?.status).toBe("READY");
+  });
+
+  test("skips READY tasks waiting on dependencies and starts an unrelated READY task", async () => {
+    await createTestRepo(db, "repo-1", "/test/repo", { maxConcurrentTasks: 3 });
+    await ctx.settingsRepository.set(SettingKey.MAX_CONCURRENT_TASKS, "3");
+    await createTestTask(db, "task-upstream", "repo-1", "changes/upstream", "WORKING");
+    await createTestTask(db, "task-blocked", "repo-1", "changes/blocked", "READY");
+    await ctx.taskRepository.update("task-blocked", {
+      status: "READY",
+      ready_at: new Date(Date.now() - 2_000).toISOString(),
+    });
+    await createTestTask(db, "task-unrelated", "repo-1", "changes/unrelated", "READY");
+    await ctx.taskRepository.update("task-unrelated", {
+      status: "READY",
+      ready_at: new Date(Date.now() - 1_000).toISOString(),
+    });
+    await ctx.linearStore.replaceTaskDependencies("task-blocked", ["task-upstream"]);
+
+    const resolved = createResolvedStep();
+    const workflowService = {
+      listWorkflows: mock(async () => ["aop-default"]),
+      startTask: mock(
+        async (): Promise<TaskReadyResponse> => ({
+          status: "WORKING",
+          ...resolved,
+        }),
+      ),
+      completeStep: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+      resumeTask: mock(
+        async (): Promise<StepCompleteResponse> => ({ taskStatus: "DONE", step: null }),
+      ),
+    };
+    const executeTask = mock(
+      (_task: Task, _stepCommand: StepCommand, _execution: ExecutionInfo) => undefined,
+    );
+
+    const processor = createQueueProcessor(
+      {
+        taskRepository: ctx.taskRepository,
+        repoRepository: ctx.repoRepository,
+        settingsRepository: ctx.settingsRepository,
+        executionRepository: ctx.executionRepository,
+        workflowService,
+        executeTask,
+      },
+      { pollIntervalMs: 10 },
+    );
+
+    const task = await processor.processOnce();
+
+    expect(task?.id).toBe("task-unrelated");
+    expect(workflowService.startTask).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "task-unrelated" }),
+    );
+    expect(workflowService.startTask).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: "task-blocked" }),
+    );
   });
 
   test("resumes the next RESUMING task using the latest awaiting-input step", async () => {

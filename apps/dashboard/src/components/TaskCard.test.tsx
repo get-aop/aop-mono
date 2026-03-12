@@ -130,3 +130,35 @@ describe("TaskCard progress display", () => {
     expect(screen.queryByTestId("task-progress")).toBeNull();
   });
 });
+
+describe("TaskCard dependency display", () => {
+  test("shows waiting dependency refs for READY tasks", () => {
+    render(
+      <TaskCard
+        task={makeTask({
+          status: "READY",
+          dependencyState: "waiting",
+          blockedByRefs: ["ABC-120", "ABC-121"],
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("task-dependency-state").textContent).toContain(
+      "Waiting on ABC-120, ABC-121",
+    );
+  });
+
+  test("shows blocked dependency refs when execution is blocked upstream", () => {
+    render(
+      <TaskCard
+        task={makeTask({
+          status: "READY",
+          dependencyState: "blocked",
+          blockedByRefs: ["ABC-120"],
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("task-dependency-state").textContent).toContain("Blocked by ABC-120");
+  });
+});

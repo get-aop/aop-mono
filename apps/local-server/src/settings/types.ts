@@ -31,6 +31,7 @@ export const isValidSettingKey = (key: string): key is SettingKey => {
 export const VALID_PROVIDER_VALUES = [
   "claude-code",
   "codex",
+  "e2e-fixture",
   "opencode:opencode/kimi-k2.5",
   "opencode:opencode/kimi-k2.5-free",
   "opencode:openai/gpt-5.3-codex/medium",

@@ -1,7 +1,5 @@
-import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { delimiter } from "node:path";
 import type { Subprocess } from "bun";
 import {
   DASHBOARD_DEV_BIN,
@@ -36,31 +34,8 @@ export interface CreateTestContextOptions {
   localServerEnv?: Record<string, string>;
 }
 
-const E2E_AGENT_PROVIDER_CANDIDATES = [
-  { command: "codex", provider: "codex" },
-  { command: "agent", provider: "cursor-cli:composer-1.5" },
-  { command: "claude", provider: "claude-code" },
-  { command: "opencode", provider: "opencode:opencode/kimi-k2.5-free" },
-] as const;
-
-const isExecutableInPath = (command: string, pathValue: string | undefined): boolean => {
-  if (!pathValue) return false;
-
-  return pathValue
-    .split(delimiter)
-    .filter((segment) => segment.length > 0)
-    .some((segment) => existsSync(join(segment, command)));
-};
-
-export const resolveE2EAgentProvider = (pathValue = process.env.PATH): string | null => {
-  for (const candidate of E2E_AGENT_PROVIDER_CANDIDATES) {
-    if (isExecutableInPath(candidate.command, pathValue)) {
-      return candidate.provider;
-    }
-  }
-
-  return null;
-};
+export const resolveE2EAgentProvider = (): string =>
+  process.env.AOP_E2E_AGENT_PROVIDER?.trim() || "e2e-fixture";
 
 export const findFreePort = async (rangeStart: number, rangeEnd: number): Promise<number> => {
   const range = rangeEnd - rangeStart + 1;
@@ -155,17 +130,20 @@ export const createTestContext = async (
     LOCAL_SERVER_PORT_RANGE.max,
   );
   const localServerUrl = `http://localhost:${localServerPort}`;
+  const dashboardPort = await findFreePort(DASHBOARD_PORT_RANGE.min, DASHBOARD_PORT_RANGE.max);
+  const dashboardUrl = `http://localhost:${dashboardPort}`;
 
   const localServer = await startLocalServer({
     port: localServerPort,
     dbPath,
     env: {
+      AOP_TEST_MODE: "true",
       AOP_LOCAL_SERVER_URL: localServerUrl,
+      AOP_DASHBOARD_URL: dashboardUrl,
       ...options.localServerEnv,
     },
   });
 
-  const dashboardPort = await findFreePort(DASHBOARD_PORT_RANGE.min, DASHBOARD_PORT_RANGE.max);
   const dashboard = await startDashboardDev(dashboardPort, localServerUrl);
 
   const env: Record<string, string> = {
@@ -175,19 +153,17 @@ export const createTestContext = async (
     AOP_DB_PATH: dbPath,
   };
 
-  const provider = resolveE2EAgentProvider(env.PATH);
-  if (provider) {
-    const { exitCode, stderr } = await runAopCommand(
-      ["config:set", "agent_provider", provider],
-      undefined,
-      env,
-    );
+  const provider = resolveE2EAgentProvider();
+  const { exitCode, stderr } = await runAopCommand(
+    ["config:set", "agent_provider", provider],
+    undefined,
+    env,
+  );
 
-    if (exitCode !== 0) {
-      throw new Error(
-        `Failed to configure E2E agent provider "${provider}": ${stderr || "unknown error"}`,
-      );
-    }
+  if (exitCode !== 0) {
+    throw new Error(
+      `Failed to configure E2E agent provider "${provider}": ${stderr || "unknown error"}`,
+    );
   }
 
   return {
@@ -195,7 +171,7 @@ export const createTestContext = async (
     localServerUrl,
     localServer,
     dashboardPort,
-    dashboardUrl: dashboard.url,
+    dashboardUrl,
     dashboard,
     dbPath,
     baseDir,

@@ -123,6 +123,17 @@ describe("app", () => {
     });
   });
 
+  describe("Linear routes", () => {
+    test("mounts Linear status route", async () => {
+      const res = await app.request("/api/linear/status");
+      const body: AnyJson = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.connected).toBe(false);
+      expect(body.locked).toBe(true);
+    });
+  });
+
   describe("POST /api/refresh", () => {
     test("triggers refresh successfully", async () => {
       const res = await app.request("/api/refresh", { method: "POST" });

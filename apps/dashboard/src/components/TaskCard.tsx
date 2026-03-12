@@ -52,9 +52,32 @@ const TaskDuration = ({ task }: { task: Task }) => {
   );
 };
 
+const getDependencyNotice = (task: Task): { message: string; tone: string } | null => {
+  if (task.dependencyState === "waiting") {
+    const refs = task.blockedByRefs?.length ? task.blockedByRefs.join(", ") : "upstream tasks";
+    return {
+      message: `Waiting on ${refs}`,
+      tone: "text-aop-amber",
+    };
+  }
+
+  if (task.dependencyState === "blocked") {
+    const refs = task.blockedByRefs?.length
+      ? task.blockedByRefs.join(", ")
+      : "blocked upstream task";
+    return {
+      message: `Blocked by ${refs}`,
+      tone: "text-aop-blocked",
+    };
+  }
+
+  return null;
+};
+
 export const TaskCard = ({ task, onClick }: TaskCardProps) => {
   const repoName = task.repoPath?.split("/").pop() ?? task.repoPath ?? "";
   const changeName = task.changePath?.split("/").pop() ?? task.changePath ?? "";
+  const dependencyNotice = getDependencyNotice(task);
 
   return (
     <button
@@ -74,6 +97,14 @@ export const TaskCard = ({ task, onClick }: TaskCardProps) => {
           <TaskProgress completed={task.taskProgress.completed} total={task.taskProgress.total} />
         )}
       </div>
+      {dependencyNotice && (
+        <span
+          data-testid="task-dependency-state"
+          className={`mt-2 block font-mono text-[10px] ${dependencyNotice.tone}`}
+        >
+          {dependencyNotice.message}
+        </span>
+      )}
       {task.status === "BLOCKED" && task.errorMessage && (
         <span className="mt-2 block font-mono text-[10px] text-aop-blocked line-clamp-2">
           {task.errorMessage}

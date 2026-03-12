@@ -93,9 +93,34 @@ describe("TemplateLoader", () => {
     test("full-review template treats worktree changes as reviewable state", async () => {
       const template = await loader.load("full-review.md.hbs");
 
-      expect(template).toContain("Review the current worktree state, including staged, unstaged, and untracked changes.");
+      expect(template).toContain(
+        "Review the current worktree state, including staged, unstaged, and untracked changes.",
+      );
       expect(template).toContain("Do not require changes to be committed to `HEAD` during review.");
       expect(template).not.toContain("git diff main...HEAD");
+    });
+
+    test("cleanup-review template is self-contained and does not depend on named external skills", async () => {
+      const template = await loader.load("cleanup-review.md.hbs");
+
+      expect(template).toContain("Do a simplification pass on the current worktree changes");
+      expect(template).toContain("Do an AI-slop removal pass on the resulting diff");
+      expect(template).toContain(
+        "Do not spend time looking for external skills, agents, or instructions outside the current worktree",
+      );
+      expect(template).not.toContain("code-simplifier");
+      expect(template).not.toContain("remove-ai-slop");
+    });
+
+    test("implement template supports numbered subtasks and legacy tasks.md checklists", async () => {
+      const template = await loader.load("implement.md.hbs");
+
+      expect(template).toContain(
+        "numbered subtask files when present, and `tasks.md` when present",
+      );
+      expect(template).toContain("When only `tasks.md` exists:");
+      expect(template).toContain("choose the next unchecked checklist item from `tasks.md`");
+      expect(template).toContain("The implementation matches the selected chunk only");
     });
   });
 

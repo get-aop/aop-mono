@@ -16,6 +16,7 @@ If no input is provided, ask the user what they want to build before proceeding.
 ## Rules
 
 - This is the only entrypoint for idea-first task creation.
+- If the user already has a GitHub issue, Linear ticket, or existing requirements document, redirect to `/aop:from-ticket`.
 - Keep all clarification inside this command.
 - Invoke the `aop-brainstorming` skill first, then continue this command after it writes `docs/tasks/<task-slug>/design.md`.
 - Never invoke any generic `brainstorming` skill from this command.
@@ -40,5 +41,5 @@ If no input is provided, ask the user what they want to build before proceeding.
 ## Guardrails
 
 - Do not start implementation.
-- Do not redirect to any other task-start command.
+- Do not redirect to any other task-start command except `/aop:from-ticket` for existing-ticket workflows.
 - Keep the task file self-contained for background execution.

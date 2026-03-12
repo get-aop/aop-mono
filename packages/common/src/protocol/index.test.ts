@@ -221,6 +221,16 @@ describe("Protocol Types", () => {
       });
       expect(result.success).toBe(true);
     });
+
+    test("validates dependency wait details separately from task lifecycle", () => {
+      const result = TaskStatusResponseSchema.safeParse({
+        status: "READY",
+        dependencyState: "waiting",
+        blockedByTaskIds: ["task-upstream"],
+        blockedByRefs: ["ABC-120"],
+      });
+      expect(result.success).toBe(true);
+    });
   });
 
   describe("Error Codes", () => {

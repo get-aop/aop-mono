@@ -3,6 +3,7 @@ import { createProvider } from "./provider-factory";
 import { ClaudeCodeProvider } from "./providers/claude-code";
 import { CodexProvider } from "./providers/codex";
 import { CursorCliProvider } from "./providers/cursor-cli";
+import { E2EFixtureProvider } from "./providers/e2e-fixture";
 import { OpenCodeProvider } from "./providers/opencode";
 
 describe("createProvider", () => {
@@ -37,6 +38,12 @@ describe("createProvider", () => {
     const provider = createProvider("codex");
     expect(provider).toBeInstanceOf(CodexProvider);
     expect(provider.name).toBe("codex");
+  });
+
+  test("returns E2EFixtureProvider for 'e2e-fixture'", () => {
+    const provider = createProvider("e2e-fixture");
+    expect(provider).toBeInstanceOf(E2EFixtureProvider);
+    expect(provider.name).toBe("e2e-fixture");
   });
 
   test("throws for unknown provider key", () => {

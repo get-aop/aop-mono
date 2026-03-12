@@ -1,3 +1,4 @@
+import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
 import type { Database } from "./db/schema.ts";
 import {
@@ -11,6 +12,10 @@ import {
   type ExecutionRepository,
 } from "./executor/execution-repository.ts";
 import { createLogFlusher, type LogFlusher } from "./executor/log-flusher.ts";
+import { createLinearHandlers, type LinearHandlers } from "./integrations/linear/handlers.ts";
+import { createLinearOAuth } from "./integrations/linear/oauth.ts";
+import { createLinearStore, type LinearStore } from "./integrations/linear/store.ts";
+import { createLinearTokenStore } from "./integrations/linear/token-store.ts";
 import { createRepoRepository, type RepoRepository } from "./repo/repository.ts";
 import { createSessionRepository, type SessionRepository } from "./session/repository.ts";
 import { createSettingsRepository, type SettingsRepository } from "./settings/repository.ts";
@@ -29,6 +34,8 @@ export interface LocalServerContext {
   logBuffer: LogBuffer;
   logFlusher: LogFlusher;
   workflowService: LocalWorkflowService;
+  linearHandlers: LinearHandlers;
+  linearStore: LinearStore;
 }
 
 export interface CreateCommandContextOptions {
@@ -46,9 +53,25 @@ export const createCommandContext = (
   const repoRepository = createRepoRepository(db);
   const executionRepository = createExecutionRepository();
   const logFlusher = options.logFlusher ?? createLogFlusher(executionRepository);
+  const clientId = process.env.AOP_LINEAR_CLIENT_ID ?? "";
+  const callbackBase = process.env.AOP_LINEAR_CALLBACK_BASE ?? "http://127.0.0.1:4310";
+  const redirectUri = new URL("/api/linear/callback", callbackBase).toString();
+  const linearStore = createLinearStore(db);
+  const tokenStore = createLinearTokenStore({ filePath: aopPaths.linearTokens() });
+  const linearHandlers = createLinearHandlers({
+    auth: createLinearOAuth({
+      clientId: clientId || "linear-disabled",
+      redirectUri,
+    }),
+    tokenStore,
+    enabled: clientId.length > 0,
+    exchangeCodeForTokens: ({ code, verifier }) =>
+      exchangeLinearCodeForTokens({ clientId, code, verifier, redirectUri }),
+    testConnectionWithToken: testLinearConnection,
+  });
 
   const context = {
-    taskRepository: createTaskRepository(repoRepository, {
+    taskRepository: createTaskRepository(db, {
       eventEmitter: taskEventEmitter,
     }),
     repoRepository,
@@ -59,9 +82,101 @@ export const createCommandContext = (
     taskEventEmitter,
     logBuffer,
     logFlusher,
+    linearHandlers,
+    linearStore,
   } as LocalServerContext;
 
   context.workflowService = createLocalWorkflowService(context);
 
   return context;
+};
+
+const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
+const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
+
+const exchangeLinearCodeForTokens = async (params: {
+  clientId: string;
+  code: string;
+  verifier: string;
+  redirectUri: string;
+}) => {
+  const response = await fetch(LINEAR_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      client_id: params.clientId,
+      code: params.code,
+      code_verifier: params.verifier,
+      grant_type: "authorization_code",
+      redirect_uri: params.redirectUri,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Linear OAuth token exchange failed (${response.status})`);
+  }
+
+  const body = (await response.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
+
+  if (!body.access_token || !body.refresh_token || typeof body.expires_in !== "number") {
+    throw new Error("Linear OAuth token exchange returned an invalid payload");
+  }
+
+  return {
+    accessToken: body.access_token,
+    refreshToken: body.refresh_token,
+    expiresAt: new Date(Date.now() + body.expires_in * 1000).toISOString(),
+  };
+};
+
+const testLinearConnection = async (accessToken: string) => {
+  const response = await fetch(LINEAR_GRAPHQL_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: accessToken,
+    },
+    body: JSON.stringify({
+      query: "query LinearViewer { viewer { name email organization { name } } }",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Linear test connection failed (${response.status})`);
+  }
+
+  const body = (await response.json()) as {
+    data?: {
+      viewer?: {
+        name?: string | null;
+        email?: string | null;
+        organization?: {
+          name?: string | null;
+        } | null;
+      } | null;
+    };
+    errors?: Array<{ message?: string }>;
+  };
+
+  if (body.errors?.length) {
+    throw new Error(body.errors[0]?.message ?? "Linear test connection failed");
+  }
+
+  const viewer = body.data?.viewer;
+  if (!viewer?.name || !viewer.email || !viewer.organization?.name) {
+    throw new Error("Linear test connection returned an invalid payload");
+  }
+
+  return {
+    ok: true,
+    organizationName: viewer.organization.name,
+    userName: viewer.name,
+    userEmail: viewer.email,
+  };
 };

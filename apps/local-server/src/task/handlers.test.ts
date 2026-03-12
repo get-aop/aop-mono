@@ -186,6 +186,21 @@ describe("task/handlers", () => {
       }
     });
 
+    test("creates plan.md and numbered subtasks for legacy task folders before marking ready", async () => {
+      await createTestRepo(db, TEST_REPO_ID, "/test/repo");
+      await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
+      createPromptFile();
+
+      const dir = join(aopPaths.repoDir(TEST_REPO_ID), changePath);
+      expect(await Bun.file(join(dir, "plan.md")).exists()).toBe(false);
+
+      const result = await markTaskReady(ctx, "task-1");
+
+      expect(result.success).toBe(true);
+      expect(await Bun.file(join(dir, "plan.md")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, "001-task-1.md")).exists()).toBe(true);
+    });
+
     test("returns UPDATE_FAILED when repository update fails", async () => {
       await createTestRepo(db, TEST_REPO_ID, "/test/repo");
       await createTestTask(db, "task-1", TEST_REPO_ID, changePath, "DRAFT");
@@ -204,7 +219,6 @@ describe("task/handlers", () => {
       ctx.taskRepository.update = originalUpdate;
     });
   });
-
   describe("markTaskReady with retryFromStep", () => {
     const changePath = "changes/feat-retry";
 
@@ -463,5 +477,4 @@ describe("task/handlers", () => {
       }
     });
   });
-
 });

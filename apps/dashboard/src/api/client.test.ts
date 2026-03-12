@@ -3,7 +3,10 @@ import {
   ApiError,
   blockTask,
   cleanupWorktrees,
+  connectLinear,
+  disconnectLinear,
   fetchExecutions,
+  getLinearStatus,
   getMetrics,
   getPauseContext,
   getSettings,
@@ -13,6 +16,8 @@ import {
   registerRepo,
   removeTask,
   resumeTask,
+  testLinearConnection,
+  unlockLinear,
   updateSettings,
 } from "./client";
 
@@ -65,6 +70,9 @@ describe("getStatus", () => {
                 preferredWorkflow: null,
                 createdAt: "2024-01-01T00:00:00Z",
                 updatedAt: "2024-01-01T00:00:00Z",
+                dependencyState: "waiting",
+                blockedByTaskIds: ["task-0"],
+                blockedByRefs: ["ABC-120"],
               },
               {
                 id: "task-2",
@@ -100,6 +108,9 @@ describe("getStatus", () => {
       repoPath: "/path/to/repo",
       createdAt: "2024-01-01T00:00:00Z",
       updatedAt: "2024-01-01T00:00:00Z",
+      dependencyState: "waiting",
+      blockedByTaskIds: ["task-0"],
+      blockedByRefs: ["ABC-120"],
     });
     expect(mockFetch).toHaveBeenCalledWith("/api/status", expect.any(Object));
   });
@@ -350,6 +361,78 @@ describe("updateSettings", () => {
         method: "PUT",
         body: JSON.stringify({ settings }),
       }),
+    );
+  });
+});
+
+describe("Linear API client", () => {
+  test("fetches Linear connection status", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ connected: true, locked: false }));
+
+    const result = await getLinearStatus();
+
+    expect(result).toEqual({ connected: true, locked: false });
+    expect(mockFetch).toHaveBeenCalledWith("/api/linear/status", expect.any(Object));
+  });
+
+  test("starts the Linear OAuth flow", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ authorizeUrl: "https://linear.app/oauth/authorize?state=abc" }),
+    );
+
+    const result = await connectLinear("correct horse battery staple");
+
+    expect(result.authorizeUrl).toContain("linear.app/oauth/authorize");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/linear/connect",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ passphrase: "correct horse battery staple" }),
+      }),
+    );
+  });
+
+  test("unlocks the Linear token store", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    await unlockLinear("correct horse battery staple");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/linear/unlock",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ passphrase: "correct horse battery staple" }),
+      }),
+    );
+  });
+
+  test("tests the unlocked Linear connection", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        organizationName: "Acme",
+        userName: "Jane Doe",
+        userEmail: "jane@example.com",
+      }),
+    );
+
+    const result = await testLinearConnection();
+
+    expect(result.organizationName).toBe("Acme");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/linear/test-connection",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  test("disconnects the Linear integration", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    await disconnectLinear();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/linear/disconnect",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 });

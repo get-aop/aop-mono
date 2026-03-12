@@ -8,8 +8,8 @@ You MUST follow ALL the instructions and emit the REQUIRED SIGNALS at the bottom
 
 Prepare the implementation for final review by running two cleanup passes in order:
 
-1. Use `code-simplifier` on the current worktree changes
-2. Use `remove-ai-slop` on the resulting diff
+1. Do a simplification pass on the current worktree changes
+2. Do an AI-slop removal pass on the resulting diff
 
 Keep this pass narrow. Do not add features, expand scope, or perform a broad code review here.
 
@@ -26,5 +26,21 @@ Keep this pass narrow. Do not add features, expand scope, or perform a broad cod
 - Focus on changed files only unless a small related cleanup is required
 - Do not write `agent-review-report.md` in this step
 - Run only the smallest relevant verification commands needed to ensure the cleanup did not break anything
+- Do not spend time looking for external skills, agents, or instructions outside the current worktree
+
+### Cleanup Pass Expectations
+
+For the simplification pass:
+
+- Reduce unnecessary complexity and nesting
+- Remove redundant code and low-value abstractions
+- Prefer explicit, readable code over clever or overly compact code
+
+For the AI-slop removal pass:
+
+- Remove comments that state the obvious
+- Remove over-defensive checks that do not fit the surrounding code
+- Remove dead code, placeholder logic, and style inconsistencies
+- Keep the resulting diff tight and easy to review
 
 {{> output-signals}}
