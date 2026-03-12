@@ -208,6 +208,7 @@ describe("registerCommands", () => {
     expect(commandNames).toContain("run-task");
     expect(commandNames).toContain("config:get");
     expect(commandNames).toContain("config:set");
+    expect(commandNames).toContain("linear:configure");
   });
 
   test("status command has --json option", () => {
@@ -255,6 +256,7 @@ describe("registerCommands", () => {
     const cli = cac("test-aop");
     const handlers = {
       statusCommand: mock(() => undefined),
+      linearConfigureCommand: mock(() => undefined),
       repoInitCommand: mock(() => undefined),
       repoRemoveCommand: mock(() => undefined),
       taskReadyCommand: mock(() => undefined),
@@ -279,6 +281,10 @@ describe("registerCommands", () => {
     };
 
     getCommandAction("status")("task-1", { json: true });
+    getCommandAction("linear:configure")({
+      clientId: "linear-client-id",
+      callbackUrl: "http://127.0.0.1:4310/api/linear/callback",
+    });
     getCommandAction("repo:init")("/repo");
     getCommandAction("repo:remove")("/repo", { force: true });
     getCommandAction("task:ready")("task-123", { resume: "design_brief" });
@@ -289,6 +295,10 @@ describe("registerCommands", () => {
     getCommandAction("config:set")("max_concurrent_tasks", "10");
 
     expect(handlers.statusCommand).toHaveBeenCalledWith("task-1", { json: true });
+    expect(handlers.linearConfigureCommand).toHaveBeenCalledWith({
+      clientId: "linear-client-id",
+      callbackUrl: "http://127.0.0.1:4310/api/linear/callback",
+    });
     expect(handlers.repoInitCommand).toHaveBeenCalledWith("/repo");
     expect(handlers.repoRemoveCommand).toHaveBeenCalledWith("/repo", { force: true });
     expect(handlers.taskReadyCommand).toHaveBeenCalledWith("task-123", {

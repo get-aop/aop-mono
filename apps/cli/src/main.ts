@@ -9,6 +9,7 @@ import {
   configGetCommand,
   configSetCommand,
   createTaskCommand,
+  linearConfigureCommand,
   linearConnectCommand,
   linearDisconnectCommand,
   linearStatusCommand,
@@ -25,6 +26,7 @@ type CommandHandlers = {
   configGetCommand: typeof configGetCommand;
   configSetCommand: typeof configSetCommand;
   createTaskCommand: typeof createTaskCommand;
+  linearConfigureCommand: typeof linearConfigureCommand;
   linearConnectCommand: typeof linearConnectCommand;
   linearDisconnectCommand: typeof linearDisconnectCommand;
   linearStatusCommand: typeof linearStatusCommand;
@@ -54,6 +56,7 @@ const defaultCommandHandlers: CommandHandlers = {
   configGetCommand,
   configSetCommand,
   createTaskCommand,
+  linearConfigureCommand,
   linearConnectCommand,
   linearDisconnectCommand,
   linearStatusCommand,
@@ -145,6 +148,17 @@ export const registerCommands = (
     .command("status [taskId]", "Show status")
     .option("--json", "Output as JSON")
     .action((taskId, options) => commands.statusCommand(taskId, { json: options.json }));
+
+  cli
+    .command("linear:configure", "Save Linear OAuth settings")
+    .option("--client-id <clientId>", "Linear OAuth client ID")
+    .option("--callback-url <callbackUrl>", "Linear OAuth callback URL")
+    .action((options) =>
+      commands.linearConfigureCommand({
+        clientId: options.clientId,
+        callbackUrl: options.callbackUrl,
+      }),
+    );
 
   cli
     .command("linear:connect", "Start the Linear OAuth flow")

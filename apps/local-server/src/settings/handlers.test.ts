@@ -81,6 +81,32 @@ describe("settings/handlers", () => {
         expect(result.success).toBe(true);
       }
     });
+
+    test("saves Linear OAuth settings", async () => {
+      const result = await setAllSettings(ctx, [
+        { key: "linear_client_id", value: "linear-client-id" },
+        { key: "linear_callback_url", value: "http://127.0.0.1:4310/api/linear/callback" },
+      ]);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+
+      expect(await ctx.settingsRepository.get("linear_client_id")).toBe("linear-client-id");
+      expect(await ctx.settingsRepository.get("linear_callback_url")).toBe(
+        "http://127.0.0.1:4310/api/linear/callback",
+      );
+    });
+
+    test("rejects an invalid Linear callback URL", async () => {
+      const result = await setAllSettings(ctx, [
+        { key: "linear_callback_url", value: "not-a-url" },
+      ]);
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.code).toBe("INVALID_VALUE");
+      expect(result.error.key).toBe("linear_callback_url");
+    });
   });
 
   describe("setSetting", () => {
@@ -98,6 +124,14 @@ describe("settings/handlers", () => {
       expect(result.success).toBe(true);
       if (!result.success) return;
       expect(result.value).toBe("codex");
+    });
+
+    test("accepts an empty Linear callback URL to clear the override", async () => {
+      const result = await setSetting(ctx, "linear_callback_url", "");
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.value).toBe("");
     });
   });
 

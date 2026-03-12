@@ -46,6 +46,10 @@ interface SettingsFormProps {
 
 const GROUPS: { label: string; keys: string[] }[] = [
   {
+    label: "LINEAR OAUTH",
+    keys: ["linear_client_id", "linear_callback_url"],
+  },
+  {
     label: "AGENT CONFIGURATION",
     keys: ["max_concurrent_tasks", "agent_timeout_secs"],
   },
@@ -60,6 +64,16 @@ const GROUPS: { label: string; keys: string[] }[] = [
 ];
 
 const SETTING_META: Record<string, SettingMeta> = {
+  linear_client_id: {
+    label: "Linear Client ID",
+    description: "OAuth client ID from your Linear app",
+    type: "text",
+  },
+  linear_callback_url: {
+    label: "Linear Callback URL",
+    description: "Exact redirect URL registered in your Linear app",
+    type: "text",
+  },
   max_concurrent_tasks: {
     label: "Max Concurrent Tasks",
     description: "Maximum tasks running in parallel",
@@ -195,6 +209,11 @@ const SettingsForm = ({
 }: SettingsFormProps) => {
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<"success" | "error" | null>(null);
+  const linearClientId = savedValues.linear_client_id ?? "";
+  const linearCallbackUrl = savedValues.linear_callback_url ?? "";
+  const linearHasUnsavedChanges =
+    (editedValues.linear_client_id ?? "") !== linearClientId ||
+    (editedValues.linear_callback_url ?? "") !== linearCallbackUrl;
 
   const dirtyEntries = Object.entries(editedValues).filter(
     ([key, value]) => value !== savedValues[key],
@@ -227,7 +246,13 @@ const SettingsForm = ({
     <div className="flex flex-col gap-6">
       <section>
         <h2 className="mb-3 font-mono text-[10px] tracking-wider text-aop-slate-dark">LINEAR</h2>
-        <LinearConnectionSection linearState={linearState} onRefresh={onRefreshLinear} />
+        <LinearConnectionSection
+          linearClientId={linearClientId}
+          linearCallbackUrl={linearCallbackUrl}
+          linearHasUnsavedChanges={linearHasUnsavedChanges}
+          linearState={linearState}
+          onRefresh={onRefreshLinear}
+        />
       </section>
 
       {GROUPS.map((group) => {
@@ -318,6 +343,9 @@ const Header = ({ onNavigate }: SettingsPageProps) => (
 );
 
 interface LinearConnectionSectionProps {
+  linearClientId: string;
+  linearCallbackUrl: string;
+  linearHasUnsavedChanges: boolean;
   linearState: LinearSectionState;
   onRefresh: () => Promise<void>;
 }
@@ -350,6 +378,7 @@ const hasUnlockedConnection = (linearState: LinearSectionState): boolean => {
 const getPrimaryLinearAction = ({
   busy,
   connected,
+  configured,
   loading,
   locked,
   onConnect,
@@ -357,6 +386,7 @@ const getPrimaryLinearAction = ({
 }: {
   busy: LinearBusyState;
   connected: boolean;
+  configured: boolean;
   loading: boolean;
   locked: boolean;
   onConnect: () => void;
@@ -370,7 +400,7 @@ const getPrimaryLinearAction = ({
     return {
       label: busy === "connect" ? "Connecting..." : "Connect",
       onClick: onConnect,
-      disabled: loading || busy !== null,
+      disabled: !configured || loading || busy !== null,
     };
   }
 
@@ -388,6 +418,7 @@ const getPrimaryLinearAction = ({
 const LinearConnectionActions = ({
   busy,
   connected,
+  configured,
   loading,
   locked,
   onConnect,
@@ -397,6 +428,7 @@ const LinearConnectionActions = ({
 }: {
   busy: LinearBusyState;
   connected: boolean;
+  configured: boolean;
   loading: boolean;
   locked: boolean;
   onConnect: () => void;
@@ -407,6 +439,7 @@ const LinearConnectionActions = ({
   const primaryAction = getPrimaryLinearAction({
     busy,
     connected,
+    configured,
     loading,
     locked,
     onConnect,
@@ -436,10 +469,17 @@ const LinearConnectionActions = ({
   );
 };
 
-const LinearConnectionSection = ({ linearState, onRefresh }: LinearConnectionSectionProps) => {
+const LinearConnectionSection = ({
+  linearClientId,
+  linearCallbackUrl,
+  linearHasUnsavedChanges,
+  linearState,
+  onRefresh,
+}: LinearConnectionSectionProps) => {
   const [busy, setBusy] = useState<LinearBusyState>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<"success" | "error">("success");
+  const configured = linearClientId.trim().length > 0 && linearCallbackUrl.trim().length > 0;
 
   const showMessage = (nextMessage: string, tone: "success" | "error") => {
     setMessage(nextMessage);
@@ -517,10 +557,32 @@ const LinearConnectionSection = ({ linearState, onRefresh }: LinearConnectionSec
           </div>
         )}
 
+        {!configured && (
+          <div className="font-mono text-[10px] text-aop-slate-light">
+            Save a Linear client ID and callback URL below before connecting.
+          </div>
+        )}
+
+        {configured && linearHasUnsavedChanges && (
+          <div className="font-mono text-[10px] text-aop-slate-light">
+            Save your Linear OAuth settings before connecting.
+          </div>
+        )}
+
+        {linearCallbackUrl && (
+          <div className="rounded-aop border border-aop-charcoal/60 bg-aop-dark px-3 py-3">
+            <div className="font-mono text-[10px] text-aop-slate-dark">Callback URL</div>
+            <div className="mt-1 break-all font-mono text-xs text-aop-cream">
+              {linearCallbackUrl}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
           <LinearConnectionActions
             busy={busy}
             connected={Boolean(linearState.status?.connected)}
+            configured={configured && !linearHasUnsavedChanges}
             loading={linearState.loading}
             locked={Boolean(linearState.status?.locked)}
             onConnect={() => {

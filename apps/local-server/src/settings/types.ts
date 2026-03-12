@@ -9,6 +9,8 @@ export const SettingKey = {
   AGENT_TIMEOUT_SECS: "agent_timeout_secs",
   AGENT_PROVIDER: "agent_provider",
   FAST_MODE: "fast_mode",
+  LINEAR_CLIENT_ID: "linear_client_id",
+  LINEAR_CALLBACK_URL: "linear_callback_url",
 } as const;
 
 export type SettingKey = (typeof SettingKey)[keyof typeof SettingKey];
@@ -20,6 +22,8 @@ export const DEFAULT_SETTINGS: Record<SettingKey, string> = {
   [SettingKey.AGENT_TIMEOUT_SECS]: "1800",
   [SettingKey.AGENT_PROVIDER]: "codex",
   [SettingKey.FAST_MODE]: "false",
+  [SettingKey.LINEAR_CLIENT_ID]: "",
+  [SettingKey.LINEAR_CALLBACK_URL]: "",
 };
 
 export const VALID_KEYS: SettingKey[] = Object.values(SettingKey);
