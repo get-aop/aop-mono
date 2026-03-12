@@ -143,28 +143,32 @@ const isLegacyLinearCallbackUrl = (value: string): boolean => {
 const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
 
-const exchangeLinearCodeForTokens = async (params: {
+export const exchangeLinearCodeForTokens = async (params: {
   clientId: string;
   code: string;
   verifier: string;
   redirectUri: string;
 }) => {
+  const requestBody = new URLSearchParams({
+    client_id: params.clientId,
+    code: params.code,
+    code_verifier: params.verifier,
+    grant_type: "authorization_code",
+    redirect_uri: params.redirectUri,
+  });
+
   const response = await fetch(LINEAR_TOKEN_URL, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: JSON.stringify({
-      client_id: params.clientId,
-      code: params.code,
-      code_verifier: params.verifier,
-      grant_type: "authorization_code",
-      redirect_uri: params.redirectUri,
-    }),
+    body: requestBody.toString(),
   });
 
   if (!response.ok) {
-    throw new Error(`Linear OAuth token exchange failed (${response.status})`);
+    const errorBody = await response.text().catch(() => "");
+    const suffix = errorBody ? `: ${errorBody}` : "";
+    throw new Error(`Linear OAuth token exchange failed (${response.status})${suffix}`);
   }
 
   const body = (await response.json()) as {
@@ -184,12 +188,12 @@ const exchangeLinearCodeForTokens = async (params: {
   };
 };
 
-const testLinearConnection = async (accessToken: string) => {
+export const testLinearConnection = async (accessToken: string) => {
   const response = await fetch(LINEAR_GRAPHQL_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: accessToken,
+      Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({
       query: "query LinearViewer { viewer { name email organization { name } } }",
