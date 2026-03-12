@@ -90,4 +90,19 @@ export interface LinearRoutesDeps {
       userEmail: string;
     }>;
   };
+  importFromInput?(params: { cwd: string; input: string }): Promise<{
+    repoId: string;
+    alreadyExists: boolean;
+    imported: Array<{
+      taskId: string;
+      ref: string;
+      changePath: string;
+      requested: boolean;
+      dependencyImported: boolean;
+    }>;
+    failures: Array<{
+      ref: string;
+      error: string;
+    }>;
+  }>;
 }

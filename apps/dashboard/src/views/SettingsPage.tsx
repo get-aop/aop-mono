@@ -16,6 +16,8 @@ import { Logo } from "../components/Logo";
 import { TextInput } from "../components/TextInput";
 import { ToggleInput } from "../components/ToggleInput";
 
+const LINEAR_OAUTH_CHANNEL = "aop-linear-oauth";
+
 interface SettingsPageProps {
   onNavigate?: (path: string) => void;
 }
@@ -481,10 +483,10 @@ const LinearConnectionSection = ({
   const [messageTone, setMessageTone] = useState<"success" | "error">("success");
   const configured = linearClientId.trim().length > 0 && linearCallbackUrl.trim().length > 0;
 
-  const showMessage = (nextMessage: string, tone: "success" | "error") => {
+  const showMessage = useCallback((nextMessage: string, tone: "success" | "error") => {
     setMessage(nextMessage);
     setMessageTone(tone);
-  };
+  }, []);
 
   const runAction = async (
     nextBusy: Exclude<LinearBusyState, null>,
@@ -533,6 +535,36 @@ const LinearConnectionSection = ({
       await onRefresh();
     });
   };
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") {
+      return undefined;
+    }
+
+    const channel = new BroadcastChannel(LINEAR_OAUTH_CHANNEL);
+    channel.onmessage = (event: MessageEvent<{ type?: string; error?: string }>) => {
+      if (event.data?.type === "linear-oauth-complete") {
+        void onRefresh()
+          .then(() => {
+            showMessage("Linear connected", "success");
+          })
+          .catch((err) => {
+            showMessage(
+              err instanceof Error ? err.message : "Failed to refresh Linear connection",
+              "error",
+            );
+          });
+      }
+
+      if (event.data?.type === "linear-oauth-error") {
+        showMessage(event.data.error ?? "Linear connection failed", "error");
+      }
+    };
+
+    return () => {
+      channel.close();
+    };
+  }, [onRefresh, showMessage]);
 
   return (
     <div className="overflow-hidden rounded-aop-lg border border-aop-charcoal bg-aop-darkest">

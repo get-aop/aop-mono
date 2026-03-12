@@ -10,7 +10,7 @@ AOP is organized around three operational layers:
 - `apps/cli`: a thin client that talks to the local server over HTTP
 - `apps/dashboard` and `apps/server`: operational UI plus the remote workflow-backed product surface
 
-The local server is the center of gravity. It is why the source install flow now sets up a background user service on macOS and Linux.
+The local server is the center of gravity. It is why the source install flow now sets up a background user service on macOS and Linux and serves the built dashboard from that same process.
 
 ## Core Concepts
 

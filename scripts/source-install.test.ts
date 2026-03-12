@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  buildInstallSuccessMessage,
   buildLaunchdPlist,
   buildSystemdUnit,
   type InstallDependencies,
@@ -19,10 +20,13 @@ describe("parseInstallerArgs", () => {
 });
 
 describe("buildLaunchdPlist", () => {
-  test("renders a launch agent that runs the local server from source", () => {
+  test("renders a launch agent that runs the local server with the bundled dashboard", () => {
     const plist = buildLaunchdPlist({
       bunPath: "/opt/homebrew/bin/bun",
+      dashboardStaticPath: "/Users/marcelo/src/aop-mono/apps/dashboard/dist",
       logPath: "/Users/marcelo/.aop/logs/local-server.log",
+      localServerPort: "25150",
+      localServerUrl: "http://localhost:25150",
       serviceName: "com.aop.local-server",
       workspaceDir: "/Users/marcelo/src/aop-mono/aop",
     });
@@ -31,14 +35,25 @@ describe("buildLaunchdPlist", () => {
     expect(plist).toContain("<string>apps/local-server/src/run.ts</string>");
     expect(plist).toContain("<string>/Users/marcelo/src/aop-mono/aop</string>");
     expect(plist).toContain("<string>/Users/marcelo/.aop/logs/local-server.log</string>");
+    expect(plist).toContain("<key>NODE_ENV</key>");
+    expect(plist).toContain("<string>production</string>");
+    expect(plist).toContain("<key>AOP_LOCAL_SERVER_PORT</key>");
+    expect(plist).toContain("<string>25150</string>");
+    expect(plist).toContain("<key>AOP_LOCAL_SERVER_URL</key>");
+    expect(plist).toContain("<string>http://localhost:25150</string>");
+    expect(plist).toContain("<key>DASHBOARD_STATIC_PATH</key>");
+    expect(plist).toContain("<string>/Users/marcelo/src/aop-mono/apps/dashboard/dist</string>");
   });
 });
 
 describe("buildSystemdUnit", () => {
-  test("renders a user service that runs the local server from source", () => {
+  test("renders a user service that runs the local server with the bundled dashboard", () => {
     const unit = buildSystemdUnit({
       bunPath: "/home/marcelo/.bun/bin/bun",
+      dashboardStaticPath: "/home/marcelo/src/aop-mono/apps/dashboard/dist",
       logPath: "/home/marcelo/.aop/logs/local-server.log",
+      localServerPort: "25150",
+      localServerUrl: "http://localhost:25150",
       serviceName: "aop-local-server",
       workspaceDir: "/home/marcelo/src/aop-mono/aop",
     });
@@ -46,12 +61,28 @@ describe("buildSystemdUnit", () => {
     expect(unit).toContain("Description=AOP Local Server");
     expect(unit).toContain("WorkingDirectory=/home/marcelo/src/aop-mono/aop");
     expect(unit).toContain("ExecStart=/home/marcelo/.bun/bin/bun run apps/local-server/src/run.ts");
+    expect(unit).toContain("Environment=NODE_ENV=production");
+    expect(unit).toContain("Environment=AOP_LOCAL_SERVER_PORT=25150");
+    expect(unit).toContain("Environment=AOP_LOCAL_SERVER_URL=http://localhost:25150");
     expect(unit).toContain("Environment=AOP_LOG_DIR=/home/marcelo/.aop/logs");
+    expect(unit).toContain(
+      "Environment=DASHBOARD_STATIC_PATH=/home/marcelo/src/aop-mono/apps/dashboard/dist",
+    );
+  });
+});
+
+describe("buildInstallSuccessMessage", () => {
+  test("includes the default dashboard url", () => {
+    expect(buildInstallSuccessMessage()).toContain("http://localhost:25150");
+  });
+
+  test("uses the configured dashboard url when provided", () => {
+    expect(buildInstallSuccessMessage("http://localhost:3002")).toContain("http://localhost:3002");
   });
 });
 
 describe("installFromSource", () => {
-  test("installs dependencies, links the CLI, writes a systemd unit, and starts it on Linux", async () => {
+  test("builds the dashboard, links the CLI, writes a systemd unit, and starts it on Linux", async () => {
     const commands: string[][] = [];
     const run = mock(async (command: string[]) => {
       commands.push(command);
@@ -76,6 +107,7 @@ describe("installFromSource", () => {
     expect(commands).toEqual([
       ["bun", "install", "--ignore-scripts"],
       ["bun", "link"],
+      ["bun", "run", "build:dashboard"],
       ["systemctl", "--user", "daemon-reload"],
       ["systemctl", "--user", "enable", "--now", "aop-local-server.service"],
     ]);
@@ -89,7 +121,7 @@ describe("installFromSource", () => {
     expect(mkdir).toHaveBeenCalled();
   });
 
-  test("installs dependencies, links the CLI, writes a launch agent, and loads it on macOS", async () => {
+  test("builds the dashboard, links the CLI, writes a launch agent, and loads it on macOS", async () => {
     const commands: string[][] = [];
     const run = mock(async (command: string[]) => {
       commands.push(command);
@@ -114,6 +146,7 @@ describe("installFromSource", () => {
     expect(commands).toEqual([
       ["bun", "install", "--ignore-scripts"],
       ["bun", "link"],
+      ["bun", "run", "build:dashboard"],
       ["launchctl", "unload", "/Users/marcelo/Library/LaunchAgents/com.aop.local-server.plist"],
       ["launchctl", "load", "-w", "/Users/marcelo/Library/LaunchAgents/com.aop.local-server.plist"],
     ]);

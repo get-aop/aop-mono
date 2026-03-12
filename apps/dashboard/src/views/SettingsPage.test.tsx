@@ -25,10 +25,41 @@ mock.module("../api/client", () => ({
   updateSettings: mockUpdateSettings,
 }));
 
-const { render, screen, cleanup, fireEvent, waitFor } = await import("@testing-library/react");
+const { render, screen, cleanup, fireEvent, waitFor, act } = await import("@testing-library/react");
 const { SettingsPage } = await import("./SettingsPage");
 
+class FakeBroadcastChannel {
+  static instances: FakeBroadcastChannel[] = [];
+
+  name: string;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+
+  constructor(name: string) {
+    this.name = name;
+    FakeBroadcastChannel.instances.push(this);
+  }
+
+  postMessage(data: unknown) {
+    for (const channel of FakeBroadcastChannel.instances) {
+      if (channel.name === this.name && channel !== this) {
+        channel.onmessage?.({ data } as MessageEvent);
+      }
+    }
+  }
+
+  close() {
+    FakeBroadcastChannel.instances = FakeBroadcastChannel.instances.filter(
+      (channel) => channel !== this,
+    );
+  }
+
+  static reset() {
+    FakeBroadcastChannel.instances = [];
+  }
+}
+
 const originalOpen = globalThis.open;
+const originalBroadcastChannel = globalThis.BroadcastChannel;
 
 beforeEach(() => {
   mockCleanupWorktrees.mockReset();
@@ -39,18 +70,18 @@ beforeEach(() => {
   mockTestLinearConnection.mockReset();
   mockUnlockLinear.mockReset();
   mockUpdateSettings.mockReset();
+  FakeBroadcastChannel.reset();
+  globalThis.BroadcastChannel = FakeBroadcastChannel as typeof BroadcastChannel;
   globalThis.open = mock(() => null) as typeof globalThis.open;
 });
 
 afterEach(() => {
   cleanup();
+  globalThis.BroadcastChannel = originalBroadcastChannel;
   globalThis.open = originalOpen;
 });
 
-const primeSettingsLoad = (overrides?: {
-  linearClientId?: string;
-  linearCallbackUrl?: string;
-}) => {
+const primeSettingsLoad = (overrides?: { linearClientId?: string; linearCallbackUrl?: string }) => {
   mockGetSettings.mockResolvedValue([
     { key: "linear_client_id", value: overrides?.linearClientId ?? "" },
     {
@@ -126,6 +157,43 @@ describe("SettingsPage Linear section", () => {
       "_blank",
       "noopener,noreferrer",
     );
+  });
+
+  test("refreshes Linear status after OAuth completion is broadcast from the callback tab", async () => {
+    primeSettingsLoad({
+      linearClientId: "linear-client-id",
+      linearCallbackUrl: "http://127.0.0.1:25150/api/linear/callback",
+    });
+    mockGetLinearStatus
+      .mockResolvedValueOnce({ connected: false, locked: true })
+      .mockResolvedValueOnce({ connected: true, locked: false });
+    mockConnectLinear.mockResolvedValue({
+      authorizeUrl: "https://linear.app/oauth/authorize?state=abc",
+    });
+    mockTestLinearConnection.mockResolvedValue({
+      ok: true,
+      organizationName: "Acme",
+      userName: "Jane Doe",
+      userEmail: "jane@example.com",
+    });
+
+    render(<SettingsPage />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Connect" })).toBeDefined());
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(mockConnectLinear).toHaveBeenCalled());
+
+    await act(async () => {
+      const callbackChannel = new FakeBroadcastChannel("aop-linear-oauth");
+      callbackChannel.postMessage({ type: "linear-oauth-complete" });
+      callbackChannel.close();
+    });
+
+    await waitFor(() => expect(screen.getByText("Connected")).toBeDefined());
+    expect(screen.getByText("Acme")).toBeDefined();
+    expect(screen.getByText("Jane Doe")).toBeDefined();
+    expect(screen.getByText("jane@example.com")).toBeDefined();
   });
 
   test("renders locked state and unlocks from secure storage", async () => {

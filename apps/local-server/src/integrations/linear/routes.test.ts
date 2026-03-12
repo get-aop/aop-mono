@@ -11,10 +11,12 @@ interface LinearRoutesModule {
         errorDescription?: string | null;
         state?: string | null;
       }): Promise<{ connected: boolean }> | { connected: boolean };
-      getStatus(): Promise<{ connected: boolean; locked: boolean }> | {
-        connected: boolean;
-        locked: boolean;
-      };
+      getStatus():
+        | Promise<{ connected: boolean; locked: boolean }>
+        | {
+            connected: boolean;
+            locked: boolean;
+          };
       unlock(): Promise<void>;
       disconnect(): Promise<void>;
       testConnection(): Promise<{
@@ -24,6 +26,21 @@ interface LinearRoutesModule {
         userEmail: string;
       }>;
     };
+    importFromInput?(params: { cwd: string; input: string }): Promise<{
+      repoId: string;
+      alreadyExists: boolean;
+      imported: Array<{
+        taskId: string;
+        ref: string;
+        changePath: string;
+        requested: boolean;
+        dependencyImported: boolean;
+      }>;
+      failures: Array<{
+        ref: string;
+        error: string;
+      }>;
+    }>;
   }): Hono;
 }
 
@@ -121,6 +138,44 @@ describe("integrations/linear/routes", () => {
     expect(body).toEqual({
       connected: true,
     });
+  });
+
+  test("GET /callback returns a completion page for browser requests", async () => {
+    const { createLinearRoutes } = await loadRoutesModule();
+    const app = new Hono();
+
+    app.route(
+      "/api/linear",
+      createLinearRoutes({
+        handlers: {
+          connect: () => ({ authorizeUrl: "https://linear.app/oauth/authorize" }),
+          callback: async () => ({ connected: true }),
+          getStatus: async () => ({ connected: true, locked: true }),
+          unlock: async () => {},
+          disconnect: async () => {},
+          testConnection: async () => ({
+            ok: true,
+            organizationName: "Acme",
+            userName: "Jane Doe",
+            userEmail: "jane@example.com",
+          }),
+        },
+      }),
+    );
+
+    const res = await app.request("/api/linear/callback?code=oauth-code&state=state-123", {
+      headers: {
+        Accept: "text/html",
+      },
+    });
+    const body = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(body).toContain("Linear connected");
+    expect(body).toContain("BroadcastChannel");
+    expect(body).toContain("aop-linear-oauth");
+    expect(body).toContain("window.close()");
   });
 
   test("GET /status returns token-store status", async () => {
@@ -232,6 +287,81 @@ describe("integrations/linear/routes", () => {
       organizationName: "Acme",
       userName: "Jane Doe",
       userEmail: "jane@example.com",
+    });
+  });
+
+  test("POST /import auto-registers a repo and imports Linear issues from the current cwd", async () => {
+    const { createLinearRoutes } = await loadRoutesModule();
+    const app = new Hono();
+    let seenParams: { cwd: string; input: string } | undefined;
+
+    app.route(
+      "/api/linear",
+      createLinearRoutes({
+        handlers: {
+          connect: () => ({ authorizeUrl: "https://linear.app/oauth/authorize" }),
+          callback: async () => ({ connected: true }),
+          getStatus: async () => ({ connected: true, locked: false }),
+          unlock: async () => {},
+          disconnect: async () => {},
+          testConnection: async () => ({
+            ok: true,
+            organizationName: "Acme",
+            userName: "Jane Doe",
+            userEmail: "jane@example.com",
+          }),
+        },
+        importFromInput: async (params) => {
+          seenParams = params;
+          return {
+            repoId: "repo_123",
+            alreadyExists: false,
+            imported: [
+              {
+                taskId: "task_123",
+                ref: "GET-41",
+                changePath: "docs/tasks/get-41-dashboard-scroll",
+                requested: true,
+                dependencyImported: false,
+              },
+            ],
+            failures: [],
+          };
+        },
+      }),
+    );
+
+    const res = await app.request("/api/linear/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        cwd: "/repo/path",
+        input: "GET-41",
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(seenParams).toEqual({
+      cwd: "/repo/path",
+      input: "GET-41",
+    });
+    expect(body).toEqual({
+      ok: true,
+      repoId: "repo_123",
+      alreadyExists: false,
+      imported: [
+        {
+          taskId: "task_123",
+          ref: "GET-41",
+          changePath: "docs/tasks/get-41-dashboard-scroll",
+          requested: true,
+          dependencyImported: false,
+        },
+      ],
+      failures: [],
     });
   });
 });

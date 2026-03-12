@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 interface LinearTokenSet {
   accessToken: string;
@@ -31,6 +34,9 @@ interface LinearTokenStoreModule {
   createLinearTokenStore(options?: {
     accountName?: string;
     exec?: (invocation: ExecInvocation) => Promise<ExecResult>;
+    env?: NodeJS.ProcessEnv;
+    fallbackFilePath?: string;
+    kernelRelease?: string;
     platform?: NodeJS.Platform;
     serviceName?: string;
   }): LinearTokenStore;
@@ -48,10 +54,16 @@ const loadTokenStoreModule = async (): Promise<LinearTokenStoreModule> =>
 describe("integrations/linear/token-store", () => {
   let invocations: ExecInvocation[];
   let responses: ExecResult[];
+  let tempDirs: string[];
 
   beforeEach(() => {
     invocations = [];
     responses = [];
+    tempDirs = [];
+  });
+
+  afterEach(async () => {
+    await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
   const exec = async (invocation: ExecInvocation): Promise<ExecResult> => {
@@ -143,5 +155,59 @@ describe("integrations/linear/token-store", () => {
       connected: false,
       locked: true,
     });
+  });
+
+  test("falls back to a local file on WSL when secret-tool is unavailable", async () => {
+    const { createLinearTokenStore } = await loadTokenStoreModule();
+    const tempDir = await mkdtemp(join(tmpdir(), "aop-linear-token-store-"));
+    tempDirs.push(tempDir);
+    const fallbackFilePath = join(tempDir, "linear-oauth.json");
+    const store = createLinearTokenStore({
+      exec: async (invocation) => {
+        invocations.push(invocation);
+        throw new Error('Executable not found in $PATH: "secret-tool"');
+      },
+      env: {
+        WSL_DISTRO_NAME: "Ubuntu",
+      } as NodeJS.ProcessEnv,
+      fallbackFilePath,
+      kernelRelease: "6.6.87.2-microsoft-standard-WSL2",
+      platform: "linux",
+    });
+
+    await store.save(TOKENS);
+
+    expect(await readFile(fallbackFilePath, "utf8")).toBe(JSON.stringify(TOKENS));
+    expect(await store.getStatus()).toEqual({
+      connected: true,
+      locked: false,
+    });
+    expect(await store.read()).toEqual(TOKENS);
+
+    await store.disconnect();
+    expect(await store.getStatus()).toEqual({
+      connected: false,
+      locked: true,
+    });
+  });
+
+  test("detects WSL from the kernel release when systemd strips WSL env vars", async () => {
+    const { createLinearTokenStore } = await loadTokenStoreModule();
+    const tempDir = await mkdtemp(join(tmpdir(), "aop-linear-token-store-"));
+    tempDirs.push(tempDir);
+    const fallbackFilePath = join(tempDir, "linear-oauth.json");
+    const store = createLinearTokenStore({
+      exec: async () => {
+        throw new Error('Executable not found in $PATH: "secret-tool"');
+      },
+      env: {} as NodeJS.ProcessEnv,
+      fallbackFilePath,
+      kernelRelease: "6.6.87.2-microsoft-standard-WSL2",
+      platform: "linux",
+    });
+
+    await store.save(TOKENS);
+
+    expect(await readFile(fallbackFilePath, "utf8")).toBe(JSON.stringify(TOKENS));
   });
 });

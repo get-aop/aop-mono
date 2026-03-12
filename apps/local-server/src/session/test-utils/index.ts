@@ -225,6 +225,16 @@ export const createMockContext = (sessionRepository: SessionRepository): LocalSe
       replaceTaskDependencies: async () => {},
       listTaskDependencies: async () => [],
     },
+    linearTokenStore: {
+      save: async () => {},
+      getStatus: async () => ({ connected: false, locked: true }),
+      unlock: async () => {},
+      read: async () => {
+        throw new Error("linearTokenStore.read not implemented in mock context");
+      },
+      lock: async () => {},
+      disconnect: async () => {},
+    },
     workflowService: {
       listWorkflows: async () => [],
       startTask: async () => ({ status: "READY" }),

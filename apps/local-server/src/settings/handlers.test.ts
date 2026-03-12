@@ -3,19 +3,45 @@ import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../context.ts";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
-import { cleanupRemovedWorktrees, setAllSettings, setSetting } from "./handlers.ts";
+import { cleanupRemovedWorktrees, getAllSettings, setAllSettings, setSetting } from "./handlers.ts";
 
 describe("settings/handlers", () => {
   let db: Kysely<Database>;
   let ctx: LocalServerContext;
+  const originalLocalServerUrl = process.env.AOP_LOCAL_SERVER_URL;
 
   beforeEach(async () => {
+    process.env.AOP_LOCAL_SERVER_URL = "http://127.0.0.1:25150";
     db = await createTestDb();
     ctx = createCommandContext(db);
   });
 
   afterEach(async () => {
     await db.destroy();
+    if (originalLocalServerUrl === undefined) {
+      delete process.env.AOP_LOCAL_SERVER_URL;
+      return;
+    }
+    process.env.AOP_LOCAL_SERVER_URL = originalLocalServerUrl;
+  });
+
+  describe("getAllSettings", () => {
+    test("normalizes the legacy Linear callback url for source installs", async () => {
+      await ctx.settingsRepository.set(
+        "linear_callback_url",
+        "http://127.0.0.1:4310/api/linear/callback",
+      );
+
+      const result = await getAllSettings(ctx);
+      const callbackSetting = result.settings.find(
+        (setting) => setting.key === "linear_callback_url",
+      );
+
+      expect(callbackSetting).toEqual({
+        key: "linear_callback_url",
+        value: "http://127.0.0.1:25150/api/linear/callback",
+      });
+    });
   });
 
   describe("setAllSettings", () => {

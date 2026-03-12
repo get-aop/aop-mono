@@ -28,6 +28,20 @@ describe("getServerUrl", () => {
     expect(typeof serverUrl).toBe("string");
     expect(serverUrl.length).toBeGreaterThan(0);
   });
+
+  test("falls back to the source install local server URL when env is unset", () => {
+    const originalServerUrl = process.env.AOP_LOCAL_SERVER_URL;
+    delete process.env.AOP_LOCAL_SERVER_URL;
+
+    expect(getServerUrl()).toBe("http://127.0.0.1:25150");
+
+    if (originalServerUrl === undefined) {
+      delete process.env.AOP_LOCAL_SERVER_URL;
+      return;
+    }
+
+    process.env.AOP_LOCAL_SERVER_URL = originalServerUrl;
+  });
 });
 
 describe("isServerRunning", () => {

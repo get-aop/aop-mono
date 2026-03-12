@@ -14,7 +14,10 @@ import { createLogFlusher, type LogFlusher } from "./executor/log-flusher.ts";
 import { createLinearHandlers, type LinearHandlers } from "./integrations/linear/handlers.ts";
 import { createLinearOAuth } from "./integrations/linear/oauth.ts";
 import { createLinearStore, type LinearStore } from "./integrations/linear/store.ts";
-import { createLinearTokenStore } from "./integrations/linear/token-store.ts";
+import {
+  createLinearTokenStore,
+  type LinearTokenStore,
+} from "./integrations/linear/token-store.ts";
 import { createRepoRepository, type RepoRepository } from "./repo/repository.ts";
 import { createSessionRepository, type SessionRepository } from "./session/repository.ts";
 import { createSettingsRepository, type SettingsRepository } from "./settings/repository.ts";
@@ -36,6 +39,7 @@ export interface LocalServerContext {
   workflowService: LocalWorkflowService;
   linearHandlers: LinearHandlers;
   linearStore: LinearStore;
+  linearTokenStore: LinearTokenStore;
 }
 
 export interface CreateCommandContextOptions {
@@ -61,8 +65,16 @@ export const createCommandContext = (
     getConfig: async () => {
       const configuredClientId = await settingsRepository.get(SettingKey.LINEAR_CLIENT_ID);
       const configuredCallbackUrl = await settingsRepository.get(SettingKey.LINEAR_CALLBACK_URL);
+      const redirectUri = resolveLinearCallbackUrl({
+        configuredCallbackUrl,
+        env: process.env,
+      });
+
+      if (configuredCallbackUrl !== redirectUri && configuredCallbackUrl.length > 0) {
+        await settingsRepository.set(SettingKey.LINEAR_CALLBACK_URL, redirectUri);
+      }
+
       const clientId = configuredClientId || process.env.AOP_LINEAR_CLIENT_ID || "";
-      const redirectUri = configuredCallbackUrl || getDefaultLinearCallbackUrl(process.env);
 
       return {
         enabled: clientId.length > 0 && redirectUri.length > 0,
@@ -90,11 +102,28 @@ export const createCommandContext = (
     logFlusher,
     linearHandlers,
     linearStore,
+    linearTokenStore: tokenStore,
   } as LocalServerContext;
 
   context.workflowService = createLocalWorkflowService(context);
 
   return context;
+};
+
+export const resolveLinearCallbackUrl = ({
+  configuredCallbackUrl,
+  env,
+}: {
+  configuredCallbackUrl: string;
+  env: NodeJS.ProcessEnv;
+}): string => {
+  if (!configuredCallbackUrl.length) {
+    return getDefaultLinearCallbackUrl(env);
+  }
+
+  return isLegacyLinearCallbackUrl(configuredCallbackUrl)
+    ? getDefaultLinearCallbackUrl(env)
+    : configuredCallbackUrl;
 };
 
 const getDefaultLinearCallbackUrl = (env: NodeJS.ProcessEnv): string => {
@@ -103,31 +132,48 @@ const getDefaultLinearCallbackUrl = (env: NodeJS.ProcessEnv): string => {
   return new URL("/api/linear/callback", callbackBase).toString();
 };
 
+const isLegacyLinearCallbackUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return (
+      (url.hostname === "127.0.0.1" || url.hostname === "localhost") &&
+      url.port === "4310" &&
+      url.pathname === "/api/linear/callback"
+    );
+  } catch {
+    return false;
+  }
+};
+
 const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
 
-const exchangeLinearCodeForTokens = async (params: {
+export const exchangeLinearCodeForTokens = async (params: {
   clientId: string;
   code: string;
   verifier: string;
   redirectUri: string;
 }) => {
+  const requestBody = new URLSearchParams({
+    client_id: params.clientId,
+    code: params.code,
+    code_verifier: params.verifier,
+    grant_type: "authorization_code",
+    redirect_uri: params.redirectUri,
+  });
+
   const response = await fetch(LINEAR_TOKEN_URL, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: JSON.stringify({
-      client_id: params.clientId,
-      code: params.code,
-      code_verifier: params.verifier,
-      grant_type: "authorization_code",
-      redirect_uri: params.redirectUri,
-    }),
+    body: requestBody.toString(),
   });
 
   if (!response.ok) {
-    throw new Error(`Linear OAuth token exchange failed (${response.status})`);
+    const errorBody = await response.text().catch(() => "");
+    const suffix = errorBody ? `: ${errorBody}` : "";
+    throw new Error(`Linear OAuth token exchange failed (${response.status})${suffix}`);
   }
 
   const body = (await response.json()) as {
@@ -147,12 +193,12 @@ const exchangeLinearCodeForTokens = async (params: {
   };
 };
 
-const testLinearConnection = async (accessToken: string) => {
+export const testLinearConnection = async (accessToken: string) => {
   const response = await fetch(LINEAR_GRAPHQL_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: accessToken,
+      Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({
       query: "query LinearViewer { viewer { name email organization { name } } }",

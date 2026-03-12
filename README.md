@@ -41,13 +41,19 @@ cd <repository-directory>
 ./install
 ```
 
-`./install` installs dependencies, links the `aop` CLI globally, and starts the local server as a per-user background service.
+`./install` installs dependencies, links the `aop` CLI globally, builds the dashboard, and starts the local server as a per-user background service that serves the dashboard.
+
+### Remove the local setup
+
+```bash
+./uninstall
+```
+
+`./uninstall` stops and removes the user service, unlinks the global `aop` command, and deletes the local AOP log directory under `~/.aop/logs`.
 
 ## Run The App
 
-After install, the local server should already be running.
-
-The dashboard is available by default at `http://localhost:25160`.
+After install, the local server should already be running, and the dashboard is served from it at `http://localhost:25150`.
 
 ### Main creation flows
 
