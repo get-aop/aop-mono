@@ -62,9 +62,9 @@ export interface LinearOAuth {
 }
 
 export interface LinearTokenStore {
-  save(tokens: LinearTokenSet, passphrase: string): Promise<void>;
+  save(tokens: LinearTokenSet): Promise<void>;
   getStatus(): Promise<LinearTokenStoreStatus>;
-  unlock(passphrase: string): Promise<void>;
+  unlock(): Promise<void>;
   read(): Promise<LinearTokenSet>;
   lock(): Promise<void>;
   disconnect(): Promise<void>;
@@ -76,12 +76,12 @@ export interface LinearIssueClient {
 
 export interface LinearRoutesDeps {
   handlers: {
-    connect(passphrase: string): Promise<{ authorizeUrl: string }> | { authorizeUrl: string };
+    connect(): Promise<{ authorizeUrl: string }> | { authorizeUrl: string };
     callback(
       params: LinearCallbackParams,
     ): Promise<{ connected: boolean }> | { connected: boolean };
     getStatus(): Promise<LinearTokenStoreStatus> | LinearTokenStoreStatus;
-    unlock(passphrase: string): Promise<void>;
+    unlock(): Promise<void>;
     disconnect(): Promise<void>;
     testConnection(): Promise<{
       ok: boolean;

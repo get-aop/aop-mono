@@ -47,7 +47,7 @@ interface SettingsFormProps {
 const GROUPS: { label: string; keys: string[] }[] = [
   {
     label: "AGENT CONFIGURATION",
-    keys: ["max_concurrent_tasks", "agent_timeout_secs", "agent_provider", "fast_mode"],
+    keys: ["max_concurrent_tasks", "agent_timeout_secs"],
   },
   {
     label: "POLLING",
@@ -82,27 +82,6 @@ const SETTING_META: Record<string, SettingMeta> = {
     description: "Time before an agent is considered timed out",
     type: "number",
     suffix: "s",
-  },
-  agent_provider: {
-    label: "LLM Provider",
-    description: "Which LLM provider the orchestrator uses for agents",
-    type: "select",
-    options: [
-      { value: "codex", label: "Codex CLI" },
-      { value: "claude-code", label: "Opus 4.6" },
-      { value: "opencode:opencode/kimi-k2.5", label: "Kimi K2.5" },
-      { value: "opencode:opencode/kimi-k2.5-free", label: "Kimi K2.5 Free" },
-      { value: "opencode:openai/gpt-5.3-codex/medium", label: "GPT 5.3 Codex (Medium)" },
-      { value: "opencode:openai/gpt-5.3-codex/high", label: "GPT 5.3 Codex (High)" },
-      { value: "opencode:openai/gpt-5.3-codex/xhigh", label: "GPT 5.3 Codex (X-High)" },
-      { value: "opencode:openai/gpt-5.3-codex/low", label: "GPT 5.3 Codex (Low)" },
-      { value: "cursor-cli:composer-1.5", label: "Composer 1.5" },
-    ],
-  },
-  fast_mode: {
-    label: "Fast Mode",
-    description: "Enable Claude Code fast mode for faster output",
-    type: "toggle",
   },
   server_url: { label: "Server URL", description: "Remote server URL", type: "text" },
   api_key: { label: "API Key", description: "Remote server API key", type: "password" },
@@ -458,7 +437,6 @@ const LinearConnectionActions = ({
 };
 
 const LinearConnectionSection = ({ linearState, onRefresh }: LinearConnectionSectionProps) => {
-  const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState<LinearBusyState>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<"success" | "error">("success");
@@ -480,21 +458,9 @@ const LinearConnectionSection = ({ linearState, onRefresh }: LinearConnectionSec
     }
   };
 
-  const requirePassphrase = (): boolean => {
-    if (passphrase) {
-      return true;
-    }
-    showMessage("Passphrase required", "error");
-    return false;
-  };
-
   const handleConnect = async () => {
-    if (!requirePassphrase()) {
-      return;
-    }
-
     await runAction("connect", async () => {
-      const result = await connectLinear(passphrase);
+      const result = await connectLinear();
       globalThis.open?.(result.authorizeUrl, "_blank", "noopener,noreferrer");
       showMessage("Authorization opened in browser", "success");
     }).catch((err) => {
@@ -503,13 +469,8 @@ const LinearConnectionSection = ({ linearState, onRefresh }: LinearConnectionSec
   };
 
   const handleUnlock = async () => {
-    if (!requirePassphrase()) {
-      return;
-    }
-
     await runAction("unlock", async () => {
-      await unlockLinear(passphrase);
-      setPassphrase("");
+      await unlockLinear();
       await onRefresh();
       showMessage("Linear unlocked", "success");
     }).catch((err) => {
@@ -520,7 +481,6 @@ const LinearConnectionSection = ({ linearState, onRefresh }: LinearConnectionSec
   const handleDisconnect = async () => {
     await runAction("disconnect", async () => {
       await disconnectLinear();
-      setPassphrase("");
       await onRefresh();
       showMessage("Linear disconnected", "success");
     }).catch((err) => {
@@ -557,21 +517,7 @@ const LinearConnectionSection = ({ linearState, onRefresh }: LinearConnectionSec
           </div>
         )}
 
-        <div className="flex flex-col gap-3 md:flex-row md:items-end">
-          <div className="min-w-0 flex-1">
-            <label
-              htmlFor="linear-passphrase"
-              className="mb-1 block font-mono text-xs text-aop-cream"
-            >
-              Linear passphrase
-            </label>
-            <TextInput
-              id="linear-passphrase"
-              type="password"
-              value={passphrase}
-              onChange={setPassphrase}
-            />
-          </div>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
           <LinearConnectionActions
             busy={busy}
             connected={Boolean(linearState.status?.connected)}

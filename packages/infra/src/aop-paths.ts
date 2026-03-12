@@ -7,7 +7,6 @@ export const aopPaths = {
   home: () => getAopHome(),
   db: () => join(getAopHome(), "aop.sqlite"),
   logs: () => join(getAopHome(), "logs"),
-  linearTokens: () => join(getAopHome(), "secrets", "linear-tokens.enc"),
   repoDir: (repoId: string) => join(getAopHome(), "repos", repoId),
   relativeTaskDocs: () => join("docs", "tasks"),
   worktrees: (repoId: string) => join(getAopHome(), "worktrees", repoId),

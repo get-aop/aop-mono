@@ -4,7 +4,7 @@ import { Hono } from "hono";
 interface LinearRoutesModule {
   createLinearRoutes(deps: {
     handlers: {
-      connect(passphrase: string): Promise<{ authorizeUrl: string }> | { authorizeUrl: string };
+      connect(): Promise<{ authorizeUrl: string }> | { authorizeUrl: string };
       callback(params: {
         code?: string | null;
         error?: string | null;
@@ -15,7 +15,7 @@ interface LinearRoutesModule {
         connected: boolean;
         locked: boolean;
       };
-      unlock(passphrase: string): Promise<void>;
+      unlock(): Promise<void>;
       disconnect(): Promise<void>;
       testConnection(): Promise<{
         ok: boolean;
@@ -31,53 +31,17 @@ const loadRoutesModule = async (): Promise<LinearRoutesModule> =>
   (await import("./routes.ts")) as LinearRoutesModule;
 
 describe("integrations/linear/routes", () => {
-  test("POST /connect rejects a missing passphrase", async () => {
-    const { createLinearRoutes } = await loadRoutesModule();
-    const app = new Hono();
-
-    app.route(
-      "/api/linear",
-      createLinearRoutes({
-        handlers: {
-          connect: () => ({ authorizeUrl: "https://linear.app/oauth/authorize" }),
-          callback: async () => ({ connected: true }),
-          getStatus: async () => ({ connected: false, locked: true }),
-          unlock: async () => {},
-          disconnect: async () => {},
-          testConnection: async () => ({
-            ok: true,
-            organizationName: "Acme",
-            userName: "Jane Doe",
-            userEmail: "jane@example.com",
-          }),
-        },
-      }),
-    );
-
-    const res = await app.request("/api/linear/connect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    const body = await res.json();
-
-    expect(res.status).toBe(400);
-    expect(body).toEqual({
-      error: "Missing required field: passphrase",
-    });
-  });
-
   test("POST /connect returns an authorization URL", async () => {
     const { createLinearRoutes } = await loadRoutesModule();
     const app = new Hono();
-    let seenPassphrase = "";
+    let connectCalls = 0;
 
     app.route(
       "/api/linear",
       createLinearRoutes({
         handlers: {
-          connect: (passphrase: string) => {
-            seenPassphrase = passphrase;
+          connect: () => {
+            connectCalls += 1;
             return {
               authorizeUrl:
                 "https://linear.app/oauth/authorize?client_id=linear-client-id&response_type=code",
@@ -99,13 +63,11 @@ describe("integrations/linear/routes", () => {
 
     const res = await app.request("/api/linear/connect", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ passphrase: "correct horse battery staple" }),
     });
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(seenPassphrase).toBe("correct horse battery staple");
+    expect(connectCalls).toBe(1);
     expect(body).toEqual({
       authorizeUrl:
         "https://linear.app/oauth/authorize?client_id=linear-client-id&response_type=code",
@@ -194,47 +156,11 @@ describe("integrations/linear/routes", () => {
     });
   });
 
-  test("POST /unlock rejects a missing passphrase", async () => {
-    const { createLinearRoutes } = await loadRoutesModule();
-    const app = new Hono();
-
-    app.route(
-      "/api/linear",
-      createLinearRoutes({
-        handlers: {
-          connect: () => ({ authorizeUrl: "https://linear.app/oauth/authorize" }),
-          callback: async () => ({ connected: true }),
-          getStatus: async () => ({ connected: true, locked: true }),
-          unlock: async () => {},
-          disconnect: async () => {},
-          testConnection: async () => ({
-            ok: true,
-            organizationName: "Acme",
-            userName: "Jane Doe",
-            userEmail: "jane@example.com",
-          }),
-        },
-      }),
-    );
-
-    const res = await app.request("/api/linear/unlock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    const body = await res.json();
-
-    expect(res.status).toBe(400);
-    expect(body).toEqual({
-      error: "Missing required field: passphrase",
-    });
-  });
-
   test("POST /unlock and POST /disconnect forward to the handlers", async () => {
     const { createLinearRoutes } = await loadRoutesModule();
     const app = new Hono();
     const seen = {
-      passphrase: "",
+      unlocks: 0,
       disconnected: false,
     };
 
@@ -245,8 +171,8 @@ describe("integrations/linear/routes", () => {
           connect: () => ({ authorizeUrl: "https://linear.app/oauth/authorize" }),
           callback: async () => ({ connected: true }),
           getStatus: async () => ({ connected: true, locked: true }),
-          unlock: async (passphrase: string) => {
-            seen.passphrase = passphrase;
+          unlock: async () => {
+            seen.unlocks += 1;
           },
           disconnect: async () => {
             seen.disconnected = true;
@@ -263,15 +189,13 @@ describe("integrations/linear/routes", () => {
 
     const unlockRes = await app.request("/api/linear/unlock", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ passphrase: "correct horse battery staple" }),
     });
     const disconnectRes = await app.request("/api/linear/disconnect", { method: "POST" });
 
     expect(unlockRes.status).toBe(200);
     expect(disconnectRes.status).toBe(200);
     expect(seen).toEqual({
-      passphrase: "correct horse battery staple",
+      unlocks: 1,
       disconnected: true,
     });
   });

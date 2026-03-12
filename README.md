@@ -67,6 +67,8 @@ aop task:ready <task-id>
 
 `/aop:from-scratch` is the idea-first path. `/aop:from-ticket` is the import path for existing requirements, including Linear-backed work.
 
+For Linear OAuth, tokens are stored in the OS credential store on macOS and Linux. Configure OAuth with `AOP_LINEAR_CLIENT_ID`, and optionally override the localhost callback base with `AOP_LINEAR_CALLBACK_BASE`. For CI or headless usage, `LINEAR_API_KEY` remains available as a read-only fallback.
+
 ### Service checks
 
 ```bash
