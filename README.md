@@ -47,17 +47,6 @@ cd <repository-directory>
 
 After install, the local server should already be running.
 
-```bash
-# Check the system
-aop status
-
-# Register the current repository
-aop repo:init .
-
-# Mark a task ready for execution
-aop task:ready <task-id>
-```
-
 ### Main creation flows
 
 ```text
@@ -66,6 +55,22 @@ aop task:ready <task-id>
 ```
 
 `/aop:from-scratch` is the idea-first path. `/aop:from-ticket` is the import path for existing requirements, including Linear-backed work.
+
+That is the normal way to start using AOP after install. AOP runs the creation flow, writes the task docs under `docs/tasks/<task-slug>/`, and then asks whether the imported or generated tasks should be marked `READY` immediately.
+
+If you choose `yes`, AOP marks the task `READY` and execution starts automatically.
+
+If you choose `no`, you can review or edit the generated task files first and then start execution later either from the dashboard or from the CLI with:
+
+```bash
+aop task:ready <task-id>
+```
+
+You can also inspect the system state at any time with:
+
+```bash
+aop status
+```
 
 ### Linear OAuth
 
