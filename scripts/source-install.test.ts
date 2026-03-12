@@ -76,7 +76,7 @@ describe("installFromSource", () => {
     expect(commands).toEqual([
       ["bun", "install", "--ignore-scripts"],
       ["bun", "link"],
-      ["bunx", "openspec", "init", "--tools", "claude"],
+      ["bunx", "@fission-ai/openspec", "init", "--tools", "claude"],
       ["systemctl", "--user", "daemon-reload"],
       ["systemctl", "--user", "enable", "--now", "aop-local-server.service"],
     ]);
@@ -115,7 +115,7 @@ describe("installFromSource", () => {
     expect(commands).toEqual([
       ["bun", "install", "--ignore-scripts"],
       ["bun", "link"],
-      ["bunx", "openspec", "init", "--tools", "claude"],
+      ["bunx", "@fission-ai/openspec", "init", "--tools", "claude"],
       ["launchctl", "unload", "/Users/marcelo/Library/LaunchAgents/com.aop.local-server.plist"],
       ["launchctl", "load", "-w", "/Users/marcelo/Library/LaunchAgents/com.aop.local-server.plist"],
     ]);
