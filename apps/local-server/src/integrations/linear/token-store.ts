@@ -1,5 +1,5 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, release } from "node:os";
 import { dirname, join } from "node:path";
 import type { LinearTokenSet, LinearTokenStore, LinearTokenStoreStatus } from "./types.ts";
 
@@ -25,6 +25,7 @@ export const createLinearTokenStore = (options?: {
   exec?: CommandExecutor;
   env?: NodeJS.ProcessEnv;
   fallbackFilePath?: string;
+  kernelRelease?: string;
   platform?: NodeJS.Platform;
   serviceName?: string;
 }): LinearTokenStore => {
@@ -33,6 +34,7 @@ export const createLinearTokenStore = (options?: {
   const env = options?.env ?? process.env;
   const fallbackFilePath =
     options?.fallbackFilePath ?? join(homedir(), ".aop", "credentials", "linear-oauth.json");
+  const kernelRelease = options?.kernelRelease ?? release();
   const platform = options?.platform ?? process.platform;
   const serviceName = options?.serviceName ?? DEFAULT_SERVICE;
   let unlockedTokens: LinearTokenSet | null = null;
@@ -66,7 +68,7 @@ export const createLinearTokenStore = (options?: {
 
       ensureSuccess(platform, storeResult, "Failed to store Linear OAuth credentials");
     } catch (error) {
-      if (!shouldUseFileFallback(platform, env, error)) {
+      if (!shouldUseFileFallback(platform, env, kernelRelease, error)) {
         throw error;
       }
 
@@ -214,9 +216,10 @@ const parseTokenSet = (serialized: string): LinearTokenSet => {
 const shouldUseFileFallback = (
   platform: NodeJS.Platform,
   env: NodeJS.ProcessEnv,
+  kernelRelease: string,
   error: unknown,
 ): boolean => {
-  if (platform !== "linux" || !isWsl(env) || !(error instanceof Error)) {
+  if (platform !== "linux" || !isWsl(env, kernelRelease) || !(error instanceof Error)) {
     return false;
   }
 
@@ -230,8 +233,11 @@ const shouldUseFileFallback = (
   );
 };
 
-const isWsl = (env: NodeJS.ProcessEnv): boolean => {
-  return Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP);
+const isWsl = (env: NodeJS.ProcessEnv, kernelRelease: string): boolean => {
+  return (
+    Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP) ||
+    kernelRelease.toLowerCase().includes("microsoft")
+  );
 };
 
 const writeFallbackFile = async (fallbackFilePath: string, serialized: string): Promise<void> => {

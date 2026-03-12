@@ -36,6 +36,7 @@ interface LinearTokenStoreModule {
     exec?: (invocation: ExecInvocation) => Promise<ExecResult>;
     env?: NodeJS.ProcessEnv;
     fallbackFilePath?: string;
+    kernelRelease?: string;
     platform?: NodeJS.Platform;
     serviceName?: string;
   }): LinearTokenStore;
@@ -170,6 +171,7 @@ describe("integrations/linear/token-store", () => {
         WSL_DISTRO_NAME: "Ubuntu",
       } as NodeJS.ProcessEnv,
       fallbackFilePath,
+      kernelRelease: "6.6.87.2-microsoft-standard-WSL2",
       platform: "linux",
     });
 
@@ -187,5 +189,25 @@ describe("integrations/linear/token-store", () => {
       connected: false,
       locked: true,
     });
+  });
+
+  test("detects WSL from the kernel release when systemd strips WSL env vars", async () => {
+    const { createLinearTokenStore } = await loadTokenStoreModule();
+    const tempDir = await mkdtemp(join(tmpdir(), "aop-linear-token-store-"));
+    tempDirs.push(tempDir);
+    const fallbackFilePath = join(tempDir, "linear-oauth.json");
+    const store = createLinearTokenStore({
+      exec: async () => {
+        throw new Error('Executable not found in $PATH: "secret-tool"');
+      },
+      env: {} as NodeJS.ProcessEnv,
+      fallbackFilePath,
+      kernelRelease: "6.6.87.2-microsoft-standard-WSL2",
+      platform: "linux",
+    });
+
+    await store.save(TOKENS);
+
+    expect(await readFile(fallbackFilePath, "utf8")).toBe(JSON.stringify(TOKENS));
   });
 });
