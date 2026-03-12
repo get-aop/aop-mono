@@ -46,7 +46,7 @@ const INSTALL_USAGE = `Usage: ./install
 Installs AOP from source for the current user:
 - bun install --ignore-scripts
 - bun link
-- bunx openspec init --tools claude
+- bunx @fission-ai/openspec init --tools claude
 - local-server user service on macOS/Linux
 `;
 
@@ -121,7 +121,9 @@ export const installFromSource = async (options: InstallOptions = {}): Promise<v
   await dependencies.mkdir(logDir, { recursive: true });
   await dependencies.run(["bun", "install", "--ignore-scripts"], { cwd: workspaceDir });
   await dependencies.run(["bun", "link"], { cwd: workspaceDir });
-  await dependencies.run(["bunx", "openspec", "init", "--tools", "claude"], { cwd: workspaceDir });
+  await dependencies.run(["bunx", "@fission-ai/openspec", "init", "--tools", "claude"], {
+    cwd: workspaceDir,
+  });
 
   if (platform === "darwin") {
     await installLaunchAgent({ bunPath, dependencies, homeDir, logPath, workspaceDir });
