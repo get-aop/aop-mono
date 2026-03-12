@@ -8,10 +8,10 @@ export interface LinearConnectionInfo {
 }
 
 export interface LinearHandlers {
-  connect(passphrase: string): Promise<{ authorizeUrl: string }>;
+  connect(): Promise<{ authorizeUrl: string }>;
   callback(params: LinearCallbackParams): Promise<{ connected: boolean }>;
   getStatus(): Promise<{ connected: boolean; locked: boolean }>;
-  unlock(passphrase: string): Promise<void>;
+  unlock(): Promise<void>;
   disconnect(): Promise<void>;
   testConnection(): Promise<LinearConnectionInfo>;
 }
@@ -34,19 +34,19 @@ export class LinearHandlersError extends Error {
 }
 
 export const createLinearHandlers = (options: CreateLinearHandlersOptions): LinearHandlers => {
-  const pendingPassphrases = new Map<string, string>();
-
   const assertEnabled = (): void => {
     if (options.enabled === false) {
-      throw new LinearHandlersError(503, "Linear OAuth is not configured");
+      throw new LinearHandlersError(
+        503,
+        "Linear OAuth is not configured. Set AOP_LINEAR_CLIENT_ID in the local server environment.",
+      );
     }
   };
 
   return {
-    connect: async (passphrase: string) => {
+    connect: async () => {
       assertEnabled();
       const request = options.auth.createAuthorizationRequest();
-      pendingPassphrases.set(request.state, passphrase);
       return { authorizeUrl: request.url.toString() };
     },
 
@@ -54,27 +54,24 @@ export const createLinearHandlers = (options: CreateLinearHandlersOptions): Line
       assertEnabled();
       const { code, state } = options.auth.validateCallback(params);
       const verifier = options.auth.consumeVerifier(state);
-      const passphrase = pendingPassphrases.get(state);
-      pendingPassphrases.delete(state);
 
-      if (!verifier || !passphrase) {
+      if (!verifier) {
         throw new LinearHandlersError(400, "Linear OAuth session expired");
       }
 
       const tokens = await options.exchangeCodeForTokens({ code, verifier });
-      await options.tokenStore.save(tokens, passphrase);
+      await options.tokenStore.save(tokens);
 
       return { connected: true };
     },
 
     getStatus: async () => options.tokenStore.getStatus(),
 
-    unlock: async (passphrase: string) => {
-      await options.tokenStore.unlock(passphrase);
+    unlock: async () => {
+      await options.tokenStore.unlock();
     },
 
     disconnect: async () => {
-      pendingPassphrases.clear();
       await options.tokenStore.disconnect();
     },
 
