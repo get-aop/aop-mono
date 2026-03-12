@@ -47,6 +47,8 @@ cd <repository-directory>
 
 After install, the local server should already be running.
 
+The dashboard is available by default at `http://localhost:25160`.
+
 ### Main creation flows
 
 ```text
