@@ -43,6 +43,14 @@ cd <repository-directory>
 
 `./install` installs dependencies, links the `aop` CLI globally, and starts the local server as a per-user background service.
 
+### Remove the local setup
+
+```bash
+./uninstall
+```
+
+`./uninstall` stops and removes the user service, unlinks the global `aop` command, and deletes the local AOP log directory under `~/.aop/logs`.
+
 ## Run The App
 
 After install, the local server should already be running.
