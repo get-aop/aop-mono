@@ -383,14 +383,13 @@ describe("Linear API client", () => {
       jsonResponse({ authorizeUrl: "https://linear.app/oauth/authorize?state=abc" }),
     );
 
-    const result = await connectLinear("correct horse battery staple");
+    const result = await connectLinear();
 
     expect(result.authorizeUrl).toContain("linear.app/oauth/authorize");
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/linear/connect",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ passphrase: "correct horse battery staple" }),
       }),
     );
   });
@@ -398,13 +397,12 @@ describe("Linear API client", () => {
   test("unlocks the Linear token store", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
 
-    await unlockLinear("correct horse battery staple");
+    await unlockLinear();
 
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/linear/unlock",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ passphrase: "correct horse battery staple" }),
       }),
     );
   });

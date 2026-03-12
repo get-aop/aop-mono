@@ -1,4 +1,3 @@
-import { aopPaths } from "@aop/infra";
 import type { Kysely } from "kysely";
 import type { Database } from "./db/schema.ts";
 import {
@@ -57,7 +56,7 @@ export const createCommandContext = (
   const callbackBase = process.env.AOP_LINEAR_CALLBACK_BASE ?? "http://127.0.0.1:4310";
   const redirectUri = new URL("/api/linear/callback", callbackBase).toString();
   const linearStore = createLinearStore(db);
-  const tokenStore = createLinearTokenStore({ filePath: aopPaths.linearTokens() });
+  const tokenStore = createLinearTokenStore();
   const linearHandlers = createLinearHandlers({
     auth: createLinearOAuth({
       clientId: clientId || "linear-disabled",

@@ -220,17 +220,15 @@ export const getLinearStatus = async (): Promise<LinearStatus> => {
   return request<LinearStatus>("/linear/status");
 };
 
-export const connectLinear = async (passphrase: string): Promise<LinearConnectResponse> => {
+export const connectLinear = async (): Promise<LinearConnectResponse> => {
   return request<LinearConnectResponse>("/linear/connect", {
     method: "POST",
-    body: JSON.stringify({ passphrase }),
   });
 };
 
-export const unlockLinear = async (passphrase: string): Promise<void> => {
+export const unlockLinear = async (): Promise<void> => {
   await request("/linear/unlock", {
     method: "POST",
-    body: JSON.stringify({ passphrase }),
   });
 };
 

@@ -6,13 +6,8 @@ export const createLinearRoutes = (deps: LinearRoutesDeps) => {
   const app = new Hono();
 
   app.post("/connect", async (c) => {
-    const body = await c.req.json<Record<string, unknown>>();
-    if (typeof body.passphrase !== "string" || body.passphrase.length === 0) {
-      return c.json({ error: "Missing required field: passphrase" }, 400);
-    }
-
     try {
-      return c.json(await deps.handlers.connect(body.passphrase));
+      return c.json(await deps.handlers.connect());
     } catch (error) {
       return toErrorResponse(c, error);
     }
@@ -38,13 +33,8 @@ export const createLinearRoutes = (deps: LinearRoutesDeps) => {
   });
 
   app.post("/unlock", async (c) => {
-    const body = await c.req.json<Record<string, unknown>>();
-    if (typeof body.passphrase !== "string" || body.passphrase.length === 0) {
-      return c.json({ error: "Missing required field: passphrase" }, 400);
-    }
-
     try {
-      await deps.handlers.unlock(body.passphrase);
+      await deps.handlers.unlock();
       return c.json({ ok: true });
     } catch (error) {
       return toErrorResponse(c, error);

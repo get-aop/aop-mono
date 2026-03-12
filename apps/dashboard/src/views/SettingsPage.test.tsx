@@ -49,6 +49,8 @@ const primeSettingsLoad = () => {
   mockGetSettings.mockResolvedValue([
     { key: "max_concurrent_tasks", value: "3" },
     { key: "watcher_poll_interval_secs", value: "5" },
+    { key: "agent_provider", value: "codex" },
+    { key: "fast_mode", value: "true" },
   ]);
 };
 
@@ -61,8 +63,8 @@ describe("SettingsPage Linear section", () => {
 
     await waitFor(() => expect(screen.getByText("Linear")).toBeDefined());
     expect(screen.getByText("Not connected")).toBeDefined();
-    expect(screen.getByLabelText("Linear passphrase")).toBeDefined();
     expect(screen.getByRole("button", { name: "Connect" })).toBeDefined();
+    expect(screen.queryByLabelText("Linear passphrase")).toBeNull();
   });
 
   test("opens the returned authorization URL after connect", async () => {
@@ -74,15 +76,10 @@ describe("SettingsPage Linear section", () => {
 
     render(<SettingsPage />);
 
-    await waitFor(() => expect(screen.getByLabelText("Linear passphrase")).toBeDefined());
-    fireEvent.change(screen.getByLabelText("Linear passphrase"), {
-      target: { value: "correct horse battery staple" },
-    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Connect" })).toBeDefined());
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-    await waitFor(() =>
-      expect(mockConnectLinear).toHaveBeenCalledWith("correct horse battery staple"),
-    );
+    await waitFor(() => expect(mockConnectLinear).toHaveBeenCalled());
     expect(globalThis.open).toHaveBeenCalledWith(
       "https://linear.app/oauth/authorize?state=abc",
       "_blank",
@@ -90,7 +87,7 @@ describe("SettingsPage Linear section", () => {
     );
   });
 
-  test("renders locked state and unlocks with the entered passphrase", async () => {
+  test("renders locked state and unlocks from secure storage", async () => {
     primeSettingsLoad();
     mockGetLinearStatus.mockResolvedValue({ connected: true, locked: true });
     mockUnlockLinear.mockResolvedValue(undefined);
@@ -98,14 +95,9 @@ describe("SettingsPage Linear section", () => {
     render(<SettingsPage />);
 
     await waitFor(() => expect(screen.getByText("Connected, locked")).toBeDefined());
-    fireEvent.change(screen.getByLabelText("Linear passphrase"), {
-      target: { value: "correct horse battery staple" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
 
-    await waitFor(() =>
-      expect(mockUnlockLinear).toHaveBeenCalledWith("correct horse battery staple"),
-    );
+    await waitFor(() => expect(mockUnlockLinear).toHaveBeenCalled());
   });
 
   test("renders unlocked workspace details", async () => {
@@ -124,5 +116,16 @@ describe("SettingsPage Linear section", () => {
     expect(screen.getByText("Acme")).toBeDefined();
     expect(screen.getByText("Jane Doe")).toBeDefined();
     expect(screen.getByText("jane@example.com")).toBeDefined();
+  });
+
+  test("does not render LLM provider or fast mode settings", async () => {
+    primeSettingsLoad();
+    mockGetLinearStatus.mockResolvedValue({ connected: false, locked: true });
+
+    render(<SettingsPage />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Connect" })).toBeDefined());
+    expect(screen.queryByText("LLM Provider")).toBeNull();
+    expect(screen.queryByText("Fast Mode")).toBeNull();
   });
 });

@@ -102,7 +102,7 @@ aop linear:unlock
 aop linear:disconnect
 ```
 
-OAuth uses a shared public client id by default, with optional overrides via `AOP_LINEAR_CLIENT_ID` and `AOP_LINEAR_CALLBACK_BASE`. For CI or headless usage, `LINEAR_API_KEY` remains available as a read-only fallback.
+OAuth tokens are stored in the OS credential store on macOS and Linux. Configure OAuth with `AOP_LINEAR_CLIENT_ID`, and optionally override the localhost callback base via `AOP_LINEAR_CALLBACK_BASE`. For CI or headless usage, `LINEAR_API_KEY` remains available as a read-only fallback.
 
 When an imported Linear issue is blocked by another Linear issue, AOP auto-imports the missing blocker as a draft dependency task. Import always creates or updates the local task docs first. If you choose to start imported work immediately afterward, unrelated tasks can run in parallel while dependent tasks stay `READY` until all blocker tasks are `DONE`.
 
