@@ -22,7 +22,10 @@ export type InstallDependencies = {
 
 type ServiceTemplateOptions = {
   bunPath: string;
+  dashboardStaticPath: string;
   logPath: string;
+  localServerPort: string;
+  localServerUrl: string;
   serviceName: string;
   workspaceDir: string;
 };
@@ -41,17 +44,49 @@ type InstallerArgs = {
 
 const LAUNCHD_SERVICE_NAME = "com.aop.local-server";
 const SYSTEMD_SERVICE_NAME = "aop-local-server";
+const DEFAULT_LOCAL_SERVER_PORT = "25150";
+const DEFAULT_LOCAL_SERVER_URL = `http://localhost:${DEFAULT_LOCAL_SERVER_PORT}`;
 const INSTALL_USAGE = `Usage: ./install
 
 Installs AOP from source for the current user:
 - bun install --ignore-scripts
 - bun link
+- bun run build:dashboard
 - local-server user service on macOS/Linux
 `;
 
+const buildServiceEnvironment = ({
+  dashboardStaticPath,
+  localServerPort,
+  localServerUrl,
+  logPath,
+}: Pick<
+  ServiceTemplateOptions,
+  "dashboardStaticPath" | "localServerPort" | "localServerUrl" | "logPath"
+>): Record<string, string> => ({
+  AOP_LOCAL_SERVER_PORT: localServerPort,
+  AOP_LOCAL_SERVER_URL: localServerUrl,
+  AOP_LOG_DIR: dirname(logPath),
+  DASHBOARD_STATIC_PATH: dashboardStaticPath,
+  NODE_ENV: "production",
+});
+
+const renderLaunchdEnvironmentVariables = (environment: Record<string, string>): string =>
+  Object.entries(environment)
+    .map(([key, value]) => `    <key>${key}</key>\n    <string>${value}</string>`)
+    .join("\n");
+
+const renderSystemdEnvironmentVariables = (environment: Record<string, string>): string =>
+  Object.entries(environment)
+    .map(([key, value]) => `Environment=${key}=${value}`)
+    .join("\n");
+
 export const buildLaunchdPlist = ({
   bunPath,
+  dashboardStaticPath,
   logPath,
+  localServerPort,
+  localServerUrl,
   serviceName,
   workspaceDir,
 }: ServiceTemplateOptions): string => `<?xml version="1.0" encoding="UTF-8"?>
@@ -70,8 +105,14 @@ export const buildLaunchdPlist = ({
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>AOP_LOG_DIR</key>
-    <string>${dirname(logPath)}</string>
+${renderLaunchdEnvironmentVariables(
+  buildServiceEnvironment({
+    dashboardStaticPath,
+    localServerPort,
+    localServerUrl,
+    logPath,
+  }),
+)}
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -87,7 +128,10 @@ export const buildLaunchdPlist = ({
 
 export const buildSystemdUnit = ({
   bunPath,
+  dashboardStaticPath,
   logPath,
+  localServerPort,
+  localServerUrl,
   serviceName,
   workspaceDir,
 }: ServiceTemplateOptions): string => `[Unit]
@@ -98,7 +142,14 @@ After=network.target
 Type=simple
 WorkingDirectory=${workspaceDir}
 ExecStart=${bunPath} run apps/local-server/src/run.ts
-Environment=AOP_LOG_DIR=${dirname(logPath)}
+${renderSystemdEnvironmentVariables(
+  buildServiceEnvironment({
+    dashboardStaticPath,
+    localServerPort,
+    localServerUrl,
+    logPath,
+  }),
+)}
 Restart=on-failure
 RestartSec=5
 
@@ -116,17 +167,39 @@ export const installFromSource = async (options: InstallOptions = {}): Promise<v
 
   const logDir = join(homeDir, ".aop", "logs");
   const logPath = join(logDir, "local-server.log");
+  const localServerPort = process.env.AOP_LOCAL_SERVER_PORT ?? DEFAULT_LOCAL_SERVER_PORT;
+  const localServerUrl = process.env.AOP_LOCAL_SERVER_URL ?? DEFAULT_LOCAL_SERVER_URL;
+  const dashboardStaticPath = join(workspaceDir, "apps", "dashboard", "dist");
 
   await dependencies.mkdir(logDir, { recursive: true });
   await dependencies.run(["bun", "install", "--ignore-scripts"], { cwd: workspaceDir });
   await dependencies.run(["bun", "link"], { cwd: workspaceDir });
+  await dependencies.run(["bun", "run", "build:dashboard"], { cwd: workspaceDir });
 
   if (platform === "darwin") {
-    await installLaunchAgent({ bunPath, dependencies, homeDir, logPath, workspaceDir });
+    await installLaunchAgent({
+      bunPath,
+      dashboardStaticPath,
+      dependencies,
+      homeDir,
+      localServerPort,
+      localServerUrl,
+      logPath,
+      workspaceDir,
+    });
     return;
   }
 
-  await installSystemdUnit({ bunPath, dependencies, homeDir, logPath, workspaceDir });
+  await installSystemdUnit({
+    bunPath,
+    dashboardStaticPath,
+    dependencies,
+    homeDir,
+    localServerPort,
+    localServerUrl,
+    logPath,
+    workspaceDir,
+  });
 };
 
 export const parseInstallerArgs = (args: string[]): InstallerArgs => {
@@ -140,6 +213,15 @@ export const parseInstallerArgs = (args: string[]): InstallerArgs => {
   throw new Error(`Unknown argument "${args[0]}"`);
 };
 
+export const buildInstallSuccessMessage = (
+  dashboardUrl = process.env.AOP_LOCAL_SERVER_URL ?? DEFAULT_LOCAL_SERVER_URL,
+): string =>
+  `${[
+    "AOP source install complete.",
+    "The local server is running as a user service, the built dashboard is served from it, and the `aop` command is now linked globally.",
+    `Dashboard: ${dashboardUrl}`,
+  ].join("\n")}\n`;
+
 export const runSourceInstall = async (args = process.argv.slice(2)): Promise<void> => {
   const parsed = parseInstallerArgs(args);
   if (parsed.mode === "help") {
@@ -148,21 +230,25 @@ export const runSourceInstall = async (args = process.argv.slice(2)): Promise<vo
   }
 
   await installFromSource();
-  process.stdout.write(
-    "AOP source install complete.\nThe local server is running as a user service and the `aop` command is now linked globally.\n",
-  );
+  process.stdout.write(buildInstallSuccessMessage());
 };
 
 const installLaunchAgent = async ({
   bunPath,
+  dashboardStaticPath,
   dependencies,
   homeDir,
+  localServerPort,
+  localServerUrl,
   logPath,
   workspaceDir,
 }: {
   bunPath: string;
+  dashboardStaticPath: string;
   dependencies: InstallDependencies;
   homeDir: string;
+  localServerPort: string;
+  localServerUrl: string;
   logPath: string;
   workspaceDir: string;
 }): Promise<void> => {
@@ -174,7 +260,10 @@ const installLaunchAgent = async ({
     plistPath,
     buildLaunchdPlist({
       bunPath,
+      dashboardStaticPath,
       logPath,
+      localServerPort,
+      localServerUrl,
       serviceName: LAUNCHD_SERVICE_NAME,
       workspaceDir,
     }),
@@ -186,14 +275,20 @@ const installLaunchAgent = async ({
 
 const installSystemdUnit = async ({
   bunPath,
+  dashboardStaticPath,
   dependencies,
   homeDir,
+  localServerPort,
+  localServerUrl,
   logPath,
   workspaceDir,
 }: {
   bunPath: string;
+  dashboardStaticPath: string;
   dependencies: InstallDependencies;
   homeDir: string;
+  localServerPort: string;
+  localServerUrl: string;
   logPath: string;
   workspaceDir: string;
 }): Promise<void> => {
@@ -205,7 +300,10 @@ const installSystemdUnit = async ({
     unitPath,
     buildSystemdUnit({
       bunPath,
+      dashboardStaticPath,
       logPath,
+      localServerPort,
+      localServerUrl,
       serviceName: SYSTEMD_SERVICE_NAME,
       workspaceDir,
     }),
