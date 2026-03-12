@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import {
+
+const clientModulePath = "./client.ts?dashboard-client-test";
+const clientModule = await import(clientModulePath);
+const {
   ApiError,
   blockTask,
   cleanupWorktrees,
@@ -19,7 +22,7 @@ import {
   testLinearConnection,
   unlockLinear,
   updateSettings,
-} from "./client";
+} = clientModule as typeof import("./client");
 
 const mockFetch = mock(() => Promise.resolve(new Response()));
 
