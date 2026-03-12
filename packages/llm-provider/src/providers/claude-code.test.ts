@@ -113,6 +113,27 @@ describe("buildCommand", () => {
     });
     expect(cmd).not.toContain("--settings");
   });
+
+  test("adds model and effort flags when provided", () => {
+    const provider = new ClaudeCodeProvider();
+    const cmd = provider.buildCommand({
+      prompt: "test prompt",
+      model: "claude-sonnet-4-6",
+      reasoningEffort: "max",
+    });
+    expect(cmd).toEqual([
+      "claude",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-sonnet-4-6",
+      "--effort",
+      "max",
+      "test prompt",
+    ]);
+  });
 });
 
 describe("parseStreamLine", () => {

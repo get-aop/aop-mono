@@ -57,6 +57,14 @@ export class ClaudeCodeProvider implements LLMProvider {
       cmd.push("--settings", JSON.stringify({ fastMode: true }));
     }
 
+    if (options.model) {
+      cmd.push("--model", options.model);
+    }
+
+    if (options.reasoningEffort) {
+      cmd.push("--effort", options.reasoningEffort);
+    }
+
     cmd.push(options.prompt);
     return cmd;
   }

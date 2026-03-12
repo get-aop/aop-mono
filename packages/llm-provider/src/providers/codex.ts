@@ -6,6 +6,7 @@ import { createWatchdog, getFileMtime, type Watchdog } from "./claude-code";
 import { buildSpawnEnv } from "./spawn-env";
 
 const CODEX_MODEL_ENV = "AOP_CODEX_MODEL";
+const CODEX_REASONING_EFFORT_ENV = "AOP_CODEX_REASONING_EFFORT";
 const USER_CODEX_HOME = join(homedir(), ".codex");
 const SEEDED_CODEX_FILES = ["auth.json", "config.toml"] as const;
 const SEEDED_HOME_FILES = [".gitconfig"] as const;
@@ -22,9 +23,14 @@ export class CodexProvider implements LLMProvider {
       "--dangerously-bypass-approvals-and-sandbox",
     ];
 
-    const model = options.env?.[CODEX_MODEL_ENV];
+    const model = options.model ?? options.env?.[CODEX_MODEL_ENV];
     if (model) {
       cmd.push("--model", model);
+    }
+
+    const reasoningEffort = options.reasoningEffort ?? options.env?.[CODEX_REASONING_EFFORT_ENV];
+    if (reasoningEffort) {
+      cmd.push("-c", `model_reasoning_effort="${reasoningEffort}"`);
     }
 
     cmd.push(options.prompt);

@@ -4,6 +4,7 @@ import type { ExecutionInfo, SignalDefinition, StepCommand } from "@aop/common/p
 import type { WorktreeInfo } from "@aop/git-manager";
 import { getLogger } from "@aop/infra";
 import {
+  ClaudeCodeProvider,
   CodexProvider,
   createProvider,
   inferRunOutcomeFromRawJsonl,
@@ -62,6 +63,50 @@ export const getProvider = async (ctx: LocalServerContext): Promise<LLMProvider>
   return new CodexProvider();
 };
 
+interface ResolvedStepProvider {
+  provider: LLMProvider;
+  model?: string;
+  reasoningEffort?: string;
+}
+
+const mapReasoningEffort = (
+  provider: "openai" | "anthropic",
+  reasoning: "low" | "medium" | "high" | "extra-high",
+): string => {
+  if (reasoning !== "extra-high") {
+    return reasoning;
+  }
+
+  return provider === "anthropic" ? "max" : "xhigh";
+};
+
+const resolveProviderForStep = async (
+  ctx: LocalServerContext,
+  stepCommand: StepCommand,
+  fallbackProvider?: LLMProvider,
+): Promise<ResolvedStepProvider> => {
+  const stepAgent = stepCommand.agent;
+  if (!stepAgent) {
+    return {
+      provider: fallbackProvider ?? (await getProvider(ctx)),
+    };
+  }
+
+  if (stepAgent.provider === "anthropic") {
+    return {
+      provider: new ClaudeCodeProvider(),
+      model: stepAgent.model,
+      reasoningEffort: mapReasoningEffort(stepAgent.provider, stepAgent.reasoning),
+    };
+  }
+
+  return {
+    provider: new CodexProvider(),
+    model: stepAgent.model,
+    reasoningEffort: mapReasoningEffort(stepAgent.provider, stepAgent.reasoning),
+  };
+};
+
 export const spawnAgentWithReaper = async (
   opts: SpawnAgentOptions,
   onCompletion: HandleAgentCompletionFn,
@@ -80,7 +125,11 @@ export const spawnAgentWithReaper = async (
   if (!task) {
     throw new Error(`Task ${taskId} not found`);
   }
-  const provider = explicitProvider ?? (await getProvider(ctx));
+  const { provider, model, reasoningEffort } = await resolveProviderForStep(
+    ctx,
+    opts.stepCommand,
+    explicitProvider,
+  );
 
   const logFile = join(executorCtx.logsDir, `${stepId}.jsonl`);
   const timeoutMs = executorCtx.timeoutSecs * 1000;
@@ -93,6 +142,8 @@ export const spawnAgentWithReaper = async (
     cwd: executorCtx.worktreePath,
     logFilePath: logFile,
     env: { AOP_TASK_ID: taskId, AOP_STEP_ID: stepId },
+    model,
+    reasoningEffort,
     stepId,
     inactivityTimeoutMs: timeoutMs,
     fastMode: executorCtx.fastMode,
@@ -182,6 +233,8 @@ interface SpawnAndReapOptions {
   cwd?: string;
   logFilePath: string;
   env: Record<string, string>;
+  model?: string;
+  reasoningEffort?: string;
   stepId: string;
   inactivityTimeoutMs?: number;
   fastMode?: boolean;
@@ -226,6 +279,8 @@ const spawnAndReap = (
       cwd: opts.cwd,
       logFilePath: opts.logFilePath,
       env: opts.env,
+      model: opts.model,
+      reasoningEffort: opts.reasoningEffort,
       onSpawn: async (pid) => {
         spawnedPid = pid;
         await ctx.executionRepository.updateStepExecution(opts.stepId, {

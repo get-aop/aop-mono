@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -288,6 +288,100 @@ describe("step-launcher", () => {
       await launchPromise;
 
       expect(onCompletion).toHaveBeenCalledTimes(1);
+    });
+
+    test("uses the step agent config instead of the fallback provider", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: StepExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+
+      let fallbackUsed = false;
+      const fallbackProvider = createMockProvider({ exitCode: 0 }, () => {
+        fallbackUsed = true;
+      });
+
+      const spawnSpy = spyOn(Bun, "spawn").mockReturnValue({
+        pid: 31337,
+        exited: Promise.resolve(0),
+        kill: mock(() => {}),
+        unref: mock(() => {}),
+      } as unknown as ReturnType<typeof Bun.spawn>);
+
+      const onCompletion = mock(() => Promise.resolve());
+
+      const executorCtx: ExecutorContext = {
+        task: createMockTask(),
+        repoId: "repo-1",
+        repoPath: "/test/repo",
+        changePath: "/test/repo/changes/feat-1",
+        worktreePath: "/test/worktree",
+        logsDir: testLogsDir,
+        timeoutSecs: 300,
+        fastMode: false,
+      };
+
+      await spawnAgentWithReaper(
+        {
+          ctx,
+          executorCtx,
+          worktreeInfo: {
+            path: "/test/worktree",
+            branch: "task-1",
+            baseBranch: "main",
+            baseCommit: "abc",
+          },
+          prompt: "review the feature",
+          stepId: "step-1",
+          executionId: "exec-1",
+          stepCommand: {
+            id: "step-1",
+            type: "review",
+            promptTemplate: "",
+            signals: [],
+            attempt: 1,
+            iteration: 1,
+            agent: {
+              provider: "anthropic",
+              model: "claude-sonnet-4-6",
+              reasoning: "medium",
+            },
+          },
+          executionInfo: { id: "exec-1", workflowId: "wf-1" },
+          taskId: "task-1",
+          repoId: "repo-1",
+          provider: fallbackProvider,
+        },
+        onCompletion,
+      );
+
+      expect(fallbackUsed).toBe(false);
+      const spawnArgs = spawnSpy.mock.calls[0]?.[0] as unknown as { cmd: string[] };
+      expect(spawnArgs.cmd).toEqual([
+        "claude",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-sonnet-4-6",
+        "--effort",
+        "medium",
+        "review the feature",
+      ]);
+
+      spawnSpy.mockRestore();
     });
   });
 

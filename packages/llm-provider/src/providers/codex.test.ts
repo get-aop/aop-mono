@@ -43,6 +43,29 @@ describe("buildCommand", () => {
       "test",
     ]);
   });
+
+  test("adds model and reasoning effort from run options", () => {
+    const provider = new CodexProvider();
+
+    expect(
+      provider.buildCommand({
+        prompt: "test",
+        model: "gpt-5.4",
+        reasoningEffort: "xhigh",
+      }),
+    ).toEqual([
+      "codex",
+      "exec",
+      "--json",
+      "--ephemeral",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--model",
+      "gpt-5.4",
+      "-c",
+      'model_reasoning_effort="xhigh"',
+      "test",
+    ]);
+  });
 });
 
 describe("run", () => {

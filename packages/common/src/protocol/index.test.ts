@@ -75,6 +75,11 @@ describe("Protocol Types", () => {
         promptTemplate: "Implement the task: {{ task.description }}",
         attempt: 1,
         iteration: 0,
+        agent: {
+          provider: "openai",
+          model: "gpt-5.4",
+          reasoning: "high",
+        },
       });
       expect(result.success).toBe(true);
       if (result.success) {
@@ -82,6 +87,11 @@ describe("Protocol Types", () => {
         expect(result.data.type).toBe("implement");
         expect(result.data.attempt).toBe(1);
         expect(result.data.iteration).toBe(0);
+        expect(result.data.agent).toEqual({
+          provider: "openai",
+          model: "gpt-5.4",
+          reasoning: "high",
+        });
       }
     });
   });

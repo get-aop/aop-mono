@@ -71,4 +71,31 @@ describe("StepCommandGenerator", () => {
 
     expect(command.signals).toEqual([]);
   });
+
+  test("copies step agent config into the generated command", async () => {
+    const generator = createStepCommandGenerator({
+      load: async () => "resolved",
+      clearCache: () => {},
+    });
+    const step: WorkflowStep = {
+      id: "quick-review",
+      type: "review",
+      promptTemplate: "quick-review.md.hbs",
+      maxAttempts: 1,
+      agent: {
+        provider: "openai",
+        model: "gpt-5.4",
+        reasoning: "medium",
+      },
+      transitions: [],
+    };
+
+    const command = await generator.generate(step, "step-4", 1, 0);
+
+    expect(command.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoning: "medium",
+    });
+  });
 });

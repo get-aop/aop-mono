@@ -4,6 +4,8 @@ export interface RunOptions {
   prompt: string;
   cwd?: string;
   resumeSessionId?: string;
+  model?: string;
+  reasoningEffort?: string;
   onOutput?: OutputHandler;
   /** Called when stream activity occurs, useful for timeout tracking */
   onActivity?: () => void;
