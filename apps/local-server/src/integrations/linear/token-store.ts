@@ -1,3 +1,6 @@
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import type { LinearTokenSet, LinearTokenStore, LinearTokenStoreStatus } from "./types.ts";
 
 interface ExecInvocation {
@@ -20,47 +23,69 @@ const DEFAULT_SERVICE = "aop.linear.oauth";
 export const createLinearTokenStore = (options?: {
   accountName?: string;
   exec?: CommandExecutor;
+  env?: NodeJS.ProcessEnv;
+  fallbackFilePath?: string;
   platform?: NodeJS.Platform;
   serviceName?: string;
 }): LinearTokenStore => {
   const accountName = options?.accountName ?? DEFAULT_ACCOUNT;
   const exec = options?.exec ?? runCommand;
+  const env = options?.env ?? process.env;
+  const fallbackFilePath =
+    options?.fallbackFilePath ?? join(homedir(), ".aop", "credentials", "linear-oauth.json");
   const platform = options?.platform ?? process.platform;
   const serviceName = options?.serviceName ?? DEFAULT_SERVICE;
   let unlockedTokens: LinearTokenSet | null = null;
 
   const save = async (tokens: LinearTokenSet): Promise<void> => {
     const serialized = JSON.stringify(tokens);
-    const storeResult =
-      platform === "darwin"
-        ? await exec({
-            args: [
-              "sh",
-              "-lc",
-              `security add-generic-password -U -s '${escapeSingleQuotes(serviceName)}' -a '${escapeSingleQuotes(accountName)}' -w "$AOP_LINEAR_TOKENS"`,
-            ],
-            env: { AOP_LINEAR_TOKENS: serialized },
-          })
-        : await exec({
-            args: [
-              "secret-tool",
-              "store",
-              "--label",
-              "AOP Linear OAuth",
-              "service",
-              serviceName,
-              "account",
-              accountName,
-            ],
-            stdin: serialized,
-          });
+    try {
+      const storeResult =
+        platform === "darwin"
+          ? await exec({
+              args: [
+                "sh",
+                "-lc",
+                `security add-generic-password -U -s '${escapeSingleQuotes(serviceName)}' -a '${escapeSingleQuotes(accountName)}' -w "$AOP_LINEAR_TOKENS"`,
+              ],
+              env: { AOP_LINEAR_TOKENS: serialized },
+            })
+          : await exec({
+              args: [
+                "secret-tool",
+                "store",
+                "--label",
+                "AOP Linear OAuth",
+                "service",
+                serviceName,
+                "account",
+                accountName,
+              ],
+              stdin: serialized,
+            });
 
-    ensureSuccess(platform, storeResult, "Failed to store Linear OAuth credentials");
+      ensureSuccess(platform, storeResult, "Failed to store Linear OAuth credentials");
+    } catch (error) {
+      if (!shouldUseFileFallback(platform, env, error)) {
+        throw error;
+      }
+
+      await writeFallbackFile(fallbackFilePath, serialized);
+    }
+
     unlockedTokens = tokens;
   };
 
   const getStatus = async (): Promise<LinearTokenStoreStatus> => {
     try {
+      const fallbackSerialized = await readFallbackFile(fallbackFilePath);
+      if (fallbackSerialized !== null) {
+        return {
+          connected: true,
+          locked: false,
+        };
+      }
+
       const serialized = await lookup(platform, exec, serviceName, accountName);
       return {
         connected: serialized !== null,
@@ -75,6 +100,12 @@ export const createLinearTokenStore = (options?: {
   };
 
   const unlock = async (): Promise<void> => {
+    const fallbackSerialized = await readFallbackFile(fallbackFilePath);
+    if (fallbackSerialized !== null) {
+      unlockedTokens = parseTokenSet(fallbackSerialized);
+      return;
+    }
+
     const serialized = await lookup(platform, exec, serviceName, accountName);
     if (!serialized) {
       throw new Error("Linear OAuth credentials not found");
@@ -84,6 +115,11 @@ export const createLinearTokenStore = (options?: {
   };
 
   const read = async (): Promise<LinearTokenSet> => {
+    const fallbackSerialized = await readFallbackFile(fallbackFilePath);
+    if (fallbackSerialized !== null) {
+      return parseTokenSet(fallbackSerialized);
+    }
+
     if (!unlockedTokens) {
       throw new Error("Linear token store is locked");
     }
@@ -96,17 +132,15 @@ export const createLinearTokenStore = (options?: {
 
   const disconnect = async (): Promise<void> => {
     unlockedTokens = null;
+    if (await readFallbackFile(fallbackFilePath)) {
+      await rm(fallbackFilePath, { force: true });
+      return;
+    }
+
     const deleteResult =
       platform === "darwin"
         ? await exec({
-            args: [
-              "security",
-              "delete-generic-password",
-              "-s",
-              serviceName,
-              "-a",
-              accountName,
-            ],
+            args: ["security", "delete-generic-password", "-s", serviceName, "-a", accountName],
           })
         : await exec({
             args: ["secret-tool", "clear", "service", serviceName, "account", accountName],
@@ -177,6 +211,43 @@ const parseTokenSet = (serialized: string): LinearTokenSet => {
   };
 };
 
+const shouldUseFileFallback = (
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+  error: unknown,
+): boolean => {
+  if (platform !== "linux" || !isWsl(env) || !(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("secret-tool") ||
+    message.includes("secret service") ||
+    message.includes("dbus") ||
+    message.includes("command not found") ||
+    message.includes("executable not found")
+  );
+};
+
+const isWsl = (env: NodeJS.ProcessEnv): boolean => {
+  return Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP);
+};
+
+const writeFallbackFile = async (fallbackFilePath: string, serialized: string): Promise<void> => {
+  await mkdir(dirname(fallbackFilePath), { recursive: true });
+  await writeFile(fallbackFilePath, serialized, "utf8");
+  await chmod(fallbackFilePath, 0o600);
+};
+
+const readFallbackFile = async (fallbackFilePath: string): Promise<string | null> => {
+  try {
+    return await readFile(fallbackFilePath, "utf8");
+  } catch {
+    return null;
+  }
+};
+
 const isUnavailable = (platform: NodeJS.Platform, result: ExecResult): boolean => {
   if (result.exitCode === 127) {
     return true;
@@ -216,15 +287,24 @@ const buildErrorMessage = (message: string, stderr: string | undefined): string 
 const escapeSingleQuotes = (value: string): string => value.replaceAll("'", "'\\''");
 
 const runCommand = async (invocation: ExecInvocation): Promise<ExecResult> => {
-  const proc = Bun.spawn(invocation.args, {
-    env: {
-      ...process.env,
-      ...invocation.env,
-    },
-    stdin: invocation.stdin ? Buffer.from(invocation.stdin, "utf8") : undefined,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  let proc: ReturnType<typeof Bun.spawn>;
+  try {
+    proc = Bun.spawn(invocation.args, {
+      env: {
+        ...process.env,
+        ...invocation.env,
+      },
+      stdin: invocation.stdin ? Buffer.from(invocation.stdin, "utf8") : undefined,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  } catch (error) {
+    return {
+      exitCode: 127,
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error),
+    };
+  }
 
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
