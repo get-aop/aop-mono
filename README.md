@@ -18,7 +18,7 @@ Agents run on your machine, in local git worktrees, against your real repository
 
 ### Import and planning flows
 
-AOP supports idea-first planning with `/aop:from-scratch` and requirements-driven ingestion with `/aop:from-ticket`, including Linear-powered flows for teams managing work outside the repo.
+AOP supports idea-first planning with the `/aop:from-scratch` skill and requirements-driven ingestion with the `/aop:from-ticket` skill inside Codex or Claude Code, including Linear-powered flows for teams managing work outside the repo.
 
 ### Operational visibility
 
@@ -53,6 +53,8 @@ After install, the local server should already be running.
 /aop:from-scratch <idea>
 /aop:from-ticket <github-issue|linear-ticket|file|pasted-text>
 ```
+
+These are AOP skills that you run inside Codex or Claude Code, not terminal commands.
 
 `/aop:from-scratch` is the idea-first path. `/aop:from-ticket` is the import path for existing requirements, including Linear-backed work.
 
