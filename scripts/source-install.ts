@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -46,6 +46,13 @@ const LAUNCHD_SERVICE_NAME = "com.aop.local-server";
 const SYSTEMD_SERVICE_NAME = "aop-local-server";
 const DEFAULT_LOCAL_SERVER_PORT = "25150";
 const DEFAULT_LOCAL_SERVER_URL = `http://localhost:${DEFAULT_LOCAL_SERVER_PORT}`;
+const HOME_SKILL_DIRS = [".codex", ".claude"] as const;
+const LEGACY_SKILL_RENAMES = {
+  "create-task": "aop-create-task",
+  "task-planner": "aop-task-planner",
+  "task-ready": "aop-task-ready",
+  "task-review": "aop-task-review",
+} as const;
 const INSTALL_USAGE = `Usage: ./install
 
 Installs AOP from source for the current user:
@@ -175,6 +182,10 @@ export const installFromSource = async (options: InstallOptions = {}): Promise<v
   await dependencies.run(["bun", "install", "--ignore-scripts"], { cwd: workspaceDir });
   await dependencies.run(["bun", "link"], { cwd: workspaceDir });
   await dependencies.run(["bun", "run", "build:dashboard"], { cwd: workspaceDir });
+  await syncBundledSkills({
+    homeDir,
+    workspaceDir,
+  });
 
   if (platform === "darwin") {
     await installLaunchAgent({
@@ -317,6 +328,137 @@ const installSystemdUnit = async ({
     `${SYSTEMD_SERVICE_NAME}.service`,
   ]);
 };
+
+const syncBundledSkills = async ({
+  homeDir,
+  workspaceDir,
+}: {
+  homeDir: string;
+  workspaceDir: string;
+}): Promise<void> => {
+  const backupStamp = buildBackupStamp();
+
+  for (const toolDir of HOME_SKILL_DIRS) {
+    const sourceSkillsDir = join(workspaceDir, toolDir, "skills");
+    const targetSkillsDir = join(homeDir, toolDir, "skills");
+    await mkdir(targetSkillsDir, { recursive: true });
+    const backupRoot = join(homeDir, ".aop", "backups", "skills", backupStamp, toolDir.slice(1));
+
+    await removeLegacySkills({
+      backupRoot,
+      targetSkillsDir,
+    });
+
+    for (const skillName of await listSkillDirectories(sourceSkillsDir)) {
+      const sourceSkillDir = join(sourceSkillsDir, skillName);
+      const targetSkillDir = join(targetSkillsDir, skillName);
+
+      if (!(await pathExists(targetSkillDir))) {
+        await cp(sourceSkillDir, targetSkillDir, { recursive: true });
+        continue;
+      }
+
+      const sourceSnapshot = await snapshotDirectory(sourceSkillDir);
+      const targetSnapshot = await snapshotDirectory(targetSkillDir);
+      if (sourceSnapshot === targetSnapshot) {
+        continue;
+      }
+
+      await backupSkillDirectory({
+        backupRoot,
+        skillName,
+        sourceDir: targetSkillDir,
+      });
+      await rm(targetSkillDir, { recursive: true, force: true });
+      await cp(sourceSkillDir, targetSkillDir, { recursive: true });
+    }
+  }
+};
+
+const removeLegacySkills = async ({
+  backupRoot,
+  targetSkillsDir,
+}: {
+  backupRoot: string;
+  targetSkillsDir: string;
+}): Promise<void> => {
+  for (const legacySkillName of Object.keys(LEGACY_SKILL_RENAMES)) {
+    const legacySkillDir = join(targetSkillsDir, legacySkillName);
+    if (!(await pathExists(legacySkillDir))) {
+      continue;
+    }
+
+    await backupSkillDirectory({
+      backupRoot,
+      skillName: legacySkillName,
+      sourceDir: legacySkillDir,
+    });
+    await rm(legacySkillDir, { recursive: true, force: true });
+  }
+};
+
+const backupSkillDirectory = async ({
+  backupRoot,
+  skillName,
+  sourceDir,
+}: {
+  backupRoot: string;
+  skillName: string;
+  sourceDir: string;
+}): Promise<void> => {
+  await mkdir(backupRoot, { recursive: true });
+  await rm(join(backupRoot, skillName), { recursive: true, force: true });
+  await cp(sourceDir, join(backupRoot, skillName), { recursive: true });
+};
+
+const listSkillDirectories = async (skillsDir: string): Promise<string[]> => {
+  const entries = await readdir(skillsDir, { withFileTypes: true }).catch(() => []);
+  const skillNames = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => {
+        const skillFilePath = join(skillsDir, entry.name, "SKILL.md");
+        return (await pathExists(skillFilePath)) ? entry.name : null;
+      }),
+  );
+
+  return skillNames
+    .filter((skillName): skillName is string => typeof skillName === "string")
+    .sort((left, right) => left.localeCompare(right));
+};
+
+const snapshotDirectory = async (directory: string, prefix = ""): Promise<string> => {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const snapshots = await Promise.all(
+    entries
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map(async (entry) => {
+        const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+        const absolutePath = join(directory, entry.name);
+
+        if (entry.isDirectory()) {
+          return `dir:${relativePath}\n${await snapshotDirectory(absolutePath, relativePath)}`;
+        }
+
+        const content = await readFile(absolutePath);
+        return `file:${relativePath}:${content.toString("base64")}`;
+      }),
+  );
+
+  return snapshots.join("\n");
+};
+
+const pathExists = async (path: string): Promise<boolean> => {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const buildBackupStamp = (): string =>
+  new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-");
 
 const createDependencies = (
   dependencies: Partial<InstallDependencies> = {},

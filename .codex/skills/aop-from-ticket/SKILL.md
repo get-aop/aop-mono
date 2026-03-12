@@ -44,7 +44,7 @@ If no usable source is provided, ask for the ticket or document before proceedin
 10. Add numbered subtask files when the work needs multiple executable slices.
 11. Report which tasks came from the requested input and which were auto-imported as blockers.
 12. Ask whether the imported tasks should be started now.
-13. If the answer is yes, invoke `task-ready` only for the imported tasks that should move to `READY`.
+13. If the answer is yes, invoke `aop-task-ready` only for the imported tasks that should move to `READY`.
 14. Explain that some started tasks may remain `READY` until their dependency tasks are `DONE`.
 15. Present the task slug(s), written files, final status, and a short summary.
 

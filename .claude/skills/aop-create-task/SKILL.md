@@ -1,5 +1,5 @@
 ---
-name: create-task
+name: aop-create-task
 description: Use when a discussion in the current session should become an executable repo-local task package under docs/tasks.
 ---
 

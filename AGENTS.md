@@ -32,10 +32,10 @@ This repository vendors a small public-friendly skill bundle locally so task wor
 Canonical skill paths:
 - `.claude/skills/aop-brainstorming/SKILL.md`
 - `.claude/skills/code-simplifier/SKILL.md`
-- `.claude/skills/create-task/SKILL.md`
-- `.claude/skills/task-planner/SKILL.md`
-- `.claude/skills/task-ready/SKILL.md`
-- `.claude/skills/task-review/SKILL.md`
+- `.claude/skills/aop-create-task/SKILL.md`
+- `.claude/skills/aop-task-planner/SKILL.md`
+- `.claude/skills/aop-task-ready/SKILL.md`
+- `.claude/skills/aop-task-review/SKILL.md`
 - `.claude/skills/code-review/SKILL.md`
 - `.claude/skills/remove-ai-slop/SKILL.md`
 - `.claude/skills/systematic-debugging/SKILL.md`

@@ -1,5 +1,5 @@
 ---
-name: task-planner
+name: aop-task-planner
 description: Use when planning implementation work from a document, issue, or prompt into the repo-local docs/tasks workflow.
 ---
 

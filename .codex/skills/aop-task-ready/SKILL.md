@@ -1,5 +1,5 @@
 ---
-name: task-ready
+name: aop-task-ready
 description: Promote an existing task to READY so the orchestrator can pick it up.
 ---
 

@@ -33,7 +33,7 @@ If the user already has a GitHub issue, Linear ticket, or requirements document,
 7. Write `docs/tasks/<task-slug>/plan.md` from the approved design.
 8. Add numbered subtask files when the design implies multiple executable slices.
 9. Ask whether the task should be started now.
-10. If the answer is yes, invoke `task-ready` to promote the task to `READY`.
+10. If the answer is yes, invoke `aop-task-ready` to promote the task to `READY`.
 11. Present the task slug, `design.md`, written files, final status, and a short summary.
 
 ## Guardrails

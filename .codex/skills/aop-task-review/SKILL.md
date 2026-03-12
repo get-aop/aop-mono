@@ -1,5 +1,5 @@
 ---
-name: task-review
+name: aop-task-review
 description: Add additional subtasks to an existing task folder. Use when the user wants to expand or revise work already planned under docs/tasks.
 ---
 
