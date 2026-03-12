@@ -18,6 +18,7 @@ import { createLinearTokenStore } from "./integrations/linear/token-store.ts";
 import { createRepoRepository, type RepoRepository } from "./repo/repository.ts";
 import { createSessionRepository, type SessionRepository } from "./session/repository.ts";
 import { createSettingsRepository, type SettingsRepository } from "./settings/repository.ts";
+import { SettingKey } from "./settings/types.ts";
 import { createTaskRepository, type TaskRepository } from "./task/repository.ts";
 import { createWorkflowRepository, type WorkflowRepository } from "./workflow/repository.ts";
 import { createLocalWorkflowService, type LocalWorkflowService } from "./workflow/service.ts";
@@ -50,21 +51,27 @@ export const createCommandContext = (
   const taskEventEmitter = options.taskEventEmitter ?? getTaskEventEmitter();
   const logBuffer = options.logBuffer ?? getLogBuffer();
   const repoRepository = createRepoRepository(db);
+  const settingsRepository = createSettingsRepository(db);
   const executionRepository = createExecutionRepository();
   const logFlusher = options.logFlusher ?? createLogFlusher(executionRepository);
-  const clientId = process.env.AOP_LINEAR_CLIENT_ID ?? "";
-  const callbackBase = process.env.AOP_LINEAR_CALLBACK_BASE ?? "http://127.0.0.1:4310";
-  const redirectUri = new URL("/api/linear/callback", callbackBase).toString();
   const linearStore = createLinearStore(db);
   const tokenStore = createLinearTokenStore();
   const linearHandlers = createLinearHandlers({
-    auth: createLinearOAuth({
-      clientId: clientId || "linear-disabled",
-      redirectUri,
-    }),
+    createAuth: createLinearOAuth,
+    getConfig: async () => {
+      const configuredClientId = await settingsRepository.get(SettingKey.LINEAR_CLIENT_ID);
+      const configuredCallbackUrl = await settingsRepository.get(SettingKey.LINEAR_CALLBACK_URL);
+      const clientId = configuredClientId || process.env.AOP_LINEAR_CLIENT_ID || "";
+      const redirectUri = configuredCallbackUrl || getDefaultLinearCallbackUrl(process.env);
+
+      return {
+        enabled: clientId.length > 0 && redirectUri.length > 0,
+        clientId,
+        redirectUri,
+      };
+    },
     tokenStore,
-    enabled: clientId.length > 0,
-    exchangeCodeForTokens: ({ code, verifier }) =>
+    exchangeCodeForTokens: ({ clientId, code, verifier, redirectUri }) =>
       exchangeLinearCodeForTokens({ clientId, code, verifier, redirectUri }),
     testConnectionWithToken: testLinearConnection,
   });
@@ -74,7 +81,7 @@ export const createCommandContext = (
       eventEmitter: taskEventEmitter,
     }),
     repoRepository,
-    settingsRepository: createSettingsRepository(db),
+    settingsRepository,
     executionRepository,
     sessionRepository: createSessionRepository(db),
     workflowRepository: createWorkflowRepository(db),
@@ -88,6 +95,12 @@ export const createCommandContext = (
   context.workflowService = createLocalWorkflowService(context);
 
   return context;
+};
+
+const getDefaultLinearCallbackUrl = (env: NodeJS.ProcessEnv): string => {
+  const callbackBase =
+    env.AOP_LINEAR_CALLBACK_BASE ?? env.AOP_LOCAL_SERVER_URL ?? "http://127.0.0.1:4310";
+  return new URL("/api/linear/callback", callbackBase).toString();
 };
 
 const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";

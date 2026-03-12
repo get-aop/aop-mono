@@ -17,11 +17,20 @@ export interface LinearHandlers {
 }
 
 export interface CreateLinearHandlersOptions {
-  auth: LinearOAuth;
+  createAuth: (options: { clientId: string; redirectUri: string }) => LinearOAuth;
+  getConfig: () => Promise<{
+    enabled: boolean;
+    clientId: string;
+    redirectUri: string;
+  }>;
   tokenStore: LinearTokenStore;
-  exchangeCodeForTokens: (params: { code: string; verifier: string }) => Promise<LinearTokenSet>;
+  exchangeCodeForTokens: (params: {
+    clientId: string;
+    code: string;
+    verifier: string;
+    redirectUri: string;
+  }) => Promise<LinearTokenSet>;
   testConnectionWithToken: (accessToken: string) => Promise<LinearConnectionInfo>;
-  enabled?: boolean;
 }
 
 export class LinearHandlersError extends Error {
@@ -34,32 +43,63 @@ export class LinearHandlersError extends Error {
 }
 
 export const createLinearHandlers = (options: CreateLinearHandlersOptions): LinearHandlers => {
-  const assertEnabled = (): void => {
-    if (options.enabled === false) {
+  const sessions = new Map<
+    string,
+    {
+      auth: LinearOAuth;
+      clientId: string;
+      redirectUri: string;
+    }
+  >();
+
+  const getEnabledConfig = async (): Promise<{ clientId: string; redirectUri: string }> => {
+    const config = await options.getConfig();
+    if (!config.enabled) {
       throw new LinearHandlersError(
         503,
-        "Linear OAuth is not configured. Set AOP_LINEAR_CLIENT_ID in the local server environment.",
+        "Linear OAuth is not configured. Set linear_client_id and linear_callback_url in Settings or via the CLI.",
       );
     }
+    return {
+      clientId: config.clientId,
+      redirectUri: config.redirectUri,
+    };
   };
 
   return {
     connect: async () => {
-      assertEnabled();
-      const request = options.auth.createAuthorizationRequest();
+      const config = await getEnabledConfig();
+      const auth = options.createAuth(config);
+      const request = auth.createAuthorizationRequest();
+      sessions.set(request.state, {
+        auth,
+        clientId: config.clientId,
+        redirectUri: config.redirectUri,
+      });
       return { authorizeUrl: request.url.toString() };
     },
 
     callback: async (params: LinearCallbackParams) => {
-      assertEnabled();
-      const { code, state } = options.auth.validateCallback(params);
-      const verifier = options.auth.consumeVerifier(state);
+      const state = params.state ?? "";
+      const session = sessions.get(state);
+      if (!session) {
+        throw new LinearHandlersError(400, "Invalid Linear OAuth state");
+      }
+
+      const { code } = session.auth.validateCallback(params);
+      const verifier = session.auth.consumeVerifier(state);
+      sessions.delete(state);
 
       if (!verifier) {
         throw new LinearHandlersError(400, "Linear OAuth session expired");
       }
 
-      const tokens = await options.exchangeCodeForTokens({ code, verifier });
+      const tokens = await options.exchangeCodeForTokens({
+        clientId: session.clientId,
+        code,
+        verifier,
+        redirectUri: session.redirectUri,
+      });
       await options.tokenStore.save(tokens);
 
       return { connected: true };
@@ -76,7 +116,7 @@ export const createLinearHandlers = (options: CreateLinearHandlersOptions): Line
     },
 
     testConnection: async () => {
-      assertEnabled();
+      await getEnabledConfig();
       const tokens = await options.tokenStore.read().catch((error) => {
         if (error instanceof Error && error.message === "Linear token store is locked") {
           throw new LinearHandlersError(409, error.message);

@@ -1,6 +1,7 @@
 export { configGetCommand } from "./config-get.ts";
 export { configSetCommand } from "./config-set.ts";
 export { createTaskCommand } from "./create-task.ts";
+export { linearConfigureCommand } from "./linear-configure.ts";
 export { linearConnectCommand } from "./linear-connect.ts";
 export { linearDisconnectCommand } from "./linear-disconnect.ts";
 export { linearStatusCommand } from "./linear-status.ts";

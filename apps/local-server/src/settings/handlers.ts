@@ -66,6 +66,20 @@ const validateSettingValue = (key: SettingKey, value: string): SetSettingError |
   if (key === SettingKey.AGENT_PROVIDER && !isValidProviderValue(value)) {
     return { code: "INVALID_VALUE", key, value, validValues: VALID_PROVIDER_VALUES };
   }
+
+  if (key === SettingKey.LINEAR_CALLBACK_URL && value.length > 0) {
+    try {
+      new URL(value);
+    } catch {
+      return {
+        code: "INVALID_VALUE",
+        key,
+        value,
+        validValues: ["A valid absolute URL like http://127.0.0.1:4310/api/linear/callback"],
+      };
+    }
+  }
+
   return null;
 };
 

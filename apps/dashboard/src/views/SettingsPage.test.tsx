@@ -11,8 +11,10 @@ const mockGetSettings = mock();
 const mockTestLinearConnection = mock();
 const mockUnlockLinear = mock();
 const mockUpdateSettings = mock();
+const actualClientModule = await import("../api/client.ts?settings-page-test-actual");
 
 mock.module("../api/client", () => ({
+  ...actualClientModule,
   cleanupWorktrees: mockCleanupWorktrees,
   connectLinear: mockConnectLinear,
   disconnectLinear: mockDisconnectLinear,
@@ -45,8 +47,16 @@ afterEach(() => {
   globalThis.open = originalOpen;
 });
 
-const primeSettingsLoad = () => {
+const primeSettingsLoad = (overrides?: {
+  linearClientId?: string;
+  linearCallbackUrl?: string;
+}) => {
   mockGetSettings.mockResolvedValue([
+    { key: "linear_client_id", value: overrides?.linearClientId ?? "" },
+    {
+      key: "linear_callback_url",
+      value: overrides?.linearCallbackUrl ?? "",
+    },
     { key: "max_concurrent_tasks", value: "3" },
     { key: "watcher_poll_interval_secs", value: "5" },
     { key: "agent_provider", value: "codex" },
@@ -63,12 +73,43 @@ describe("SettingsPage Linear section", () => {
 
     await waitFor(() => expect(screen.getByText("Linear")).toBeDefined());
     expect(screen.getByText("Not connected")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Connect" })).toBeDefined();
+    expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByText("Linear Client ID")).toBeDefined();
+    expect(screen.getByText("Linear Callback URL")).toBeDefined();
     expect(screen.queryByLabelText("Linear passphrase")).toBeNull();
   });
 
-  test("opens the returned authorization URL after connect", async () => {
+  test("renders Linear OAuth settings and saves them", async () => {
     primeSettingsLoad();
+    mockGetLinearStatus.mockResolvedValue({ connected: false, locked: false });
+    mockUpdateSettings.mockResolvedValue(undefined);
+
+    render(<SettingsPage />);
+
+    await waitFor(() => expect(screen.getByLabelText("Linear Client ID")).toBeDefined());
+
+    fireEvent.change(screen.getByLabelText("Linear Client ID"), {
+      target: { value: "linear-client-id" },
+    });
+    fireEvent.change(screen.getByLabelText("Linear Callback URL"), {
+      target: { value: "http://127.0.0.1:4310/api/linear/callback" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mockUpdateSettings).toHaveBeenCalled());
+    expect(mockUpdateSettings).toHaveBeenCalledWith([
+      { key: "linear_client_id", value: "linear-client-id" },
+      { key: "linear_callback_url", value: "http://127.0.0.1:4310/api/linear/callback" },
+    ]);
+  });
+
+  test("opens the returned authorization URL after connect", async () => {
+    primeSettingsLoad({
+      linearClientId: "linear-client-id",
+      linearCallbackUrl: "http://127.0.0.1:4310/api/linear/callback",
+    });
     mockGetLinearStatus.mockResolvedValue({ connected: false, locked: true });
     mockConnectLinear.mockResolvedValue({
       authorizeUrl: "https://linear.app/oauth/authorize?state=abc",
@@ -88,7 +129,10 @@ describe("SettingsPage Linear section", () => {
   });
 
   test("renders locked state and unlocks from secure storage", async () => {
-    primeSettingsLoad();
+    primeSettingsLoad({
+      linearClientId: "linear-client-id",
+      linearCallbackUrl: "http://127.0.0.1:4310/api/linear/callback",
+    });
     mockGetLinearStatus.mockResolvedValue({ connected: true, locked: true });
     mockUnlockLinear.mockResolvedValue(undefined);
 
@@ -101,7 +145,10 @@ describe("SettingsPage Linear section", () => {
   });
 
   test("renders unlocked workspace details", async () => {
-    primeSettingsLoad();
+    primeSettingsLoad({
+      linearClientId: "linear-client-id",
+      linearCallbackUrl: "http://127.0.0.1:4310/api/linear/callback",
+    });
     mockGetLinearStatus.mockResolvedValue({ connected: true, locked: false });
     mockTestLinearConnection.mockResolvedValue({
       ok: true,

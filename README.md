@@ -67,7 +67,19 @@ aop task:ready <task-id>
 
 `/aop:from-scratch` is the idea-first path. `/aop:from-ticket` is the import path for existing requirements, including Linear-backed work.
 
-For Linear OAuth, tokens are stored in the OS credential store on macOS and Linux. Configure OAuth with `AOP_LINEAR_CLIENT_ID`, and optionally override the localhost callback base with `AOP_LINEAR_CALLBACK_BASE`. For CI or headless usage, `LINEAR_API_KEY` remains available as a read-only fallback.
+### Linear OAuth
+
+For interactive use, configure Linear from the dashboard Settings page or from the CLI:
+
+```bash
+aop linear:configure --client-id <linear-client-id> --callback-url http://127.0.0.1:25150/api/linear/callback
+aop linear:connect
+aop linear:status
+aop linear:unlock
+aop linear:disconnect
+```
+
+OAuth tokens are stored in the OS credential store on macOS and Linux. For CI or headless usage, `LINEAR_API_KEY` remains available as a read-only fallback. Environment variables `AOP_LINEAR_CLIENT_ID` and `AOP_LINEAR_CALLBACK_BASE` still work as fallbacks, but the preferred interactive flow is to save the client ID and callback URL through the dashboard or `aop linear:configure`.
 
 ### Service checks
 
