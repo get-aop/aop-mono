@@ -56,16 +56,12 @@ describe("integrations/linear/client", () => {
         return new Response(
           JSON.stringify({
             data: {
-              issues: {
-                nodes: [
-                  {
-                    id: "lin_123",
-                    identifier: "ABC-123",
-                    title: "Imported issue",
-                    url: "https://linear.app/acme/issue/ABC-123/imported-issue",
-                    relations: { nodes: [] },
-                  },
-                ],
+              issue0: {
+                id: "lin_123",
+                identifier: "ABC-123",
+                title: "Imported issue",
+                url: "https://linear.app/acme/issue/ABC-123/imported-issue",
+                relations: { nodes: [] },
               },
             },
           }),
@@ -75,8 +71,9 @@ describe("integrations/linear/client", () => {
 
     const issues = await client.getIssuesByRefs(["ABC-123"]);
 
-    expect(seenHeaders).toEqual(["oauth-access-token"]);
-    expect(seenBodies[0]).toContain("ABC-123");
+    expect(seenHeaders).toEqual(["Bearer oauth-access-token"]);
+    expect(seenBodies[0]).toContain("issue(id: $ref0)");
+    expect(seenBodies[0]).toContain('"ref0":"ABC-123"');
     expect(issues).toHaveLength(1);
     expect(issues[0]?.identifier).toBe("ABC-123");
   });
@@ -92,16 +89,12 @@ describe("integrations/linear/client", () => {
         return new Response(
           JSON.stringify({
             data: {
-              issues: {
-                nodes: [
-                  {
-                    id: "lin_124",
-                    identifier: "ABC-124",
-                    title: "Imported issue",
-                    url: "https://linear.app/acme/issue/ABC-124/imported-issue",
-                    relations: { nodes: [] },
-                  },
-                ],
+              issue0: {
+                id: "lin_124",
+                identifier: "ABC-124",
+                title: "Imported issue",
+                url: "https://linear.app/acme/issue/ABC-124/imported-issue",
+                relations: { nodes: [] },
               },
             },
           }),
@@ -113,6 +106,40 @@ describe("integrations/linear/client", () => {
 
     expect(seenAuthorization).toBe("linear-api-key");
     expect(issues[0]?.identifier).toBe("ABC-124");
+  });
+
+  test("returns only the resolved issues when some refs are missing", async () => {
+    const { createLinearClient } = await loadClientModule();
+    const client = createLinearClient({
+      apiKey: "linear-api-key",
+      fetch: createFetchMock(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: {
+                issue0: {
+                  id: "lin_123",
+                  identifier: "ABC-123",
+                  title: "Imported issue",
+                  url: "https://linear.app/acme/issue/ABC-123/imported-issue",
+                  relations: { nodes: [] },
+                },
+                issue1: null,
+              },
+            }),
+          ),
+      ),
+    });
+
+    await expect(client.getIssuesByRefs(["ABC-123", "ABC-124"])).resolves.toEqual([
+      {
+        id: "lin_123",
+        identifier: "ABC-123",
+        title: "Imported issue",
+        url: "https://linear.app/acme/issue/ABC-123/imported-issue",
+        relations: { nodes: [] },
+      },
+    ]);
   });
 
   test("surfaces GraphQL errors", async () => {

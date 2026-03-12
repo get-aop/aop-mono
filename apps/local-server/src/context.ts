@@ -14,7 +14,10 @@ import { createLogFlusher, type LogFlusher } from "./executor/log-flusher.ts";
 import { createLinearHandlers, type LinearHandlers } from "./integrations/linear/handlers.ts";
 import { createLinearOAuth } from "./integrations/linear/oauth.ts";
 import { createLinearStore, type LinearStore } from "./integrations/linear/store.ts";
-import { createLinearTokenStore } from "./integrations/linear/token-store.ts";
+import {
+  createLinearTokenStore,
+  type LinearTokenStore,
+} from "./integrations/linear/token-store.ts";
 import { createRepoRepository, type RepoRepository } from "./repo/repository.ts";
 import { createSessionRepository, type SessionRepository } from "./session/repository.ts";
 import { createSettingsRepository, type SettingsRepository } from "./settings/repository.ts";
@@ -36,6 +39,7 @@ export interface LocalServerContext {
   workflowService: LocalWorkflowService;
   linearHandlers: LinearHandlers;
   linearStore: LinearStore;
+  linearTokenStore: LinearTokenStore;
 }
 
 export interface CreateCommandContextOptions {
@@ -98,6 +102,7 @@ export const createCommandContext = (
     logFlusher,
     linearHandlers,
     linearStore,
+    linearTokenStore: tokenStore,
   } as LocalServerContext;
 
   context.workflowService = createLocalWorkflowService(context);

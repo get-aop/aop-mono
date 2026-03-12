@@ -1,29 +1,6 @@
 import type { LinearIssueClient, LinearRawIssue } from "./types.ts";
 
 const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
-const LINEAR_ISSUES_QUERY = `
-  query LinearIssues($refs: [String!]) {
-    issues(filter: { identifier: { in: $refs } }) {
-      nodes {
-        id
-        identifier
-        title
-        url
-        relations {
-          nodes {
-            type
-            relatedIssue {
-              id
-              identifier
-              title
-              url
-            }
-          }
-        }
-      }
-    }
-  }
-`;
 
 interface CreateLinearClientOptions {
   apiKey?: string;
@@ -48,8 +25,8 @@ export const createLinearClient = (options: CreateLinearClientOptions): LinearIs
           Authorization: authorization,
         },
         body: JSON.stringify({
-          query: LINEAR_ISSUES_QUERY,
-          variables: { refs },
+          query: buildIssuesQuery(refs),
+          variables: buildIssuesVariables(refs),
         }),
       });
 
@@ -58,11 +35,7 @@ export const createLinearClient = (options: CreateLinearClientOptions): LinearIs
       }
 
       const body = (await response.json()) as {
-        data?: {
-          issues?: {
-            nodes?: LinearRawIssue[];
-          } | null;
-        } | null;
+        data?: Record<string, LinearRawIssue | null> | null;
         errors?: Array<{ message?: string }>;
       };
 
@@ -70,12 +43,14 @@ export const createLinearClient = (options: CreateLinearClientOptions): LinearIs
         throw new Error(body.errors[0]?.message ?? "Linear issue query failed");
       }
 
-      const nodes = body.data?.issues?.nodes;
-      if (!Array.isArray(nodes)) {
+      if (!body.data || typeof body.data !== "object") {
         throw new Error("Linear issue query returned an invalid payload");
       }
 
-      return nodes;
+      return refs.flatMap((_, index) => {
+        const issue = body.data?.[toIssueAlias(index)];
+        return issue ? [issue] : [];
+      });
     },
   };
 };
@@ -83,7 +58,7 @@ export const createLinearClient = (options: CreateLinearClientOptions): LinearIs
 const resolveAuthorization = async (options: CreateLinearClientOptions): Promise<string> => {
   const accessToken = await options.getAccessToken?.();
   if (accessToken) {
-    return accessToken;
+    return accessToken.startsWith("Bearer ") ? accessToken : `Bearer ${accessToken}`;
   }
 
   if (options.apiKey) {
@@ -92,3 +67,37 @@ const resolveAuthorization = async (options: CreateLinearClientOptions): Promise
 
   throw new Error("Linear is not connected");
 };
+
+const buildIssuesQuery = (refs: string[]): string => {
+  const variableDefinitions = refs.map((_, index) => `$ref${index}: String!`).join(", ");
+  const aliasedIssueQueries = refs
+    .map(
+      (_, index) => `
+      ${toIssueAlias(index)}: issue(id: $ref${index}) {
+        id
+        identifier
+        title
+        url
+        relations {
+          nodes {
+            type
+            relatedIssue {
+              id
+              identifier
+              title
+              url
+            }
+          }
+        }
+      }`,
+    )
+    .join("\n");
+
+  return `query LinearIssues(${variableDefinitions}) {${aliasedIssueQueries}
+}`;
+};
+
+const buildIssuesVariables = (refs: string[]): Record<string, string> =>
+  Object.fromEntries(refs.map((ref, index) => [`ref${index}`, ref]));
+
+const toIssueAlias = (index: number): string => `issue${index}`;

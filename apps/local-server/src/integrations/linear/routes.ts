@@ -49,6 +49,27 @@ export const createLinearRoutes = (deps: LinearRoutesDeps) => {
     }
   });
 
+  app.post("/import", async (c) => {
+    if (!deps.importFromInput) {
+      return c.json({ error: "Linear import is unavailable" }, 503);
+    }
+
+    const body = await c.req.json<{ cwd?: string; input?: string }>();
+    if (!body.cwd || !body.input) {
+      return c.json({ error: "Missing required fields: cwd and input" }, 400);
+    }
+
+    try {
+      const result = await deps.importFromInput({
+        cwd: body.cwd,
+        input: body.input,
+      });
+      return c.json({ ok: true, ...result });
+    } catch (error) {
+      return toErrorResponse(c, error);
+    }
+  });
+
   return app;
 };
 

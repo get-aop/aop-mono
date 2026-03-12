@@ -8,6 +8,7 @@ import { createEventsSSEHandler } from "./events/index.ts";
 import { createLogStreamHandler } from "./events/log-routes.ts";
 import { createFsRoutes } from "./fs/routes.ts";
 import { createHealthRoutes } from "./health/routes.ts";
+import { createLinearImportService } from "./integrations/linear/import-service.ts";
 import { createLinearRoutes } from "./integrations/linear/routes.ts";
 import { createRepoRoutes } from "./repo/routes";
 import { createRunTaskRoutes } from "./run-task/routes.ts";
@@ -45,6 +46,7 @@ export interface AppDependencies {
 export const createApp = (deps: AppDependencies) => {
   const { ctx, dashboardStaticPath, dashboardDevOrigin } = deps;
   const app = new Hono();
+  const linearImportService = createLinearImportService({ ctx });
 
   app.use("*", otel({ tracerProvider: getTracerProvider() }));
 
@@ -131,7 +133,13 @@ export const createApp = (deps: AppDependencies) => {
   app.get("/api/executions/:executionId/logs", createLogStreamHandler(ctx));
 
   app.route("/api/workflows", createWorkflowRoutes(ctx));
-  app.route("/api/linear", createLinearRoutes({ handlers: ctx.linearHandlers }));
+  app.route(
+    "/api/linear",
+    createLinearRoutes({
+      handlers: ctx.linearHandlers,
+      importFromInput: (params) => linearImportService.importFromInput(params),
+    }),
+  );
 
   app.get("/api/metrics", async (c) => {
     const repoId = c.req.query("repoId");
