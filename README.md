@@ -41,7 +41,7 @@ cd <repository-directory>
 ./install
 ```
 
-`./install` installs dependencies, links the `aop` CLI globally, initializes OpenSpec tooling, and starts the local server as a per-user background service.
+`./install` installs dependencies, links the `aop` CLI globally, and starts the local server as a per-user background service.
 
 ## Run The App
 
