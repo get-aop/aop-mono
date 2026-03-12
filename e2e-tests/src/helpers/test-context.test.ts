@@ -1,6 +1,3 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { findFreePort, resolveE2EAgentProvider } from "./test-context";
 
@@ -36,45 +33,42 @@ describe("findFreePort", () => {
 });
 
 describe("resolveE2EAgentProvider", () => {
-  test("prefers codex when codex is available", async () => {
-    const binDir = await mkdtemp(join(tmpdir(), "aop-e2e-codex-"));
-
+  test("defaults to the deterministic fixture provider", () => {
+    const original = process.env.AOP_E2E_AGENT_PROVIDER;
     try {
-      await writeFile(join(binDir, "codex"), "");
-      await writeFile(join(binDir, "agent"), "");
-      await writeFile(join(binDir, "claude"), "");
-
-      expect(resolveE2EAgentProvider(binDir)).toBe("codex");
+      delete process.env.AOP_E2E_AGENT_PROVIDER;
+      expect(resolveE2EAgentProvider()).toBe("e2e-fixture");
     } finally {
-      await rm(binDir, { recursive: true, force: true });
+      restoreProviderEnv(original);
     }
   });
 
-  test("falls back to cursor-cli when codex is unavailable but agent exists", async () => {
-    const binDir = await mkdtemp(join(tmpdir(), "aop-e2e-agent-"));
-
+  test("allows overriding the provider through the environment", () => {
+    const original = process.env.AOP_E2E_AGENT_PROVIDER;
     try {
-      await writeFile(join(binDir, "agent"), "");
-
-      expect(resolveE2EAgentProvider(binDir)).toBe("cursor-cli:composer-1.5");
+      process.env.AOP_E2E_AGENT_PROVIDER = "codex";
+      expect(resolveE2EAgentProvider()).toBe("codex");
     } finally {
-      await rm(binDir, { recursive: true, force: true });
+      restoreProviderEnv(original);
     }
   });
 
-  test("falls back to claude-code when claude is the only available binary", async () => {
-    const binDir = await mkdtemp(join(tmpdir(), "aop-e2e-claude-"));
-
+  test("ignores blank overrides", () => {
+    const original = process.env.AOP_E2E_AGENT_PROVIDER;
     try {
-      await writeFile(join(binDir, "claude"), "");
-
-      expect(resolveE2EAgentProvider(binDir)).toBe("claude-code");
+      process.env.AOP_E2E_AGENT_PROVIDER = "   ";
+      expect(resolveE2EAgentProvider()).toBe("e2e-fixture");
     } finally {
-      await rm(binDir, { recursive: true, force: true });
+      restoreProviderEnv(original);
     }
-  });
-
-  test("returns null when no supported provider binary is available", () => {
-    expect(resolveE2EAgentProvider("/definitely/missing")).toBeNull();
   });
 });
+
+const restoreProviderEnv = (value: string | undefined): void => {
+  if (value === undefined) {
+    delete process.env.AOP_E2E_AGENT_PROVIDER;
+    return;
+  }
+
+  process.env.AOP_E2E_AGENT_PROVIDER = value;
+};

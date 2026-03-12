@@ -1,5 +1,18 @@
 import type { TaskStatus } from "@aop/common";
 
+export interface TaskSourceMetadata {
+  provider: "linear";
+  id: string;
+  ref: string;
+  url: string;
+}
+
+export interface TaskDependencySourceMetadata {
+  provider: "linear";
+  id: string;
+  ref: string;
+}
+
 export interface TaskDocFrontmatter extends Record<string, unknown> {
   id?: string;
   title: string;
@@ -14,6 +27,9 @@ export interface TaskDocFrontmatter extends Record<string, unknown> {
   startedAt?: string | null;
   completedAt?: string | null;
   durationMs?: number | null;
+  source?: TaskSourceMetadata;
+  dependencySources?: TaskDependencySourceMetadata[];
+  dependencyImported?: boolean;
 }
 
 export interface TaskDoc {
@@ -27,6 +43,9 @@ export interface TaskDoc {
   description: string;
   requirements: string;
   acceptanceCriteria: Array<{ text: string; checked: boolean }>;
+  source: TaskSourceMetadata | null;
+  dependencySources: TaskDependencySourceMetadata[];
+  dependencyImported: boolean;
 }
 
 export interface SubtaskDocFrontmatter extends Record<string, unknown> {

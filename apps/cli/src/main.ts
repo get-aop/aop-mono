@@ -9,6 +9,10 @@ import {
   configGetCommand,
   configSetCommand,
   createTaskCommand,
+  linearConnectCommand,
+  linearDisconnectCommand,
+  linearStatusCommand,
+  linearUnlockCommand,
   repoInitCommand,
   repoRemoveCommand,
   runTaskCommand,
@@ -21,6 +25,10 @@ type CommandHandlers = {
   configGetCommand: typeof configGetCommand;
   configSetCommand: typeof configSetCommand;
   createTaskCommand: typeof createTaskCommand;
+  linearConnectCommand: typeof linearConnectCommand;
+  linearDisconnectCommand: typeof linearDisconnectCommand;
+  linearStatusCommand: typeof linearStatusCommand;
+  linearUnlockCommand: typeof linearUnlockCommand;
   repoInitCommand: typeof repoInitCommand;
   repoRemoveCommand: typeof repoRemoveCommand;
   runTaskCommand: typeof runTaskCommand;
@@ -46,6 +54,10 @@ const defaultCommandHandlers: CommandHandlers = {
   configGetCommand,
   configSetCommand,
   createTaskCommand,
+  linearConnectCommand,
+  linearDisconnectCommand,
+  linearStatusCommand,
+  linearUnlockCommand,
   repoInitCommand,
   repoRemoveCommand,
   runTaskCommand,
@@ -133,6 +145,22 @@ export const registerCommands = (
     .command("status [taskId]", "Show status")
     .option("--json", "Output as JSON")
     .action((taskId, options) => commands.statusCommand(taskId, { json: options.json }));
+
+  cli
+    .command("linear:connect", "Start the Linear OAuth flow")
+    .action(() => commands.linearConnectCommand());
+
+  cli
+    .command("linear:status", "Show Linear connection status")
+    .action(() => commands.linearStatusCommand());
+
+  cli
+    .command("linear:unlock", "Unlock the local Linear token store")
+    .action(() => commands.linearUnlockCommand());
+
+  cli
+    .command("linear:disconnect", "Disconnect the local Linear token store")
+    .action(() => commands.linearDisconnectCommand());
 
   cli
     .command("repo:init [path]", "Register repository")

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
+process.env.AOP_LOCAL_SERVER_PORT ??= "4111";
+process.env.AOP_LOCAL_SERVER_URL ??= "http://127.0.0.1:4111";
+
 const clientModulePath = "./client.ts?client-test";
 const clientModule = await import(clientModulePath);
 const { fetchServer, getServerUrl, isServerRunning, requireServer } =

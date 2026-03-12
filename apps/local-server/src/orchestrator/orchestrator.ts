@@ -62,6 +62,7 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
           await reconcileRepo(repo, {
             repoRepository: ctx.repoRepository,
             taskRepository: ctx.taskRepository,
+            linearStore: ctx.linearStore,
           });
         }
       });
@@ -197,6 +198,7 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
       await reconcileAllRepos({
         repoRepository: ctx.repoRepository,
         taskRepository: ctx.taskRepository,
+        linearStore: ctx.linearStore,
       });
 
       const durationMs = Math.round(performance.now() - startTime);

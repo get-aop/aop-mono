@@ -85,7 +85,26 @@ aop repo:init .
 
 `/aop:from-scratch` runs the AOP brainstorming flow, writes the task under `docs/tasks/<task-slug>/`, and can mark it `READY` at the end.
 
-`/aop:from-ticket` skips brainstorming, writes the task from existing requirements, and can also mark it `READY` at the end.
+`/aop:from-ticket` skips brainstorming, writes the task from existing requirements, and then asks whether the imported tasks should be started now.
+
+Linear imports support:
+- one ref like `ENG-123`
+- one Linear URL
+- one range like `ENG-123..ENG-130`
+- a mixed comma-separated list of refs, URLs, and ranges
+
+For Linear, AOP prefers the local OAuth flow. Start it from the CLI with:
+
+```bash
+aop linear:connect
+aop linear:status
+aop linear:unlock
+aop linear:disconnect
+```
+
+OAuth uses a shared public client id by default, with optional overrides via `AOP_LINEAR_CLIENT_ID` and `AOP_LINEAR_CALLBACK_BASE`. For CI or headless usage, `LINEAR_API_KEY` remains available as a read-only fallback.
+
+When an imported Linear issue is blocked by another Linear issue, AOP auto-imports the missing blocker as a draft dependency task. Import always creates or updates the local task docs first. If you choose to start imported work immediately afterward, unrelated tasks can run in parallel while dependent tasks stay `READY` until all blocker tasks are `DONE`.
 
 Once a task is `READY`, the orchestrator picks it up automatically.
 

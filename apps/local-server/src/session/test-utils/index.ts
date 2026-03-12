@@ -205,6 +205,26 @@ export const createMockContext = (sessionRepository: SessionRepository): LocalSe
     settingsRepository: {} as LocalServerContext["settingsRepository"],
     workflowRepository: {} as LocalServerContext["workflowRepository"],
     taskEventEmitter: {} as LocalServerContext["taskEventEmitter"],
+    linearHandlers: {
+      connect: async () => ({ authorizeUrl: "" }),
+      callback: async () => ({ connected: false }),
+      getStatus: async () => ({ connected: false, locked: true }),
+      unlock: async () => {},
+      disconnect: async () => {},
+      testConnection: async () => ({
+        ok: false,
+        organizationName: "",
+        userName: "",
+        userEmail: "",
+      }),
+    },
+    linearStore: {
+      upsertTaskSource: async () => {},
+      getTaskSourceByExternalId: async () => null,
+      getTaskSourceByExternalRef: async () => null,
+      replaceTaskDependencies: async () => {},
+      listTaskDependencies: async () => [],
+    },
     workflowService: {
       listWorkflows: async () => [],
       startTask: async () => ({ status: "READY" }),
@@ -223,6 +243,11 @@ export const createMockContext = (sessionRepository: SessionRepository): LocalSe
       markRemoved: async () => false,
       list: async () => [],
       countWorking: async () => 0,
+      getDependencyState: async () => ({
+        dependencyState: "ready",
+        blockedByTaskIds: [],
+        blockedByRefs: [],
+      }),
       getNextExecutable: async () => null,
       getNextResumable: async () => null,
       resetStaleWorkingTasks: async () => 0,

@@ -2,7 +2,12 @@ import { statSync } from "node:fs";
 import { basename } from "node:path";
 import { TaskStatus } from "@aop/common";
 import { parseFrontmatter, serializeFrontmatter, updateFrontmatter } from "./frontmatter.ts";
-import type { TaskDoc, TaskDocFrontmatter } from "./types.ts";
+import type {
+  TaskDependencySourceMetadata,
+  TaskDoc,
+  TaskDocFrontmatter,
+  TaskSourceMetadata,
+} from "./types.ts";
 
 const CHECKBOX_REGEX = /^-\s+\[([ xX])\]\s+(.+)$/;
 
@@ -90,6 +95,58 @@ const parseAcceptanceCriteria = (content: string): Array<{ text: string; checked
     return [{ text: text.trim(), checked: checked.toLowerCase() === "x" }];
   });
 
+const parseTaskSource = (value: unknown): TaskSourceMetadata | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const source = value as Partial<TaskSourceMetadata>;
+  if (
+    source.provider !== "linear" ||
+    typeof source.id !== "string" ||
+    typeof source.ref !== "string" ||
+    typeof source.url !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    provider: source.provider,
+    id: source.id,
+    ref: source.ref,
+    url: source.url,
+  };
+};
+
+const parseDependencySources = (value: unknown): TaskDependencySourceMetadata[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return [];
+    }
+
+    const dependency = entry as Partial<TaskDependencySourceMetadata>;
+    if (
+      dependency.provider !== "linear" ||
+      typeof dependency.id !== "string" ||
+      typeof dependency.ref !== "string"
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        provider: dependency.provider,
+        id: dependency.id,
+        ref: dependency.ref,
+      },
+    ];
+  });
+};
+
 export const parseTaskDoc = async (taskFilePath: string): Promise<TaskDoc> => {
   const markdown = await Bun.file(taskFilePath).text();
   const { frontmatter, content } = parseFrontmatter<TaskDocFrontmatter>(markdown);
@@ -107,6 +164,9 @@ export const parseTaskDoc = async (taskFilePath: string): Promise<TaskDoc> => {
     description: sections.description,
     requirements: sections.requirements,
     acceptanceCriteria: parseAcceptanceCriteria(sections.acceptanceCriteria),
+    source: parseTaskSource(frontmatter.source),
+    dependencySources: parseDependencySources(frontmatter.dependencySources),
+    dependencyImported: frontmatter.dependencyImported === true,
   };
 };
 

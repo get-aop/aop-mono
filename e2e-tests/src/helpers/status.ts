@@ -1,4 +1,4 @@
-import type { TaskStatus } from "@aop/common";
+import type { TaskDependencyState, TaskStatus } from "@aop/common";
 import { DEFAULT_LOCAL_SERVER_URL } from "./constants";
 import { runAopCommand } from "./e2e-server";
 
@@ -11,6 +11,9 @@ export interface TaskInfo {
   ready_at: string | null;
   created_at: string;
   updated_at: string;
+  dependencyState?: TaskDependencyState;
+  blockedByTaskIds?: string[];
+  blockedByRefs?: string[];
 }
 
 export interface WaitForTaskOptions {
@@ -99,6 +102,9 @@ interface SSETaskRaw {
   readyAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  dependencyState?: TaskDependencyState;
+  blockedByTaskIds?: string[];
+  blockedByRefs?: string[];
 }
 
 const normalizeTask = (raw: SSETaskRaw): TaskInfo => ({
@@ -110,6 +116,9 @@ const normalizeTask = (raw: SSETaskRaw): TaskInfo => ({
   ready_at: raw.readyAt ?? null,
   created_at: raw.createdAt,
   updated_at: raw.updatedAt,
+  dependencyState: raw.dependencyState,
+  blockedByTaskIds: raw.blockedByTaskIds,
+  blockedByRefs: raw.blockedByRefs,
 });
 
 export const getFullStatus = async (env?: Record<string, string>): Promise<StatusOutput | null> => {

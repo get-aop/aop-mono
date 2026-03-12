@@ -89,6 +89,9 @@ export const createLogStreamHandler = (ctx: LocalServerContext, deps: LogStreamD
 
   return async (c: Context) => {
     const executionId = c.req.param("executionId");
+    if (!executionId) {
+      return c.json({ error: "Execution ID is required" }, 400);
+    }
 
     const execution = await ctx.executionRepository.getExecution(executionId);
     if (!execution) {

@@ -8,6 +8,8 @@ export const runMigrations = async (db: Kysely<Database>): Promise<void> => {
   await insertDefaultSettings(db);
   await createWorkflowsTable(db);
   await createReposTable(db);
+  await createTaskSourcesTable(db);
+  await createTaskDependenciesTable(db);
   await dropLegacyTaskTables(db);
   await createInteractiveSessionsTable(db);
   await createSessionMessagesTable(db);
@@ -72,6 +74,65 @@ const createReposTable = async (db: Kysely<Database>): Promise<void> => {
     .addColumn("max_concurrent_tasks", "integer", (col) => col.defaultTo(3))
     .addColumn("created_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
     .addColumn("updated_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
+    .execute();
+};
+
+const createTaskSourcesTable = async (db: Kysely<Database>): Promise<void> => {
+  await db.schema
+    .createTable("task_sources")
+    .ifNotExists()
+    .addColumn("task_id", "text", (col) => col.notNull())
+    .addColumn("repo_id", "text", (col) => col.notNull().references("repos.id").onDelete("cascade"))
+    .addColumn("provider", "text", (col) => col.notNull())
+    .addColumn("external_id", "text", (col) => col.notNull())
+    .addColumn("external_ref", "text", (col) => col.notNull())
+    .addColumn("external_url", "text", (col) => col.notNull())
+    .addColumn("title_snapshot", "text", (col) => col.notNull())
+    .addColumn("created_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
+    .addColumn("updated_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
+    .execute();
+
+  await db.schema
+    .createIndex("idx_task_sources_repo_external_id")
+    .ifNotExists()
+    .on("task_sources")
+    .columns(["repo_id", "provider", "external_id"])
+    .unique()
+    .execute();
+
+  await db.schema
+    .createIndex("idx_task_sources_task_provider")
+    .ifNotExists()
+    .on("task_sources")
+    .columns(["task_id", "provider"])
+    .unique()
+    .execute();
+
+  await db.schema
+    .createIndex("idx_task_sources_repo_external_ref")
+    .ifNotExists()
+    .on("task_sources")
+    .columns(["repo_id", "provider", "external_ref"])
+    .execute();
+};
+
+const createTaskDependenciesTable = async (db: Kysely<Database>): Promise<void> => {
+  await db.schema
+    .createTable("task_dependencies")
+    .ifNotExists()
+    .addColumn("task_id", "text", (col) => col.notNull())
+    .addColumn("depends_on_task_id", "text", (col) => col.notNull())
+    .addColumn("source", "text", (col) => col.notNull())
+    .addColumn("created_at", "text", (col) => col.notNull().defaultTo(sql`(datetime('now'))`))
+    .addCheckConstraint("chk_task_dependencies_not_self", sql`task_id <> depends_on_task_id`)
+    .addPrimaryKeyConstraint("pk_task_dependencies", ["task_id", "depends_on_task_id"])
+    .execute();
+
+  await db.schema
+    .createIndex("idx_task_dependencies_depends_on")
+    .ifNotExists()
+    .on("task_dependencies")
+    .column("depends_on_task_id")
     .execute();
 };
 

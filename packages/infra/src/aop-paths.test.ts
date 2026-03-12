@@ -38,6 +38,10 @@ describe("aopPaths", () => {
     expect(aopPaths.logs()).toBe(join(DEFAULT_AOP_HOME, "logs"));
   });
 
+  test("linearTokens returns <home>/secrets/linear-tokens.enc", () => {
+    expect(aopPaths.linearTokens()).toBe(join(DEFAULT_AOP_HOME, "secrets", "linear-tokens.enc"));
+  });
+
   test("repoDir returns <home>/repos/<repoId>", () => {
     expect(aopPaths.repoDir("repo_abc123")).toBe(join(DEFAULT_AOP_HOME, "repos", "repo_abc123"));
   });
@@ -66,5 +70,6 @@ describe("aopPaths", () => {
     process.env.AOP_HOME = "/tmp/test-aop";
     expect(aopPaths.repoDir("r1")).toBe("/tmp/test-aop/repos/r1");
     expect(aopPaths.worktrees("r1")).toBe("/tmp/test-aop/worktrees/r1");
+    expect(aopPaths.linearTokens()).toBe("/tmp/test-aop/secrets/linear-tokens.enc");
   });
 });

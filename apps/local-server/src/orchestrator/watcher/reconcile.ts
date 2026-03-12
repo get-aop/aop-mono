@@ -2,8 +2,10 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { aopPaths, generateTypeId, getLogger, type Logger } from "@aop/infra";
 import type { NewTask, Repo, Task } from "../../db/schema.ts";
+import type { LinearStore } from "../../integrations/linear/store.ts";
 import type { RepoRepository } from "../../repo/repository.ts";
 import type { TaskRepository } from "../../task/repository.ts";
+import { parseTaskDoc } from "../../task-docs/task.ts";
 
 const logger = getLogger("reconcile");
 
@@ -17,6 +19,7 @@ export interface ReconcileResult {
 export interface ReconcileDeps {
   repoRepository: RepoRepository;
   taskRepository: TaskRepository;
+  linearStore: LinearStore;
 }
 
 export const reconcileRepo = async (repo: Repo, deps: ReconcileDeps): Promise<ReconcileResult> => {
@@ -36,6 +39,7 @@ export const reconcileRepo = async (repo: Repo, deps: ReconcileDeps): Promise<Re
     log,
   );
   const removed = await removeOrphanedTasks(tasksOnDisk, activeTasks, deps.taskRepository, log);
+  await rebuildLinearMirror(repo, deps.taskRepository, deps.linearStore);
 
   const durationMs = Math.round(performance.now() - startTime);
   log.debug("Repo reconciliation complete in {durationMs}ms", { durationMs, created, removed });
@@ -150,4 +154,59 @@ const createDraftTask = async (
   };
 
   return taskStore.createIdempotent(newTask);
+};
+
+const rebuildLinearMirror = async (
+  repo: Repo,
+  taskRepository: TaskRepository,
+  linearStore: LinearStore,
+): Promise<void> => {
+  await taskRepository.refresh();
+  const tasks = await taskRepository.list({ repo_id: repo.id, excludeRemoved: true });
+  const taskIdsBySourceId = new Map<string, string>();
+  const docsWithSource: Array<{
+    taskId: string;
+    externalId: string;
+    externalRef: string;
+    externalUrl: string;
+    title: string;
+    dependencySourceIds: string[];
+  }> = [];
+
+  for (const task of tasks) {
+    const doc = await parseTaskDoc(join(repo.path, task.change_path, "task.md"));
+    if (!doc.source) {
+      continue;
+    }
+
+    taskIdsBySourceId.set(doc.source.id, task.id);
+    docsWithSource.push({
+      taskId: task.id,
+      externalId: doc.source.id,
+      externalRef: doc.source.ref,
+      externalUrl: doc.source.url,
+      title: doc.title,
+      dependencySourceIds: doc.dependencySources.map((source) => source.id),
+    });
+  }
+
+  for (const doc of docsWithSource) {
+    await linearStore.upsertTaskSource({
+      taskId: doc.taskId,
+      repoId: repo.id,
+      externalId: doc.externalId,
+      externalRef: doc.externalRef,
+      externalUrl: doc.externalUrl,
+      titleSnapshot: doc.title,
+    });
+  }
+
+  for (const doc of docsWithSource) {
+    await linearStore.replaceTaskDependencies(
+      doc.taskId,
+      doc.dependencySourceIds
+        .map((sourceId) => taskIdsBySourceId.get(sourceId))
+        .filter((taskId): taskId is string => typeof taskId === "string"),
+    );
+  }
 };

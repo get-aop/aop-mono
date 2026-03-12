@@ -40,6 +40,7 @@ export type {
   SSERepoWithTasks,
   SSEServerStatus,
   SSETask,
+  TaskDependencyState,
   SSETaskCreatedEvent,
   SSETaskRemovedEvent,
   SSETaskStatusChangedEvent,

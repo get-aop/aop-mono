@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { type CleanupResult, cleanupWorktrees, getSettings, updateSettings } from "../api/client";
+import {
+  type CleanupResult,
+  cleanupWorktrees,
+  connectLinear,
+  disconnectLinear,
+  getLinearStatus,
+  getSettings,
+  type LinearConnectionInfo,
+  type LinearStatus,
+  testLinearConnection,
+  unlockLinear,
+  updateSettings,
+} from "../api/client";
 import { Logo } from "../components/Logo";
 import { TextInput } from "../components/TextInput";
 import { ToggleInput } from "../components/ToggleInput";
@@ -14,6 +26,22 @@ interface SettingMeta {
   type: "number" | "text" | "password" | "toggle" | "select";
   suffix?: string;
   options?: { value: string; label: string }[];
+}
+
+interface LinearSectionState {
+  status: LinearStatus | null;
+  info: LinearConnectionInfo | null;
+  loading: boolean;
+  error: string | null;
+}
+
+interface SettingsFormProps {
+  savedValues: Record<string, string>;
+  editedValues: Record<string, string>;
+  onChange: (key: string, value: string) => void;
+  onSaved: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  linearState: LinearSectionState;
+  onRefreshLinear: () => Promise<void>;
 }
 
 const GROUPS: { label: string; keys: string[] }[] = [
@@ -85,6 +113,12 @@ export const SettingsPage = ({ onNavigate }: SettingsPageProps) => {
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [linearState, setLinearState] = useState<LinearSectionState>({
+    status: null,
+    info: null,
+    loading: true,
+    error: null,
+  });
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -92,7 +126,9 @@ export const SettingsPage = ({ onNavigate }: SettingsPageProps) => {
     try {
       const data = await getSettings();
       const values: Record<string, string> = {};
-      for (const s of data) values[s.key] = s.value;
+      for (const setting of data) {
+        values[setting.key] = setting.value;
+      }
       setSavedValues(values);
       setEditedValues(values);
     } catch (err) {
@@ -102,9 +138,29 @@ export const SettingsPage = ({ onNavigate }: SettingsPageProps) => {
     }
   }, []);
 
+  const fetchLinearState = useCallback(async () => {
+    setLinearState((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const status = await getLinearStatus();
+      let info: LinearConnectionInfo | null = null;
+      if (status.connected && !status.locked) {
+        info = await testLinearConnection();
+      }
+      setLinearState({ status, info, loading: false, error: null });
+    } catch (err) {
+      setLinearState({
+        status: null,
+        info: null,
+        loading: false,
+        error: err instanceof Error ? err.message : "Failed to load Linear status",
+      });
+    }
+  }, []);
+
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+    fetchLinearState();
+  }, [fetchLinearState, fetchSettings]);
 
   const handleChange = (key: string, value: string) => {
     setEditedValues((prev) => ({ ...prev, [key]: value }));
@@ -130,6 +186,8 @@ export const SettingsPage = ({ onNavigate }: SettingsPageProps) => {
         editedValues={editedValues}
         onChange={handleChange}
         onSaved={setSavedValues}
+        linearState={linearState}
+        onRefreshLinear={fetchLinearState}
       />
     );
   }
@@ -148,14 +206,14 @@ export const SettingsPage = ({ onNavigate }: SettingsPageProps) => {
   );
 };
 
-interface SettingsFormProps {
-  savedValues: Record<string, string>;
-  editedValues: Record<string, string>;
-  onChange: (key: string, value: string) => void;
-  onSaved: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-}
-
-const SettingsForm = ({ savedValues, editedValues, onChange, onSaved }: SettingsFormProps) => {
+const SettingsForm = ({
+  savedValues,
+  editedValues,
+  onChange,
+  onSaved,
+  linearState,
+  onRefreshLinear,
+}: SettingsFormProps) => {
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<"success" | "error" | null>(null);
 
@@ -172,7 +230,9 @@ const SettingsForm = ({ savedValues, editedValues, onChange, onSaved }: Settings
       await updateSettings(settings);
       onSaved((prev) => {
         const next = { ...prev };
-        for (const { key, value } of settings) next[key] = value;
+        for (const { key, value } of settings) {
+          next[key] = value;
+        }
         return next;
       });
       setFeedback("success");
@@ -186,6 +246,11 @@ const SettingsForm = ({ savedValues, editedValues, onChange, onSaved }: Settings
 
   return (
     <div className="flex flex-col gap-6">
+      <section>
+        <h2 className="mb-3 font-mono text-[10px] tracking-wider text-aop-slate-dark">LINEAR</h2>
+        <LinearConnectionSection linearState={linearState} onRefresh={onRefreshLinear} />
+      </section>
+
       {GROUPS.map((group) => {
         const groupKeys = group.keys.filter((key) => key in savedValues);
         if (groupKeys.length === 0) return null;
@@ -196,13 +261,13 @@ const SettingsForm = ({ savedValues, editedValues, onChange, onSaved }: Settings
               {group.label}
             </h2>
             <div className="overflow-hidden rounded-aop-lg border border-aop-charcoal bg-aop-darkest">
-              {groupKeys.map((key, i) => (
+              {groupKeys.map((key, index) => (
                 <SettingRow
                   key={key}
                   settingKey={key}
                   value={editedValues[key] ?? ""}
                   onChange={onChange}
-                  isLast={i === groupKeys.length - 1}
+                  isLast={index === groupKeys.length - 1}
                 />
               ))}
             </div>
@@ -241,11 +306,7 @@ const SettingsForm = ({ savedValues, editedValues, onChange, onSaved }: Settings
   );
 };
 
-interface HeaderProps {
-  onNavigate?: (path: string) => void;
-}
-
-const Header = ({ onNavigate }: HeaderProps) => (
+const Header = ({ onNavigate }: SettingsPageProps) => (
   <header className="flex h-14 shrink-0 items-center justify-between border-b border-aop-charcoal bg-aop-dark px-6">
     <div className="flex items-center gap-6">
       <button
@@ -277,6 +338,310 @@ const Header = ({ onNavigate }: HeaderProps) => (
   </header>
 );
 
+interface LinearConnectionSectionProps {
+  linearState: LinearSectionState;
+  onRefresh: () => Promise<void>;
+}
+
+type LinearBusyState = "connect" | "unlock" | "disconnect" | "refresh" | null;
+
+const getLinearStatusLabel = (linearState: LinearSectionState): string => {
+  if (linearState.loading) {
+    return "Loading...";
+  }
+
+  if (!linearState.status?.connected) {
+    return "Not connected";
+  }
+
+  return linearState.status.locked ? "Connected, locked" : "Connected";
+};
+
+const getLinearMessageTone = (
+  linearState: LinearSectionState,
+  messageTone: "success" | "error",
+): string => {
+  return linearState.error || messageTone === "error" ? "text-aop-blocked" : "text-aop-success";
+};
+
+const hasUnlockedConnection = (linearState: LinearSectionState): boolean => {
+  return Boolean(linearState.info && linearState.status && !linearState.status.locked);
+};
+
+const getPrimaryLinearAction = ({
+  busy,
+  connected,
+  loading,
+  locked,
+  onConnect,
+  onUnlock,
+}: {
+  busy: LinearBusyState;
+  connected: boolean;
+  loading: boolean;
+  locked: boolean;
+  onConnect: () => void;
+  onUnlock: () => void;
+}): {
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+} | null => {
+  if (!connected) {
+    return {
+      label: busy === "connect" ? "Connecting..." : "Connect",
+      onClick: onConnect,
+      disabled: loading || busy !== null,
+    };
+  }
+
+  if (!locked) {
+    return null;
+  }
+
+  return {
+    label: busy === "unlock" ? "Unlocking..." : "Unlock",
+    onClick: onUnlock,
+    disabled: loading || busy !== null,
+  };
+};
+
+const LinearConnectionActions = ({
+  busy,
+  connected,
+  loading,
+  locked,
+  onConnect,
+  onDisconnect,
+  onRefresh,
+  onUnlock,
+}: {
+  busy: LinearBusyState;
+  connected: boolean;
+  loading: boolean;
+  locked: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onRefresh: () => void;
+  onUnlock: () => void;
+}) => {
+  const primaryAction = getPrimaryLinearAction({
+    busy,
+    connected,
+    loading,
+    locked,
+    onConnect,
+    onUnlock,
+  });
+
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      {primaryAction && <ActionButton {...primaryAction} />}
+
+      <ActionButton
+        label={busy === "refresh" ? "Refreshing..." : "Refresh"}
+        onClick={onRefresh}
+        disabled={busy !== null}
+        subtle
+      />
+
+      {connected && (
+        <ActionButton
+          label={busy === "disconnect" ? "Disconnecting..." : "Disconnect"}
+          onClick={onDisconnect}
+          disabled={busy !== null}
+          destructive
+        />
+      )}
+    </div>
+  );
+};
+
+const LinearConnectionSection = ({ linearState, onRefresh }: LinearConnectionSectionProps) => {
+  const [passphrase, setPassphrase] = useState("");
+  const [busy, setBusy] = useState<LinearBusyState>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
+
+  const showMessage = (nextMessage: string, tone: "success" | "error") => {
+    setMessage(nextMessage);
+    setMessageTone(tone);
+  };
+
+  const runAction = async (
+    nextBusy: Exclude<LinearBusyState, null>,
+    action: () => Promise<void>,
+  ) => {
+    setBusy(nextBusy);
+    try {
+      await action();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const requirePassphrase = (): boolean => {
+    if (passphrase) {
+      return true;
+    }
+    showMessage("Passphrase required", "error");
+    return false;
+  };
+
+  const handleConnect = async () => {
+    if (!requirePassphrase()) {
+      return;
+    }
+
+    await runAction("connect", async () => {
+      const result = await connectLinear(passphrase);
+      globalThis.open?.(result.authorizeUrl, "_blank", "noopener,noreferrer");
+      showMessage("Authorization opened in browser", "success");
+    }).catch((err) => {
+      showMessage(err instanceof Error ? err.message : "Failed to start Linear OAuth", "error");
+    });
+  };
+
+  const handleUnlock = async () => {
+    if (!requirePassphrase()) {
+      return;
+    }
+
+    await runAction("unlock", async () => {
+      await unlockLinear(passphrase);
+      setPassphrase("");
+      await onRefresh();
+      showMessage("Linear unlocked", "success");
+    }).catch((err) => {
+      showMessage(err instanceof Error ? err.message : "Failed to unlock Linear", "error");
+    });
+  };
+
+  const handleDisconnect = async () => {
+    await runAction("disconnect", async () => {
+      await disconnectLinear();
+      setPassphrase("");
+      await onRefresh();
+      showMessage("Linear disconnected", "success");
+    }).catch((err) => {
+      showMessage(err instanceof Error ? err.message : "Failed to disconnect Linear", "error");
+    });
+  };
+
+  const handleRefresh = async () => {
+    await runAction("refresh", async () => {
+      await onRefresh();
+    });
+  };
+
+  return (
+    <div className="overflow-hidden rounded-aop-lg border border-aop-charcoal bg-aop-darkest">
+      <div className="flex flex-col gap-4 px-4 py-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="font-mono text-xs text-aop-cream">Linear</div>
+            <p className="mt-0.5 font-mono text-[10px] text-aop-slate-dark">
+              Connect AOP to Linear without storing OAuth secrets in SQLite.
+            </p>
+          </div>
+          <div className="shrink-0 font-mono text-[10px] text-aop-cream">
+            {getLinearStatusLabel(linearState)}
+          </div>
+        </div>
+
+        {(linearState.error || message) && (
+          <div
+            className={`font-mono text-[10px] ${getLinearMessageTone(linearState, messageTone)}`}
+          >
+            {linearState.error ?? message}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 md:flex-row md:items-end">
+          <div className="min-w-0 flex-1">
+            <label
+              htmlFor="linear-passphrase"
+              className="mb-1 block font-mono text-xs text-aop-cream"
+            >
+              Linear passphrase
+            </label>
+            <TextInput
+              id="linear-passphrase"
+              type="password"
+              value={passphrase}
+              onChange={setPassphrase}
+            />
+          </div>
+          <LinearConnectionActions
+            busy={busy}
+            connected={Boolean(linearState.status?.connected)}
+            loading={linearState.loading}
+            locked={Boolean(linearState.status?.locked)}
+            onConnect={() => {
+              void handleConnect();
+            }}
+            onDisconnect={() => {
+              void handleDisconnect();
+            }}
+            onRefresh={() => {
+              void handleRefresh();
+            }}
+            onUnlock={() => {
+              void handleUnlock();
+            }}
+          />
+        </div>
+
+        {hasUnlockedConnection(linearState) && linearState.info && (
+          <div className="grid gap-2 rounded-aop border border-aop-charcoal/60 bg-aop-dark px-3 py-3 md:grid-cols-3">
+            <ConnectionField label="Workspace" value={linearState.info.organizationName} />
+            <ConnectionField label="User" value={linearState.info.userName} />
+            <ConnectionField label="Email" value={linearState.info.userEmail} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ActionButton = ({
+  label,
+  onClick,
+  disabled,
+  destructive = false,
+  subtle = false,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+  destructive?: boolean;
+  subtle?: boolean;
+}) => {
+  const colorClass = destructive
+    ? "border-aop-blocked/40 bg-aop-blocked/5 text-aop-blocked hover:bg-aop-blocked/10"
+    : subtle
+      ? "border-aop-charcoal text-aop-slate-light hover:text-aop-cream"
+      : "border-aop-amber/40 bg-aop-amber/5 text-aop-amber hover:bg-aop-amber/10";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex h-8 cursor-pointer items-center justify-center rounded-aop border px-3 font-mono text-[10px] transition-colors disabled:cursor-default disabled:opacity-50 ${colorClass}`}
+    >
+      {label}
+    </button>
+  );
+};
+
+const ConnectionField = ({ label, value }: { label: string; value: string }) => (
+  <div className="min-w-0">
+    <div className="font-mono text-[10px] text-aop-slate-dark">{label}</div>
+    <div className="truncate font-mono text-xs text-aop-cream">{value}</div>
+  </div>
+);
+
 interface SettingRowProps {
   settingKey: string;
   value: string;
@@ -306,7 +671,7 @@ const SettingRow = ({ settingKey, value, onChange, isLast }: SettingRowProps) =>
           id={inputId}
           meta={meta}
           value={value}
-          onChange={(v: string) => onChange(settingKey, v)}
+          onChange={(nextValue: string) => onChange(settingKey, nextValue)}
         />
       </div>
     </div>
@@ -339,9 +704,9 @@ const SettingInput = ({ id, meta, value, onChange }: SettingInputProps) => {
         onChange={(e) => onChange(e.target.value)}
         className="rounded-aop border border-aop-charcoal bg-aop-dark px-3 py-1.5 font-mono text-xs text-aop-cream focus:border-aop-amber focus:outline-none"
       >
-        {meta.options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
+        {meta.options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>
@@ -370,8 +735,8 @@ const CleanupSection = () => {
     setCleaning(true);
     setResult(null);
     try {
-      const res = await cleanupWorktrees();
-      setResult(res);
+      const response = await cleanupWorktrees();
+      setResult(response);
     } catch {
       setResult({ cleaned: 0, failed: -1 });
     } finally {

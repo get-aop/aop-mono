@@ -3,15 +3,18 @@ import type { Kysely } from "kysely";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
 import type { TaskEvent, TaskEventEmitter } from "../events/task-events.ts";
+import { createLinearStore, type LinearStore } from "../integrations/linear/store.ts";
 import { createTaskRepository, type TaskRepository } from "./repository.ts";
 
 describe("task/repository", () => {
   let db: Kysely<Database>;
   let repo: TaskRepository;
+  let linearStore: LinearStore;
 
   beforeEach(async () => {
     db = await createTestDb();
     repo = createTaskRepository(db);
+    linearStore = createLinearStore(db);
     await createTestRepo(db, "repo-1", "/test/repo");
   });
 
@@ -495,6 +498,63 @@ describe("task/repository", () => {
       const task = await repo.getNextExecutable(limits);
 
       expect(task).toBeNull();
+    });
+
+    test("skips READY tasks that are waiting on unfinished dependencies", async () => {
+      const now = new Date();
+      await createTestTask(db, "task-upstream", "repo-1", "changes/upstream", "WORKING");
+      await createReadyTask(
+        "task-blocked",
+        "repo-1",
+        "changes/blocked",
+        new Date(now.getTime() - 2000).toISOString(),
+      );
+      await createReadyTask(
+        "task-unrelated",
+        "repo-1",
+        "changes/unrelated",
+        new Date(now.getTime() - 1000).toISOString(),
+      );
+
+      await linearStore.replaceTaskDependencies("task-blocked", ["task-upstream"]);
+
+      const limits = {
+        globalMax: 5,
+        getRepoMax: async () => 2,
+      };
+
+      const task = await repo.getNextExecutable(limits);
+
+      expect(task?.id).toBe("task-unrelated");
+    });
+
+    test("returns null when every READY task is blocked by terminal dependencies", async () => {
+      await createTestTask(db, "task-upstream", "repo-1", "changes/upstream", "BLOCKED");
+      await createReadyTask("task-blocked", "repo-1", "changes/blocked", new Date().toISOString());
+      await linearStore.replaceTaskDependencies("task-blocked", ["task-upstream"]);
+      await linearStore.upsertTaskSource({
+        taskId: "task-upstream",
+        repoId: "repo-1",
+        externalId: "lin_120",
+        externalRef: "ABC-120",
+        externalUrl: "https://linear.app/acme/issue/ABC-120/upstream",
+        titleSnapshot: "Upstream task",
+      });
+
+      const limits = {
+        globalMax: 5,
+        getRepoMax: async () => 2,
+      };
+
+      const task = await repo.getNextExecutable(limits);
+      const dependencyState = await repo.getDependencyState("task-blocked");
+
+      expect(task).toBeNull();
+      expect(dependencyState).toEqual({
+        dependencyState: "blocked",
+        blockedByTaskIds: ["task-upstream"],
+        blockedByRefs: ["ABC-120"],
+      });
     });
   });
 

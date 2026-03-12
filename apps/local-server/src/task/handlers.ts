@@ -4,6 +4,7 @@ import { getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
 import type { Task } from "../db/schema.ts";
 import { abortTask } from "../executor/index.ts";
+import { ensureExecutionPlanArtifacts } from "../task-docs/scaffold.ts";
 import { resolveTask } from "./resolve.ts";
 
 const logger = getLogger("task");
@@ -143,6 +144,8 @@ export const markTaskReady = async (
       error: { code: "MISSING_PROMPT_FILE", changePath: task.change_path },
     };
   }
+
+  await ensureExecutionPlanArtifacts(changePath);
 
   const updated = await ctx.taskRepository.update(task.id, buildReadyTaskUpdate(options));
 

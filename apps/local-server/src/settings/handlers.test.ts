@@ -68,6 +68,7 @@ describe("settings/handlers", () => {
       for (const value of [
         "claude-code",
         "codex",
+        "e2e-fixture",
         "opencode:opencode/kimi-k2.5",
         "opencode:opencode/kimi-k2.5-free",
         "opencode:openai/gpt-5.3-codex/medium",

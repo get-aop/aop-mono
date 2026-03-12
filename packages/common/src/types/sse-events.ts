@@ -1,5 +1,7 @@
 import type { TaskStatus } from "./task";
 
+export type TaskDependencyState = "ready" | "waiting" | "blocked";
+
 /**
  * SSE Task representation for wire protocol.
  * Uses camelCase and string dates for JSON serialization.
@@ -19,6 +21,9 @@ export interface SSETask {
   executionStartedAt?: string;
   executionCompletedAt?: string;
   taskProgress?: { completed: number; total: number };
+  dependencyState?: TaskDependencyState;
+  blockedByTaskIds?: string[];
+  blockedByRefs?: string[];
 }
 
 /**

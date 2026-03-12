@@ -34,6 +34,7 @@ export const isValidMdPath = (filePath: string, changeDir: string): boolean => {
 export const handleListFiles = async (ctx: LocalServerContext, c: Context) => {
   const repoId = c.req.param("repoId") as string;
   const taskId = c.req.param("taskId");
+  if (!taskId) return c.json({ error: "Task ID is required" }, 400);
 
   const repo = await getRepoById(ctx, repoId);
   if (!repo) return c.json({ error: "Repo not found" }, 404);
@@ -56,6 +57,7 @@ const extractFilePath = (url: string): string => {
 export const handleReadFile = async (ctx: LocalServerContext, c: Context) => {
   const repoId = c.req.param("repoId") as string;
   const taskId = c.req.param("taskId");
+  if (!taskId) return c.json({ error: "Task ID is required" }, 400);
   const filePath = extractFilePath(c.req.url);
 
   const repo = await getRepoById(ctx, repoId);
