@@ -11,10 +11,12 @@ interface LinearRoutesModule {
         errorDescription?: string | null;
         state?: string | null;
       }): Promise<{ connected: boolean }> | { connected: boolean };
-      getStatus(): Promise<{ connected: boolean; locked: boolean }> | {
-        connected: boolean;
-        locked: boolean;
-      };
+      getStatus():
+        | Promise<{ connected: boolean; locked: boolean }>
+        | {
+            connected: boolean;
+            locked: boolean;
+          };
       unlock(): Promise<void>;
       disconnect(): Promise<void>;
       testConnection(): Promise<{
@@ -121,6 +123,44 @@ describe("integrations/linear/routes", () => {
     expect(body).toEqual({
       connected: true,
     });
+  });
+
+  test("GET /callback returns a completion page for browser requests", async () => {
+    const { createLinearRoutes } = await loadRoutesModule();
+    const app = new Hono();
+
+    app.route(
+      "/api/linear",
+      createLinearRoutes({
+        handlers: {
+          connect: () => ({ authorizeUrl: "https://linear.app/oauth/authorize" }),
+          callback: async () => ({ connected: true }),
+          getStatus: async () => ({ connected: true, locked: true }),
+          unlock: async () => {},
+          disconnect: async () => {},
+          testConnection: async () => ({
+            ok: true,
+            organizationName: "Acme",
+            userName: "Jane Doe",
+            userEmail: "jane@example.com",
+          }),
+        },
+      }),
+    );
+
+    const res = await app.request("/api/linear/callback?code=oauth-code&state=state-123", {
+      headers: {
+        Accept: "text/html",
+      },
+    });
+    const body = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(body).toContain("Linear connected");
+    expect(body).toContain("BroadcastChannel");
+    expect(body).toContain("aop-linear-oauth");
+    expect(body).toContain("window.close()");
   });
 
   test("GET /status returns token-store status", async () => {
