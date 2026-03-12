@@ -1,6 +1,7 @@
 import { GitManager } from "@aop/git-manager";
 import { getLogger } from "@aop/infra";
 import type { LocalServerContext } from "../context.ts";
+import { resolveLinearCallbackUrl } from "../context.ts";
 import {
   DEFAULT_SETTINGS,
   isValidProviderValue,
@@ -47,7 +48,7 @@ export const getSetting = async (
   }
 
   const value = await ctx.settingsRepository.get(key);
-  return { success: true, key, value };
+  return { success: true, key, value: normalizeSettingValue(key, value) };
 };
 
 export const getAllSettings = async (ctx: LocalServerContext): Promise<GetAllSettingsResult> => {
@@ -56,7 +57,7 @@ export const getAllSettings = async (ctx: LocalServerContext): Promise<GetAllSet
 
   const settings = VALID_KEYS.map((key) => ({
     key,
-    value: settingsMap.get(key) ?? DEFAULT_SETTINGS[key],
+    value: normalizeSettingValue(key, settingsMap.get(key) ?? DEFAULT_SETTINGS[key]),
   }));
 
   return { success: true, settings };
@@ -75,12 +76,23 @@ const validateSettingValue = (key: SettingKey, value: string): SetSettingError |
         code: "INVALID_VALUE",
         key,
         value,
-        validValues: ["A valid absolute URL like http://127.0.0.1:4310/api/linear/callback"],
+        validValues: ["A valid absolute URL like http://127.0.0.1:25150/api/linear/callback"],
       };
     }
   }
 
   return null;
+};
+
+const normalizeSettingValue = (key: SettingKey, value: string): string => {
+  if (key !== SettingKey.LINEAR_CALLBACK_URL) {
+    return value;
+  }
+
+  return resolveLinearCallbackUrl({
+    configuredCallbackUrl: value,
+    env: process.env,
+  });
 };
 
 export const setSetting = async (
