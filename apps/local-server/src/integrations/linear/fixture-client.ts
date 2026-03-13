@@ -52,12 +52,15 @@ export const createLinearFixtureClient = (
         return false;
       }
 
-      const stateType = issue.state?.type?.toLowerCase();
-      const stateName = issue.state?.name?.toLowerCase();
-      return stateType === "unstarted" || stateName === "todo";
+      return isActionableIssue(issue);
     });
   },
 });
+
+const isActionableIssue = (issue: LinearRawIssue): boolean => {
+  const stateType = issue.state?.type?.trim().toLowerCase();
+  return stateType !== "completed" && stateType !== "canceled";
+};
 
 const loadFixtures = async (fixturesPath: string): Promise<LinearFixtureData> => {
   const content = await readFile(fixturesPath, "utf-8");
