@@ -1,4 +1,5 @@
 import {
+  type BenchmarkResult,
   loadBenchmarkResult,
   resolveLatestBenchmarkResultPath,
   summarizeBenchmarkComparison,
@@ -8,6 +9,37 @@ const DEFAULT_SCENARIO = "notes-cli";
 
 const formatPct = (value: number | null): string =>
   value === null ? "n/a" : `${value.toFixed(2)}%`;
+
+export const buildComparisonLines = (
+  aopResult: BenchmarkResult,
+  pureResult: BenchmarkResult,
+): string[] => {
+  const comparison = summarizeBenchmarkComparison(aopResult, pureResult);
+
+  return [
+    `Scenario: ${comparison.scenario}`,
+    `- AOP success: ${aopResult.success ? "yes" : "no"}`,
+    `- Pure Codex success: ${pureResult.success ? "yes" : "no"}`,
+    `- AOP missing required outputs: ${
+      aopResult.missingRequiredChangedFiles.length === 0
+        ? "none"
+        : aopResult.missingRequiredChangedFiles.join(", ")
+    }`,
+    `- Pure Codex missing required outputs: ${
+      pureResult.missingRequiredChangedFiles.length === 0
+        ? "none"
+        : pureResult.missingRequiredChangedFiles.join(", ")
+    }`,
+    `- AOP total duration delta: ${comparison.totalDurationDeltaMs}ms`,
+    `- AOP total duration improvement: ${formatPct(comparison.totalDurationImprovementPct)}`,
+    `- AOP first completion delta: ${
+      comparison.firstCompletionDeltaMs === null ? "n/a" : `${comparison.firstCompletionDeltaMs}ms`
+    }`,
+    `- AOP first completion improvement: ${formatPct(comparison.firstCompletionImprovementPct)}`,
+    `- AOP max concurrency: ${aopResult.metrics.maxConcurrentWorkingTasks}`,
+    `- Pure Codex max concurrency: ${pureResult.metrics.maxConcurrentWorkingTasks}`,
+  ];
+};
 
 const run = async (): Promise<void> => {
   const scenarioId =
@@ -27,19 +59,7 @@ const run = async (): Promise<void> => {
 
   const aopResult = await loadBenchmarkResult(aopPath);
   const pureResult = await loadBenchmarkResult(purePath);
-  const comparison = summarizeBenchmarkComparison(aopResult, pureResult);
-
-  const lines = [
-    `Scenario: ${comparison.scenario}`,
-    `- AOP total duration delta: ${comparison.totalDurationDeltaMs}ms`,
-    `- AOP total duration improvement: ${formatPct(comparison.totalDurationImprovementPct)}`,
-    `- AOP first completion delta: ${
-      comparison.firstCompletionDeltaMs === null ? "n/a" : `${comparison.firstCompletionDeltaMs}ms`
-    }`,
-    `- AOP first completion improvement: ${formatPct(comparison.firstCompletionImprovementPct)}`,
-    `- AOP max concurrency: ${aopResult.metrics.maxConcurrentWorkingTasks}`,
-    `- Pure Codex max concurrency: ${pureResult.metrics.maxConcurrentWorkingTasks}`,
-  ];
+  const lines = buildComparisonLines(aopResult, pureResult);
 
   process.stdout.write(`${lines.join("\n")}\n`);
 };

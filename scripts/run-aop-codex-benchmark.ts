@@ -18,11 +18,13 @@ import {
 } from "../e2e-tests/src/helpers/status.ts";
 import { findFreePort } from "../e2e-tests/src/helpers/test-context.ts";
 import {
+  assertBenchmarkFixtureIsWorkflowCompatible,
   type BenchmarkResult,
   type BenchmarkScenario,
   type BenchmarkTaskTiming,
   buildBenchmarkSummaryLines,
-  collectChangedFilesSince,
+  collectChangedFiles,
+  computeMissingRequiredChangedFiles,
   computeUnexpectedChangedFiles,
   createBenchmarkRepoFromFixture,
   createBenchmarkRunDir,
@@ -245,10 +247,14 @@ const buildAopBenchmarkResult = async (params: {
   const { scenario, runDir, repoPath, baseRef, startTime, maxConcurrentWorkingTasks, timings } =
     params;
   const verification = await runCommand(scenario.verificationCommand, repoPath, process.env);
-  const changedFiles = await collectChangedFilesSince(repoPath, baseRef);
+  const changedFiles = await collectChangedFiles(repoPath, baseRef);
   const unexpectedFilesChanged = computeUnexpectedChangedFiles(
     changedFiles,
     scenario.allowedChangedPathPrefixes,
+  );
+  const missingRequiredChangedFiles = computeMissingRequiredChangedFiles(
+    changedFiles,
+    scenario.requiredChangedPaths,
   );
   const finalizedTimings = finalizeTaskTimings(timings);
   const completedTimings = finalizedTimings
@@ -262,7 +268,10 @@ const buildAopBenchmarkResult = async (params: {
     provider: "codex",
     model: process.env.AOP_CODEX_MODEL ?? null,
     reasoningEffort: process.env.AOP_CODEX_REASONING_EFFORT ?? null,
-    success: verification.exitCode === 0 && unexpectedFilesChanged.length === 0,
+    success:
+      verification.exitCode === 0 &&
+      unexpectedFilesChanged.length === 0 &&
+      missingRequiredChangedFiles.length === 0,
     metrics: {
       totalDurationMs: Date.now() - startTime,
       firstTaskCompletedMs: completedTimings.length > 0 ? Math.min(...completedTimings) : null,
@@ -275,6 +284,7 @@ const buildAopBenchmarkResult = async (params: {
     tasks: finalizedTimings,
     changedFiles,
     unexpectedFilesChanged,
+    missingRequiredChangedFiles,
     artifacts: {
       runDir,
       repoPath,
@@ -286,6 +296,7 @@ const buildAopBenchmarkResult = async (params: {
 
 export const runAopCodexBenchmark = async (scenarioId: string): Promise<BenchmarkResult> => {
   const scenario = resolveBenchmarkScenario(scenarioId);
+  await assertBenchmarkFixtureIsWorkflowCompatible(scenario);
   await assertCodexAvailable();
 
   const runDir = await createBenchmarkRunDir(scenario.id, "aop-codex");

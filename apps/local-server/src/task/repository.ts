@@ -197,7 +197,7 @@ const summarizeDependencyRows = (
       continue;
     }
 
-    if (task.status !== TaskStatus.DONE) {
+    if (task.status !== TaskStatus.DONE || task.worktree_path !== null) {
       waitingTaskIds.push(dependency.dependsOnTaskId);
       addDependencyRef(waitingRefs, dependency.externalRef);
     }

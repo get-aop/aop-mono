@@ -556,6 +556,40 @@ describe("task/repository", () => {
         blockedByRefs: ["ABC-120"],
       });
     });
+
+    test("keeps dependent READY tasks waiting until DONE dependencies finish handoff", async () => {
+      const now = new Date();
+      await createTestTask(db, "task-upstream", "repo-1", "changes/upstream", "DONE");
+      await repo.update("task-upstream", { worktree_path: "/tmp/aop/worktrees/task-upstream" });
+      await createReadyTask(
+        "task-blocked",
+        "repo-1",
+        "changes/blocked",
+        new Date(now.getTime() - 2_000).toISOString(),
+      );
+      await createReadyTask(
+        "task-unrelated",
+        "repo-1",
+        "changes/unrelated",
+        new Date(now.getTime() - 1_000).toISOString(),
+      );
+      await linearStore.replaceTaskDependencies("task-blocked", ["task-upstream"]);
+
+      const limits = {
+        globalMax: 5,
+        getRepoMax: async () => 2,
+      };
+
+      const task = await repo.getNextExecutable(limits);
+      const dependencyState = await repo.getDependencyState("task-blocked");
+
+      expect(task?.id).toBe("task-unrelated");
+      expect(dependencyState).toEqual({
+        dependencyState: "waiting",
+        blockedByTaskIds: ["task-upstream"],
+        blockedByRefs: [],
+      });
+    });
   });
 
   describe("resetStaleWorkingTasks", () => {

@@ -2,10 +2,12 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { CodexProvider } from "@aop/llm-provider";
 import {
+  assertBenchmarkFixtureIsWorkflowCompatible,
   type BenchmarkResult,
   type BenchmarkTaskTiming,
   buildBenchmarkSummaryLines,
-  collectChangedFilesSince,
+  collectChangedFiles,
+  computeMissingRequiredChangedFiles,
   computeUnexpectedChangedFiles,
   createBenchmarkRepoFromFixture,
   createBenchmarkRunDir,
@@ -35,12 +37,14 @@ Read:
 Benchmark rules:
 1. Respect task dependencies. Do not start BENCH-3 until BENCH-1 and BENCH-2 are complete.
 2. Before implementing a behavior change, follow test-driven development: write a failing test, verify it fails, then write the minimal code to pass.
-3. When you start a task, update its task.md status to WORKING.
-4. Update tasks.md checklist items as you complete them.
-5. When a task is complete, update its task.md status to DONE.
-6. Stay within src/, tests/, and docs/tasks/ unless the benchmark explicitly requires otherwise.
-7. Run \`bun test\` before finishing.
-8. Do not create commits.
+3. Respect the benchmark file boundaries from BENCHMARK.md so independent tasks stay independent.
+4. When you start a task, update its task.md status to WORKING.
+5. Update tasks.md checklist items as you complete them.
+6. When a task is complete, update its task.md status to DONE.
+7. Stay within src/, tests/, and docs/tasks/ unless the benchmark explicitly requires otherwise.
+8. Run \`bun test\` before finishing.
+9. Do not create commits.
+10. This benchmark is a closed scenario. Do not ask for user input. Use BENCHMARK.md and the task docs as the authoritative requirements.
 
 Stop only when all benchmark tasks are DONE and the full test suite passes.
 `.trim();
@@ -144,10 +148,14 @@ const buildPureBenchmarkResult = async (params: {
   } = params;
 
   const verification = await runCommand(scenario.verificationCommand, repoPath, process.env);
-  const changedFiles = await collectChangedFilesSince(repoPath, baseRef);
+  const changedFiles = await collectChangedFiles(repoPath, baseRef);
   const unexpectedFilesChanged = computeUnexpectedChangedFiles(
     changedFiles,
     scenario.allowedChangedPathPrefixes,
+  );
+  const missingRequiredChangedFiles = computeMissingRequiredChangedFiles(
+    changedFiles,
+    scenario.requiredChangedPaths,
   );
   const finalizedTimings = finalizeTaskTimings(timings);
   const completedTimings = finalizedTimings.filter((task) => task.completedAtMs !== null);
@@ -162,7 +170,8 @@ const buildPureBenchmarkResult = async (params: {
     success:
       runResult.exitCode === 0 &&
       verification.exitCode === 0 &&
-      unexpectedFilesChanged.length === 0,
+      unexpectedFilesChanged.length === 0 &&
+      missingRequiredChangedFiles.length === 0,
     metrics: {
       totalDurationMs: Date.now() - startTime,
       firstTaskCompletedMs:
@@ -180,6 +189,7 @@ const buildPureBenchmarkResult = async (params: {
     tasks: finalizedTimings,
     changedFiles,
     unexpectedFilesChanged,
+    missingRequiredChangedFiles,
     artifacts: {
       runDir,
       repoPath,
@@ -194,6 +204,7 @@ const buildPureBenchmarkResult = async (params: {
 
 export const runPureCodexBenchmark = async (scenarioId: string): Promise<BenchmarkResult> => {
   const scenario = resolveBenchmarkScenario(scenarioId);
+  await assertBenchmarkFixtureIsWorkflowCompatible(scenario);
   await assertCodexAvailable();
 
   const runDir = await createBenchmarkRunDir(scenario.id, "pure-codex");

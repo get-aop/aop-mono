@@ -12,6 +12,7 @@ export interface BenchmarkScenario {
   expectedTaskDirs: string[];
   expectedBlockedRefs?: Record<string, string[]>;
   allowedChangedPathPrefixes: string[];
+  requiredChangedPaths: string[];
 }
 
 export interface BenchmarkMetrics {
@@ -51,6 +52,7 @@ export interface BenchmarkResult {
   tasks: BenchmarkTaskTiming[];
   changedFiles: string[];
   unexpectedFilesChanged: string[];
+  missingRequiredChangedFiles: string[];
   artifacts: {
     runDir: string;
     repoPath: string;
@@ -89,6 +91,14 @@ export const BENCHMARK_SCENARIOS: Record<string, BenchmarkScenario> = {
       "benchmark-cli-report": ["BENCH-1", "BENCH-2"],
     },
     allowedChangedPathPrefixes: ["src/", "tests/", "docs/tasks/"],
+    requiredChangedPaths: [
+      "src/notes.ts",
+      "src/report.ts",
+      "src/cli.ts",
+      "tests/notes.test.ts",
+      "tests/report.test.ts",
+      "tests/cli.test.ts",
+    ],
   },
 };
 
@@ -98,6 +108,22 @@ export const resolveBenchmarkScenario = (scenarioId: string): BenchmarkScenario 
     throw new Error(`Unknown benchmark scenario: ${scenarioId}`);
   }
   return scenario;
+};
+
+export const assertBenchmarkFixtureIsWorkflowCompatible = async (
+  scenario: BenchmarkScenario,
+): Promise<void> => {
+  const requiredFiles = ["BENCHMARK.md", "package.json", ".github/workflows/aop-ci.yml"];
+
+  for (const relativePath of requiredFiles) {
+    const filePath = join(scenario.fixturePath, relativePath);
+    const fileContent = await readFile(filePath, "utf-8").catch(() => null);
+    if (fileContent === null) {
+      throw new Error(
+        `Benchmark fixture "${scenario.id}" is missing required file: ${relativePath}`,
+      );
+    }
+  }
 };
 
 export const readTaskDocStatuses = async (repoPath: string): Promise<Record<string, string>> => {
@@ -136,6 +162,11 @@ export const computeUnexpectedChangedFiles = (
       !allowedPrefixes.some((prefix) => filePath === prefix || filePath.startsWith(prefix)),
   );
 };
+
+export const computeMissingRequiredChangedFiles = (
+  changedFiles: string[],
+  requiredPaths: string[],
+): string[] => requiredPaths.filter((requiredPath) => !changedFiles.includes(requiredPath));
 
 export const summarizeBenchmarkComparison = (
   aopResult: BenchmarkResult,
@@ -214,16 +245,26 @@ export const runCommand = async (
   };
 };
 
-export const collectChangedFilesSince = async (
-  repoPath: string,
-  baseRef: string,
-): Promise<string[]> => {
-  const result = await Bun.$`git diff --name-only ${baseRef}..HEAD`.cwd(repoPath).quiet();
-  return result.stdout
-    .toString()
+export const collectChangedFiles = async (repoPath: string, baseRef: string): Promise<string[]> => {
+  const [committed, unstaged, staged, untracked] = await Promise.all([
+    Bun.$`git diff --name-only ${baseRef}..HEAD`.cwd(repoPath).quiet(),
+    Bun.$`git diff --name-only`.cwd(repoPath).quiet(),
+    Bun.$`git diff --name-only --staged`.cwd(repoPath).quiet(),
+    Bun.$`git ls-files --others --exclude-standard`.cwd(repoPath).quiet(),
+  ]);
+
+  return [
+    committed.stdout.toString(),
+    unstaged.stdout.toString(),
+    staged.stdout.toString(),
+    untracked.stdout.toString(),
+  ]
+    .join("\n")
     .split("\n")
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((line, index, lines) => lines.indexOf(line) === index)
+    .sort();
 };
 
 export const writeBenchmarkResult = async (
@@ -273,6 +314,11 @@ export const buildBenchmarkSummaryLines = (result: BenchmarkResult): string[] =>
   `- Final verification: ${result.metrics.finalVerificationPassed ? "pass" : "fail"}`,
   `- Unexpected changed files: ${
     result.unexpectedFilesChanged.length === 0 ? "none" : result.unexpectedFilesChanged.join(", ")
+  }`,
+  `- Missing required changed files: ${
+    result.missingRequiredChangedFiles.length === 0
+      ? "none"
+      : result.missingRequiredChangedFiles.join(", ")
   }`,
   `- Result file: ${join(result.artifacts.runDir, "result.json")}`,
 ];

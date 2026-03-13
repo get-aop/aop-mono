@@ -25,6 +25,7 @@ Add a richer pretty summary renderer that groups notes by status, reports counts
 - Add a new `renderPrettyReport` renderer alongside the plain renderer.
 - Include per-status counts and readable note lines in the output.
 - Cover the pretty renderer with focused tests.
+- Keep the work isolated to `src/report.ts` and `tests/report.test.ts`.
 
 ## Acceptance Criteria
 

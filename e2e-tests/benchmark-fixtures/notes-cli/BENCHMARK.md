@@ -12,6 +12,14 @@ Implement three related task folders under `docs/tasks/`:
 
 The first two tasks are independent and should be able to run in parallel. The third depends on both.
 
+## Task Boundaries
+
+- `BENCH-1` owns `src/notes.ts` and `tests/notes.test.ts`
+- `BENCH-2` owns `src/report.ts` and `tests/report.test.ts`
+- `BENCH-3` owns `src/cli.ts` and `tests/cli.test.ts`
+
+Treat those boundaries as part of the benchmark design. Do not move independent task work into another task's files unless the task docs explicitly require it.
+
 ## Success Condition
 
 - `bun test` passes

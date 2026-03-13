@@ -1,0 +1,13 @@
+name: AOP CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@v4
+      - run: bun test

@@ -31,6 +31,7 @@ Wire the new filtering and pretty rendering behavior into the CLI so the benchma
 - Add `--tag <tag>` support to the CLI.
 - Add `--format pretty` support to the CLI.
 - Add integration tests for plain and pretty CLI flows.
+- Keep the integration work isolated to `src/cli.ts` and `tests/cli.test.ts`.
 
 ## Acceptance Criteria
 

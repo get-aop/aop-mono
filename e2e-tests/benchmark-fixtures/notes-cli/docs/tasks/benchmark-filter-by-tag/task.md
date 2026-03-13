@@ -17,18 +17,18 @@ dependencySources: []
 
 ## Description
 
-Add tag-based note filtering to the shared notes helpers so downstream callers can request only the notes for a specific tag without changing the plain report behavior for the full note set.
+Add tag-based note filtering to the shared notes helpers so downstream callers can request only the notes for a specific tag.
 
 ## Requirements
 
 - Keep `parseNotes` unchanged as the parser entrypoint in `src/notes.ts`.
 - Add reusable note filtering behavior in the source layer via a new helper.
 - Cover the filtering behavior with focused tests.
-- Keep existing plain report output unchanged when no filter is applied.
+- Keep the work isolated to `src/notes.ts` and `tests/notes.test.ts`.
 
 ## Acceptance Criteria
 
 - [ ] A note collection can be filtered by tag without mutating the original list.
 - [ ] Filtering returns only notes that contain the requested tag.
 - [ ] `parseNotes` remains the parser export from `src/notes.ts`.
-- [ ] Existing parse and plain report behavior still passes its tests.
+- [ ] Existing note parsing behavior still passes its tests.
