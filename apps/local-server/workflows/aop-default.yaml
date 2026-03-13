@@ -42,9 +42,45 @@ steps:
         description: required local verification failed
     transitions:
       - condition: TESTS_PASS
-        target: full-review
+        target: cleanup-review
       - condition: TESTS_FAIL
-        target: fix-issues
+        target: debug-failures
+      - condition: failure
+        target: __blocked__
+
+  debug-failures:
+    id: debug-failures
+    type: debug
+    promptTemplate: debug-systematic.md.hbs
+    maxAttempts: 1
+    agent:
+      provider: openai
+      model: gpt-5.4
+      reasoning: high
+    signals:
+      - name: FIX_COMPLETE
+        description: root cause fixed and verified locally
+    transitions:
+      - condition: FIX_COMPLETE
+        target: run-tests
+      - condition: failure
+        target: __blocked__
+
+  cleanup-review:
+    id: cleanup-review
+    type: review
+    promptTemplate: cleanup-review.md.hbs
+    maxAttempts: 1
+    agent:
+      provider: openai
+      model: gpt-5.4
+      reasoning: medium
+    signals:
+      - name: CLEANUP_COMPLETE
+        description: cleanup and simplification pass completed
+    transitions:
+      - condition: CLEANUP_COMPLETE
+        target: full-review
       - condition: failure
         target: __blocked__
 

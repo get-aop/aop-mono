@@ -138,7 +138,13 @@ When the agent exits:
    - `BLOCKED` when retries are exhausted or the workflow reaches `__blocked__`
    - `WORKING` with a new step when another step should run
 
-The default AOP workflow uses an explicit local verification step before final review. That test step is responsible for matching the local non-E2E CI bar with the smallest command set that still covers the changed code.
+The default AOP workflow uses an explicit local verification step before cleanup and final review. That test step is responsible for matching the local non-E2E CI bar with the smallest command set that still covers the changed code.
+
+The same default flow also bakes in three repo-local execution behaviors:
+
+- `test-driven-development` during implementation chunks for testable changes
+- `systematic-debugging` on the `TESTS_FAIL` path before the workflow loops back to verification
+- `code-simplifier` plus `remove-ai-slop` in a cleanup pass before `full-review`
 
 ## Default Workflow Setting
 

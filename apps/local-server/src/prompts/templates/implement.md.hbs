@@ -29,15 +29,18 @@ When only `tasks.md` exists:
 ### Implementation Process
 
 1. Read `task.md`, `plan.md` when present, numbered subtask files when present, and `tasks.md` when present
-2. If numbered subtask files exist, choose the next subtask whose status is `PENDING` and whose dependencies are satisfied
-3. Otherwise, choose the next unchecked checklist item from `tasks.md` or the smallest unfinished requirement implied by `task.md`
-4. Implement only that one chunk of work
-5. If all required work is complete, update `task.md` status to `DONE`
+2. Before writing production code for a new behavior or bug fix, follow the repo-local `test-driven-development` skill in the current worktree
+3. Start from a failing test when the change can be exercised automatically; if the chunk is configuration-only or has no meaningful automated harness, record the direct validation you used instead
+4. If numbered subtask files exist, choose the next subtask whose status is `PENDING` and whose dependencies are satisfied
+5. Otherwise, choose the next unchecked checklist item from `tasks.md` or the smallest unfinished requirement implied by `task.md`
+6. Implement only that one chunk of work
+7. If all required work is complete, update `task.md` status to `DONE`
 
 ### Self-Check
 
 Before signaling, verify:
 - Relevant tests or direct checks for the changed code pass
+- The red-green-refactor loop is visible in the commands or notes for new behavior changes
 - The implementation matches the selected chunk only
 - No TODO comments were left behind
 - The task docs accurately reflect the completed work

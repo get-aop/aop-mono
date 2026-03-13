@@ -415,38 +415,61 @@ describe("WorkflowStateMachine", () => {
       expect(result.type).toBe("blocked");
     });
 
-    test("happy path: iterate → run-tests → full-review(PASSED) → done", () => {
+    test("happy path: iterate → run-tests → cleanup-review → full-review(PASSED) → done", () => {
       const sm = createWorkflowStateMachine(aopDefault);
 
       const trace = simulateExecutionServiceFlow(sm, [
         { status: "success", signal: "ALL_TASKS_DONE" },
         { status: "success", signal: "TESTS_PASS" },
+        { status: "success", signal: "CLEANUP_COMPLETE" },
         { status: "success", signal: "REVIEW_PASSED" },
       ]);
 
-      expect(trace).toHaveLength(3);
+      expect(trace).toHaveLength(4);
       expect(trace[0]?.nextStepId).toBe("run-tests");
-      expect(trace[1]?.nextStepId).toBe("full-review");
-      expect(trace[2]?.resultType).toBe("done");
+      expect(trace[1]?.nextStepId).toBe("cleanup-review");
+      expect(trace[2]?.nextStepId).toBe("full-review");
+      expect(trace[3]?.resultType).toBe("done");
     });
 
-    test("one review cycle: iterate → run-tests → review(FAILED) → fix → quick-review(PASSED) → done", () => {
+    test("failing tests route through debug-failures before verification can continue", () => {
+      const sm = createWorkflowStateMachine(aopDefault);
+
+      const trace = simulateExecutionServiceFlow(sm, [
+        { status: "success", signal: "ALL_TASKS_DONE" },
+        { status: "success", signal: "TESTS_FAIL" },
+        { status: "success", signal: "FIX_COMPLETE" },
+        { status: "success", signal: "TESTS_PASS" },
+        { status: "success", signal: "CLEANUP_COMPLETE" },
+      ]);
+
+      expect(trace).toHaveLength(5);
+      expect(trace[0]?.nextStepId).toBe("run-tests");
+      expect(trace[1]?.nextStepId).toBe("debug-failures");
+      expect(trace[2]?.nextStepId).toBe("run-tests");
+      expect(trace[3]?.nextStepId).toBe("cleanup-review");
+      expect(trace[4]?.nextStepId).toBe("full-review");
+    });
+
+    test("one review cycle: iterate → run-tests → cleanup-review → review(FAILED) → fix → quick-review(PASSED) → done", () => {
       const sm = createWorkflowStateMachine(aopDefault);
 
       const trace = simulateExecutionServiceFlow(sm, [
         { status: "success", signal: "ALL_TASKS_DONE" },
         { status: "success", signal: "TESTS_PASS" },
+        { status: "success", signal: "CLEANUP_COMPLETE" },
         { status: "success", signal: "REVIEW_FAILED" },
         { status: "success", signal: "FIX_COMPLETE" },
         { status: "success", signal: "REVIEW_PASSED" },
       ]);
 
-      expect(trace).toHaveLength(5);
+      expect(trace).toHaveLength(6);
       expect(trace[0]?.nextStepId).toBe("run-tests");
-      expect(trace[1]?.nextStepId).toBe("full-review");
-      expect(trace[2]?.nextStepId).toBe("fix-issues");
-      expect(trace[3]?.nextStepId).toBe("quick-review");
-      expect(trace[4]?.resultType).toBe("done");
+      expect(trace[1]?.nextStepId).toBe("cleanup-review");
+      expect(trace[2]?.nextStepId).toBe("full-review");
+      expect(trace[3]?.nextStepId).toBe("fix-issues");
+      expect(trace[4]?.nextStepId).toBe("quick-review");
+      expect(trace[5]?.resultType).toBe("done");
     });
 
     test("two review cycles stay in fix and quick-review until the fixes pass", () => {
@@ -454,7 +477,8 @@ describe("WorkflowStateMachine", () => {
 
       const trace = simulateExecutionServiceFlow(sm, [
         { status: "success", signal: "ALL_TASKS_DONE" }, // iterate → run-tests
-        { status: "success", signal: "TESTS_PASS" }, // run-tests → full-review
+        { status: "success", signal: "TESTS_PASS" }, // run-tests → cleanup-review
+        { status: "success", signal: "CLEANUP_COMPLETE" }, // cleanup-review → full-review
         { status: "success", signal: "REVIEW_FAILED" }, // full-review → fix-issues
         { status: "success", signal: "FIX_COMPLETE" }, // fix-issues → quick-review
         { status: "success", signal: "REVIEW_FAILED" }, // quick-review → fix-issues
@@ -462,42 +486,47 @@ describe("WorkflowStateMachine", () => {
         { status: "success", signal: "REVIEW_PASSED" }, // quick-review → done
       ]);
 
-      expect(trace).toHaveLength(7);
+      expect(trace).toHaveLength(8);
 
       // Step 1: iterate(ALL_TASKS_DONE) → run-tests
       expect(trace[0]?.resolvedCurrentStepId).toBe("iterate");
       expect(trace[0]?.nextStepId).toBe("run-tests");
       expect(trace[0]?.iteration).toBe(0);
 
-      // Step 2: run-tests(TESTS_PASS) → full-review
+      // Step 2: run-tests(TESTS_PASS) → cleanup-review
       expect(trace[1]?.resolvedCurrentStepId).toBe("run-tests");
-      expect(trace[1]?.nextStepId).toBe("full-review");
+      expect(trace[1]?.nextStepId).toBe("cleanup-review");
       expect(trace[1]?.iteration).toBe(0);
 
-      // Step 3: full-review(REVIEW_FAILED) → fix-issues
-      expect(trace[2]?.resolvedCurrentStepId).toBe("full-review");
-      expect(trace[2]?.nextStepId).toBe("fix-issues");
+      // Step 3: cleanup-review(CLEANUP_COMPLETE) → full-review
+      expect(trace[2]?.resolvedCurrentStepId).toBe("cleanup-review");
+      expect(trace[2]?.nextStepId).toBe("full-review");
       expect(trace[2]?.iteration).toBe(0);
 
-      // Step 4: fix-issues(FIX_COMPLETE) → quick-review
-      expect(trace[3]?.resolvedCurrentStepId).toBe("fix-issues");
-      expect(trace[3]?.nextStepId).toBe("quick-review");
+      // Step 4: full-review(REVIEW_FAILED) → fix-issues
+      expect(trace[3]?.resolvedCurrentStepId).toBe("full-review");
+      expect(trace[3]?.nextStepId).toBe("fix-issues");
       expect(trace[3]?.iteration).toBe(0);
 
-      // Step 5: quick-review(REVIEW_FAILED) → fix-issues
-      expect(trace[4]?.resolvedCurrentStepId).toBe("quick-review");
-      expect(trace[4]?.nextStepId).toBe("fix-issues");
+      // Step 5: fix-issues(FIX_COMPLETE) → quick-review
+      expect(trace[4]?.resolvedCurrentStepId).toBe("fix-issues");
+      expect(trace[4]?.nextStepId).toBe("quick-review");
       expect(trace[4]?.iteration).toBe(0);
 
-      // Step 6: fix-issues(FIX_COMPLETE) → quick-review again
-      expect(trace[5]?.resolvedCurrentStepId).toBe("fix-issues");
-      expect(trace[5]?.nextStepId).toBe("quick-review");
-      expect(trace[5]?.iteration).toBe(1);
-      expect(trace[5]?.resultType).toBe("step");
+      // Step 6: quick-review(REVIEW_FAILED) → fix-issues
+      expect(trace[5]?.resolvedCurrentStepId).toBe("quick-review");
+      expect(trace[5]?.nextStepId).toBe("fix-issues");
+      expect(trace[5]?.iteration).toBe(0);
 
-      // Step 7: quick-review(REVIEW_PASSED) → done
-      expect(trace[6]?.resolvedCurrentStepId).toBe("quick-review");
-      expect(trace[6]?.resultType).toBe("done");
+      // Step 7: fix-issues(FIX_COMPLETE) → quick-review again
+      expect(trace[6]?.resolvedCurrentStepId).toBe("fix-issues");
+      expect(trace[6]?.nextStepId).toBe("quick-review");
+      expect(trace[6]?.iteration).toBe(1);
+      expect(trace[6]?.resultType).toBe("step");
+
+      // Step 8: quick-review(REVIEW_PASSED) → done
+      expect(trace[7]?.resolvedCurrentStepId).toBe("quick-review");
+      expect(trace[7]?.resultType).toBe("done");
     });
 
     test("quick-review loop blocks after repeated failures exceed the cap", () => {
@@ -505,7 +534,8 @@ describe("WorkflowStateMachine", () => {
 
       const trace = simulateExecutionServiceFlow(sm, [
         { status: "success", signal: "ALL_TASKS_DONE" }, // iterate → run-tests
-        { status: "success", signal: "TESTS_PASS" }, // run-tests → full-review
+        { status: "success", signal: "TESTS_PASS" }, // run-tests → cleanup-review
+        { status: "success", signal: "CLEANUP_COMPLETE" }, // cleanup-review → full-review
         { status: "success", signal: "REVIEW_FAILED" }, // full-review → fix-issues
         { status: "success", signal: "FIX_COMPLETE" }, // fix-issues → quick-review
         { status: "success", signal: "REVIEW_FAILED" }, // quick-review → fix-issues, iteration 1
@@ -513,9 +543,9 @@ describe("WorkflowStateMachine", () => {
         { status: "success", signal: "REVIEW_FAILED" }, // quick-review → blocked
       ]);
 
-      expect(trace).toHaveLength(7);
-      expect(trace[6]?.resolvedCurrentStepId).toBe("quick-review");
-      expect(trace[6]?.resultType).toBe("blocked");
+      expect(trace).toHaveLength(8);
+      expect(trace[7]?.resolvedCurrentStepId).toBe("quick-review");
+      expect(trace[7]?.resultType).toBe("blocked");
     });
   });
 

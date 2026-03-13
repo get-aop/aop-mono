@@ -100,16 +100,15 @@ describe("TemplateLoader", () => {
       expect(template).not.toContain("git diff main...HEAD");
     });
 
-    test("cleanup-review template is self-contained and does not depend on named external skills", async () => {
+    test("cleanup-review template uses repo-local cleanup skills without relying on external instructions", async () => {
       const template = await loader.load("cleanup-review.md.hbs");
 
-      expect(template).toContain("Do a simplification pass on the current worktree changes");
-      expect(template).toContain("Do an AI-slop removal pass on the resulting diff");
+      expect(template).toContain("Use the repo-local `code-simplifier` skill");
+      expect(template).toContain("Use the repo-local `remove-ai-slop` skill");
+      expect(template).toContain("If either skill is unavailable");
       expect(template).toContain(
-        "Do not spend time looking for external skills, agents, or instructions outside the current worktree",
+        "Do not spend time looking for skills, agents, or instructions outside the current worktree",
       );
-      expect(template).not.toContain("code-simplifier");
-      expect(template).not.toContain("remove-ai-slop");
     });
 
     test("run-tests template requires CI-aligned local verification commands", async () => {
@@ -136,12 +135,23 @@ describe("TemplateLoader", () => {
     test("implement template supports numbered subtasks and legacy tasks.md checklists", async () => {
       const template = await loader.load("implement.md.hbs");
 
+      expect(template).toContain("follow the repo-local `test-driven-development` skill");
+      expect(template).toContain("Start from a failing test");
       expect(template).toContain(
         "numbered subtask files when present, and `tasks.md` when present",
       );
       expect(template).toContain("When only `tasks.md` exists:");
       expect(template).toContain("choose the next unchecked checklist item from `tasks.md`");
       expect(template).toContain("The implementation matches the selected chunk only");
+    });
+
+    test("fix and debug templates require systematic debugging before unclear fixes", async () => {
+      const fixIssues = await loader.load("fix-issues.md.hbs");
+      const debugSystematic = await loader.load("debug-systematic.md.hbs");
+
+      expect(fixIssues).toContain("follow the repo-local `systematic-debugging` skill");
+      expect(debugSystematic).toContain("repo-local `systematic-debugging` skill");
+      expect(debugSystematic).toContain("root cause");
     });
   });
 
