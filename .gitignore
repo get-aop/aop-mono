@@ -62,3 +62,8 @@ __pycache__
 .claude-bkp
 .leo
 tmp
+
+# local task/research docs
+docs/superpowers/research/
+docs/tasks/fix-linear-dashboard-ticket-intake/
+docs/tasks/get-41-dashboard-scroll/

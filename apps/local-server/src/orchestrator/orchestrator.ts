@@ -8,6 +8,7 @@ import type { Task } from "../db/schema.ts";
 import { executeTask, reattachToRunningAgent } from "../executor/executor.ts";
 import { recoverStaleTasks } from "../executor/recovery.ts";
 import { SettingKey } from "../settings/types.ts";
+import { finalizeLaunchFailure } from "./launch-failure.ts";
 import { createQueueProcessor, type QueueProcessor } from "./queue/processor.ts";
 import {
   createTicker,
@@ -138,17 +139,20 @@ export const createOrchestrator = (ctx: LocalServerContext): Orchestrator => {
           error: String(err),
         });
 
-        // Revert task so it can be retried. READY tasks get automatic retry;
-        // BLOCKED tasks (e.g. resumed tasks whose context was already cleared)
-        // require manual intervention to avoid losing state.
         try {
-          await ctx.taskRepository.update(task.id, { status: revertStatus });
-          logger.info("Task reverted to {status} after execution failure", {
+          // Close the just-created step/execution before reverting the task so
+          // failed launches do not stay visible as fake "running" history.
+          await finalizeLaunchFailure({
+            executionRepository: ctx.executionRepository,
+            taskRepository: ctx.taskRepository,
             taskId: task.id,
-            status: revertStatus,
+            stepExecutionId: stepCommand.id,
+            executionId: execution.id,
+            revertStatus,
+            error: err,
           });
         } catch (updateErr) {
-          logger.error("Failed to revert task status after execution failure: {error}", {
+          logger.error("Failed to finalize execution failure: {error}", {
             taskId: task.id,
             error: String(updateErr),
           });
