@@ -39,11 +39,41 @@ describe("integrations/linear/fixture-client", () => {
           {
             id: "lin_2",
             identifier: "GET-102",
-            title: "Blocked issue",
-            url: "https://linear.app/get-aop/issue/GET-102/blocked",
+            title: "Triage issue",
+            url: "https://linear.app/get-aop/issue/GET-102/triage",
+            project: { id: "project-1", name: "AOP" },
+            assignee: { id: "user-1", name: "Jane Doe", displayName: "Jane" },
+            state: { name: "Triage", type: "triage" },
+            relations: { nodes: [] },
+          },
+          {
+            id: "lin_3",
+            identifier: "GET-103",
+            title: "Started issue",
+            url: "https://linear.app/get-aop/issue/GET-103/started",
             project: { id: "project-1", name: "AOP" },
             assignee: { id: "user-1", name: "Jane Doe", displayName: "Jane" },
             state: { name: "In Progress", type: "started" },
+            relations: { nodes: [] },
+          },
+          {
+            id: "lin_4",
+            identifier: "GET-104",
+            title: "Done issue",
+            url: "https://linear.app/get-aop/issue/GET-104/done",
+            project: { id: "project-1", name: "AOP" },
+            assignee: { id: "user-1", name: "Jane Doe", displayName: "Jane" },
+            state: { name: "Done", type: "completed" },
+            relations: { nodes: [] },
+          },
+          {
+            id: "lin_5",
+            identifier: "GET-105",
+            title: "Canceled issue",
+            url: "https://linear.app/get-aop/issue/GET-105/canceled",
+            project: { id: "project-1", name: "AOP" },
+            assignee: { id: "user-1", name: "Jane Doe", displayName: "Jane" },
+            state: { name: "Canceled", type: "canceled" },
             relations: { nodes: [] },
           },
         ],
@@ -73,12 +103,11 @@ describe("integrations/linear/fixture-client", () => {
     expect(result.users[0]?.name).toBe("Jane Doe");
   });
 
-  test("filters todo issues by project and optional assignee", async () => {
+  test("filters actionable issues by project and optional assignee", async () => {
     const client = createLinearFixtureClient({ fixturesPath });
 
     const result = await client.getTodoIssues({ projectId: "project-1", assigneeId: "user-1" });
 
-    expect(result).toHaveLength(1);
-    expect(result[0]?.identifier).toBe("GET-101");
+    expect(result.map((issue) => issue.identifier)).toEqual(["GET-101", "GET-102", "GET-103"]);
   });
 });

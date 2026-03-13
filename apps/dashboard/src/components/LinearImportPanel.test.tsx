@@ -119,4 +119,110 @@ describe("LinearImportPanel", () => {
     await waitFor(() => expect(onRefresh).toHaveBeenCalled());
     expect(screen.getByText("Imported ABC-125 into aop-mono.")).toBeDefined();
   });
+
+  test("resets the issue empty state after a successful import closes the panel", async () => {
+    const onRefresh = mock(async () => {});
+    mockGetLinearImportOptions.mockResolvedValue({
+      projects: [{ id: "project-1", name: "Dashboard" }],
+      users: [],
+    });
+    mockGetLinearTodoIssues.mockResolvedValue([
+      {
+        id: "lin_125",
+        identifier: "ABC-125",
+        title: "Started issue",
+        url: "https://linear.app/acme/issue/ABC-125/started-issue",
+        projectName: "Dashboard",
+        assigneeName: null,
+        stateName: "In Progress",
+      },
+    ]);
+    mockImportLinearIssue.mockResolvedValue({
+      ok: true,
+      repoId: "repo-1",
+      alreadyExists: false,
+      imported: [
+        {
+          taskId: "task-1",
+          ref: "ABC-125",
+          changePath: "docs/tasks/abc-125-started-issue",
+          requested: true,
+          dependencyImported: false,
+        },
+      ],
+      failures: [],
+    });
+
+    render(
+      <LinearImportPanel
+        repo={{ id: "repo-1", name: "aop-mono", path: "/repos/aop-mono" }}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Create from Linear" }));
+
+    await waitFor(() => expect(mockGetLinearImportOptions).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText("Linear project"), {
+      target: { value: "project-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Show TODO issues" }));
+
+    await waitFor(() =>
+      expect(mockGetLinearTodoIssues).toHaveBeenCalledWith({
+        projectId: "project-1",
+        assigneeId: undefined,
+      }),
+    );
+
+    fireEvent.click(screen.getByLabelText("ABC-125 Started issue"));
+    fireEvent.click(screen.getByRole("button", { name: "Import selected issue" }));
+
+    await waitFor(() => expect(mockImportLinearIssue).toHaveBeenCalled());
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Create from Linear" }));
+
+    expect(
+      screen.getByText("Choose a project, optionally narrow by user, then load the TODO issues."),
+    ).toBeDefined();
+    expect(
+      screen.queryByText("No matching Linear issues found for this project and user filter."),
+    ).toBeNull();
+  });
+
+  test("shows a distinct empty state after loading matching Linear issues", async () => {
+    mockGetLinearImportOptions.mockResolvedValue({
+      projects: [{ id: "project-1", name: "Dashboard" }],
+      users: [],
+    });
+    mockGetLinearTodoIssues.mockResolvedValue([]);
+
+    render(<LinearImportPanel repo={{ id: "repo-1", name: "aop-mono", path: "/repos/aop-mono" }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create from Linear" }));
+
+    await waitFor(() => expect(mockGetLinearImportOptions).toHaveBeenCalled());
+
+    expect(
+      screen.getByText("Choose a project, optionally narrow by user, then load the TODO issues."),
+    ).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText("Linear project"), {
+      target: { value: "project-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Show TODO issues" }));
+
+    await waitFor(() =>
+      expect(mockGetLinearTodoIssues).toHaveBeenCalledWith({
+        projectId: "project-1",
+        assigneeId: undefined,
+      }),
+    );
+
+    expect(
+      screen.getByText("No matching Linear issues found for this project and user filter."),
+    ).toBeDefined();
+  });
 });

@@ -207,7 +207,7 @@ const buildTodoIssuesQuery = (hasAssigneeFilter: boolean): string => {
   return `query LinearTodoIssues${variableDefinitions} {
   issues(filter: {
       project: { id: { eq: $projectId } },${assigneeFilter}
-      state: { type: { eq: "unstarted" } }
+      state: { type: { nin: ["completed", "canceled"] } }
     }
     first: 100) {
     nodes {

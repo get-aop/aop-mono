@@ -256,7 +256,7 @@ describe("integrations/linear/client", () => {
     });
   });
 
-  test("fetches TODO issues for a project and optional assignee", async () => {
+  test("fetches actionable issues for a project and optional assignee", async () => {
     const { createLinearClient } = await loadClientModule();
     const seenBodies: string[] = [];
     const client = createLinearClient({
@@ -270,15 +270,33 @@ describe("integrations/linear/client", () => {
                 nodes: [
                   {
                     id: "lin_125",
-                    identifier: "ABC-125",
-                    title: "Unstarted issue",
-                    url: "https://linear.app/acme/issue/ABC-125/unstarted-issue",
+                    identifier: "ABC-123",
+                    title: "Backlog issue",
+                    url: "https://linear.app/acme/issue/ABC-123/backlog-issue",
                     project: {
                       name: "Dashboard",
                     },
                     state: {
-                      name: "Todo",
-                      type: "unstarted",
+                      name: "Backlog",
+                      type: "backlog",
+                    },
+                    assignee: {
+                      id: "user-1",
+                      name: "Jane Doe",
+                    },
+                    relations: { nodes: [] },
+                  },
+                  {
+                    id: "lin_125",
+                    identifier: "ABC-125",
+                    title: "Started issue",
+                    url: "https://linear.app/acme/issue/ABC-125/started-issue",
+                    project: {
+                      name: "Dashboard",
+                    },
+                    state: {
+                      name: "In Progress",
+                      type: "started",
                     },
                     assignee: {
                       id: "user-1",
@@ -309,19 +327,37 @@ describe("integrations/linear/client", () => {
       projectId: "project-1",
       assigneeId: "user-1",
     });
-    expect(requestBody.query).toContain('state: { type: { eq: "unstarted" } }');
+    expect(requestBody.query).toContain('state: { type: { nin: ["completed", "canceled"] } }');
     expect(issues).toEqual([
       {
         id: "lin_125",
-        identifier: "ABC-125",
-        title: "Unstarted issue",
-        url: "https://linear.app/acme/issue/ABC-125/unstarted-issue",
+        identifier: "ABC-123",
+        title: "Backlog issue",
+        url: "https://linear.app/acme/issue/ABC-123/backlog-issue",
         project: {
           name: "Dashboard",
         },
         state: {
-          name: "Todo",
-          type: "unstarted",
+          name: "Backlog",
+          type: "backlog",
+        },
+        assignee: {
+          id: "user-1",
+          name: "Jane Doe",
+        },
+        relations: { nodes: [] },
+      },
+      {
+        id: "lin_125",
+        identifier: "ABC-125",
+        title: "Started issue",
+        url: "https://linear.app/acme/issue/ABC-125/started-issue",
+        project: {
+          name: "Dashboard",
+        },
+        state: {
+          name: "In Progress",
+          type: "started",
         },
         assignee: {
           id: "user-1",
