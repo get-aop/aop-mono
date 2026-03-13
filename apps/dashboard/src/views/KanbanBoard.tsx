@@ -5,6 +5,7 @@ import { BlockedBanner } from "../components/BlockedBanner";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { DirectoryBrowserDialog } from "../components/DirectoryBrowserDialog";
 import { KanbanColumn } from "../components/KanbanColumn";
+import { LinearImportPanel } from "../components/LinearImportPanel";
 import { Logo } from "../components/Logo";
 import { PausedBanner } from "../components/PausedBanner";
 import { RepoFilter } from "../components/RepoFilter";
@@ -72,6 +73,7 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const selectedRepo = repos.find((repo) => repo.id === selectedRepoId) ?? null;
 
   const filteredTasks = useMemo(() => {
     if (!selectedRepoId) return tasks;
@@ -206,6 +208,12 @@ export const KanbanBoard = ({ onTaskClick, onNavigate }: KanbanBoardProps) => {
           </div>
         ) : (
           <>
+            <LinearImportPanel
+              key={selectedRepo?.id ?? "no-repo-selected"}
+              repo={selectedRepo}
+              onRefresh={refresh}
+            />
+
             <div className="grid flex-1 grid-cols-4 gap-px bg-aop-charcoal">
               {KANBAN_COLUMNS.map((status) => (
                 <div key={status} className="bg-aop-black p-4">

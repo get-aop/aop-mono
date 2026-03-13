@@ -1,5 +1,6 @@
 import type { LocalServerContext } from "../../context.ts";
 import { initRepo } from "../../repo/handlers.ts";
+import { getLinearAccessToken } from "./access-token.ts";
 import { createLinearClient } from "./client.ts";
 import { createLinearImporter } from "./importer.ts";
 import { createLinearIssueResolver } from "./issue-resolver.ts";
@@ -19,7 +20,7 @@ export const createLinearImportService = (options: CreateLinearImportServiceOpti
 
     const client = (options.createClient ?? createLinearClient)({
       apiKey: options.apiKey ?? process.env.LINEAR_API_KEY,
-      getAccessToken: async () => getAccessToken(options.ctx),
+      getAccessToken: async () => getLinearAccessToken(options.ctx),
     });
     const resolver = createLinearIssueResolver({ client });
     const importer = createLinearImporter({
@@ -41,17 +42,3 @@ export const createLinearImportService = (options: CreateLinearImportServiceOpti
     };
   },
 });
-
-const getAccessToken = async (ctx: LocalServerContext): Promise<string | null> => {
-  const status = await ctx.linearTokenStore.getStatus();
-  if (!status.connected) {
-    return null;
-  }
-
-  if (status.locked) {
-    throw new Error("Linear token store is locked");
-  }
-
-  const tokens = await ctx.linearTokenStore.read();
-  return tokens.accessToken;
-};
