@@ -8,6 +8,7 @@ import { createEventsSSEHandler } from "./events/index.ts";
 import { createLogStreamHandler } from "./events/log-routes.ts";
 import { createFsRoutes } from "./fs/routes.ts";
 import { createHealthRoutes } from "./health/routes.ts";
+import { createLinearBrowseService } from "./integrations/linear/browse-service.ts";
 import { createLinearImportService } from "./integrations/linear/import-service.ts";
 import { createLinearRoutes } from "./integrations/linear/routes.ts";
 import { createRepoRoutes } from "./repo/routes";
@@ -46,6 +47,7 @@ export interface AppDependencies {
 export const createApp = (deps: AppDependencies) => {
   const { ctx, dashboardStaticPath, dashboardDevOrigin } = deps;
   const app = new Hono();
+  const linearBrowseService = createLinearBrowseService({ ctx });
   const linearImportService = createLinearImportService({ ctx });
 
   app.use("*", otel({ tracerProvider: getTracerProvider() }));
@@ -137,6 +139,8 @@ export const createApp = (deps: AppDependencies) => {
     "/api/linear",
     createLinearRoutes({
       handlers: ctx.linearHandlers,
+      getImportOptions: () => linearBrowseService.getImportOptions(),
+      getTodoIssues: (params) => linearBrowseService.getTodoIssues(params),
       importFromInput: (params) => linearImportService.importFromInput(params),
     }),
   );

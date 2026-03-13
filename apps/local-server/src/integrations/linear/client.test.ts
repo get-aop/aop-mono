@@ -5,6 +5,17 @@ interface LinearGraphQLIssue {
   identifier: string;
   title: string;
   url: string;
+  project?: {
+    name: string;
+  } | null;
+  state?: {
+    name: string;
+    type: string;
+  } | null;
+  assignee?: {
+    id: string;
+    name: string;
+  } | null;
   relations?: {
     nodes?: Array<{
       type?: string | null;
@@ -18,6 +29,20 @@ interface LinearGraphQLIssue {
   } | null;
 }
 
+interface LinearGraphQLImportProject {
+  id: string;
+  name: string;
+}
+
+interface LinearGraphQLImportUser {
+  id: string;
+  name: string;
+  displayName?: string | null;
+  email?: string | null;
+  isMe?: boolean | null;
+  active?: boolean | null;
+}
+
 interface LinearClientModule {
   createLinearClient(options: {
     apiKey?: string;
@@ -25,6 +50,14 @@ interface LinearClientModule {
     fetch?: typeof fetch;
   }): {
     getIssuesByRefs(refs: string[]): Promise<LinearGraphQLIssue[]>;
+    getImportOptions(): Promise<{
+      projects: LinearGraphQLImportProject[];
+      users: LinearGraphQLImportUser[];
+    }>;
+    getTodoIssues(params: {
+      projectId: string;
+      assigneeId?: string;
+    }): Promise<LinearGraphQLIssue[]>;
   };
 }
 
@@ -157,5 +190,142 @@ describe("integrations/linear/client", () => {
     });
 
     await expect(client.getIssuesByRefs(["ABC-123"])).rejects.toThrow("Something went wrong");
+  });
+
+  test("fetches import options for projects and active users", async () => {
+    const { createLinearClient } = await loadClientModule();
+    const seenBodies: string[] = [];
+    const client = createLinearClient({
+      apiKey: "linear-api-key",
+      fetch: createFetchMock(async (_input, init) => {
+        seenBodies.push(String(init?.body ?? ""));
+        return new Response(
+          JSON.stringify({
+            data: {
+              projects: {
+                nodes: [
+                  { id: "project-1", name: "Dashboard" },
+                  { id: "project-2", name: "Backend" },
+                ],
+              },
+              users: {
+                nodes: [
+                  {
+                    id: "user-1",
+                    name: "Jane Doe",
+                    displayName: "Jane",
+                    email: "jane@example.com",
+                    isMe: true,
+                    active: true,
+                  },
+                  {
+                    id: "user-2",
+                    name: "Archived User",
+                    displayName: "Archived",
+                    email: "archived@example.com",
+                    isMe: false,
+                    active: false,
+                  },
+                ],
+              },
+            },
+          }),
+        );
+      }),
+    });
+
+    const result = await client.getImportOptions();
+
+    expect(seenBodies[0]).toContain("projects");
+    expect(seenBodies[0]).toContain("users");
+    expect(result).toEqual({
+      projects: [
+        { id: "project-1", name: "Dashboard" },
+        { id: "project-2", name: "Backend" },
+      ],
+      users: [
+        {
+          id: "user-1",
+          name: "Jane Doe",
+          displayName: "Jane",
+          email: "jane@example.com",
+          isMe: true,
+          active: true,
+        },
+      ],
+    });
+  });
+
+  test("fetches TODO issues for a project and optional assignee", async () => {
+    const { createLinearClient } = await loadClientModule();
+    const seenBodies: string[] = [];
+    const client = createLinearClient({
+      apiKey: "linear-api-key",
+      fetch: createFetchMock(async (_input, init) => {
+        seenBodies.push(String(init?.body ?? ""));
+        return new Response(
+          JSON.stringify({
+            data: {
+              issues: {
+                nodes: [
+                  {
+                    id: "lin_125",
+                    identifier: "ABC-125",
+                    title: "Unstarted issue",
+                    url: "https://linear.app/acme/issue/ABC-125/unstarted-issue",
+                    project: {
+                      name: "Dashboard",
+                    },
+                    state: {
+                      name: "Todo",
+                      type: "unstarted",
+                    },
+                    assignee: {
+                      id: "user-1",
+                      name: "Jane Doe",
+                    },
+                    relations: { nodes: [] },
+                  },
+                ],
+              },
+            },
+          }),
+        );
+      }),
+    });
+
+    const issues = await client.getTodoIssues({ projectId: "project-1", assigneeId: "user-1" });
+
+    const requestBody = JSON.parse(seenBodies[0] ?? "{}") as {
+      query?: string;
+      variables?: Record<string, string>;
+    };
+
+    expect(requestBody.query).toContain("issues(filter:");
+    expect(requestBody.variables).toEqual({
+      projectId: "project-1",
+      assigneeId: "user-1",
+    });
+    expect(requestBody.query).toContain('state: { type: { eq: "unstarted" } }');
+    expect(issues).toEqual([
+      {
+        id: "lin_125",
+        identifier: "ABC-125",
+        title: "Unstarted issue",
+        url: "https://linear.app/acme/issue/ABC-125/unstarted-issue",
+        project: {
+          name: "Dashboard",
+        },
+        state: {
+          name: "Todo",
+          type: "unstarted",
+        },
+        assignee: {
+          id: "user-1",
+          name: "Jane Doe",
+        },
+        relations: { nodes: [] },
+      },
+    ]);
   });
 });

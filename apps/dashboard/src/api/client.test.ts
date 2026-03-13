@@ -9,12 +9,15 @@ const {
   connectLinear,
   disconnectLinear,
   fetchExecutions,
+  getLinearImportOptions,
   getLinearStatus,
+  getLinearTodoIssues,
   getMetrics,
   getPauseContext,
   getSettings,
   getStatus,
   getWorkflows,
+  importLinearIssue,
   listDirectories,
   markReady,
   registerRepo,
@@ -289,6 +292,114 @@ describe("listDirectories", () => {
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/fs/directories?path=%2Fhome%2Fuser&hidden=true",
       expect.any(Object),
+    );
+  });
+});
+
+describe("Linear import helpers", () => {
+  test("fetches Linear import options", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        projects: [{ id: "project-1", name: "Dashboard" }],
+        users: [
+          {
+            id: "user-1",
+            name: "Jane Doe",
+            displayName: "Jane",
+            email: "jane@example.com",
+            isMe: true,
+          },
+        ],
+      }),
+    );
+
+    const result = await getLinearImportOptions();
+
+    expect(result).toEqual({
+      projects: [{ id: "project-1", name: "Dashboard" }],
+      users: [
+        {
+          id: "user-1",
+          name: "Jane Doe",
+          displayName: "Jane",
+          email: "jane@example.com",
+          isMe: true,
+        },
+      ],
+    });
+    expect(mockFetch).toHaveBeenCalledWith("/api/linear/import-options", expect.any(Object));
+  });
+
+  test("fetches Linear TODO issues with project and optional assignee filters", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        issues: [
+          {
+            id: "lin_125",
+            identifier: "ABC-125",
+            title: "Unstarted issue",
+            url: "https://linear.app/acme/issue/ABC-125/unstarted-issue",
+            projectName: "Dashboard",
+            assigneeName: "Jane Doe",
+            stateName: "Todo",
+          },
+        ],
+      }),
+    );
+
+    const result = await getLinearTodoIssues({ projectId: "project-1", assigneeId: "user-1" });
+
+    expect(result).toEqual([
+      {
+        id: "lin_125",
+        identifier: "ABC-125",
+        title: "Unstarted issue",
+        url: "https://linear.app/acme/issue/ABC-125/unstarted-issue",
+        projectName: "Dashboard",
+        assigneeName: "Jane Doe",
+        stateName: "Todo",
+      },
+    ]);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/linear/todo-issues?projectId=project-1&assigneeId=user-1",
+      expect.any(Object),
+    );
+  });
+
+  test("imports a selected Linear issue into the chosen repository path", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        repoId: "repo-1",
+        alreadyExists: true,
+        imported: [
+          {
+            taskId: "task-1",
+            ref: "ABC-125",
+            changePath: "docs/tasks/abc-125-unstarted-issue",
+            requested: true,
+            dependencyImported: false,
+          },
+        ],
+        failures: [],
+      }),
+    );
+
+    const result = await importLinearIssue({
+      cwd: "/repos/aop-mono",
+      issueIdentifier: "ABC-125",
+    });
+
+    expect(result.imported[0]?.taskId).toBe("task-1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/linear/import",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          cwd: "/repos/aop-mono",
+          input: "ABC-125",
+        }),
+      }),
     );
   });
 });
