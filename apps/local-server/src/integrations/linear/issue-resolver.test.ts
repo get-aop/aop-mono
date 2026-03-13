@@ -103,6 +103,11 @@ describe("integrations/linear/issue-resolver", () => {
         id: "lin_123",
         ref: "ABC-123",
         title: "First issue",
+        description: null,
+        priority: null,
+        project: null,
+        state: null,
+        team: null,
         url: "https://linear.app/acme/issue/ABC-123/first-issue",
         blocks: [
           {
@@ -117,7 +122,65 @@ describe("integrations/linear/issue-resolver", () => {
         id: "lin_124",
         ref: "ABC-124",
         title: "Second issue",
+        description: null,
+        priority: null,
+        project: null,
+        state: null,
+        team: null,
         url: "https://linear.app/acme/issue/ABC-124/second-issue",
+        blocks: [],
+      },
+    ]);
+  });
+
+  test("preserves optional Linear metadata needed by the importer", async () => {
+    const { createLinearIssueResolver } = await loadIssueResolverModule();
+    const resolver = createLinearIssueResolver({
+      client: {
+        getIssuesByRefs: async () => [
+          {
+            id: "lin_200",
+            identifier: "GET-41",
+            title: "Dashboard Scroll",
+            description: "The dashboard image gets cut off at the bottom.",
+            priority: 2,
+            state: {
+              name: "In Progress",
+              type: "started",
+            },
+            project: {
+              name: "AOP",
+            },
+            team: {
+              key: "GET",
+              name: "Get-aop",
+            },
+            url: "https://linear.app/get-aop/issue/GET-41/dashboard-scroll",
+            relations: { nodes: [] },
+          },
+        ],
+      },
+    });
+
+    await expect(resolver.resolve("GET-41")).resolves.toEqual([
+      {
+        id: "lin_200",
+        ref: "GET-41",
+        title: "Dashboard Scroll",
+        description: "The dashboard image gets cut off at the bottom.",
+        priority: 2,
+        state: {
+          name: "In Progress",
+          type: "started",
+        },
+        project: {
+          name: "AOP",
+        },
+        team: {
+          key: "GET",
+          name: "Get-aop",
+        },
+        url: "https://linear.app/get-aop/issue/GET-41/dashboard-scroll",
         blocks: [],
       },
     ]);

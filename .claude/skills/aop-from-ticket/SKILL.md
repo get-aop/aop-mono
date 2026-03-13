@@ -33,20 +33,22 @@ If no usable source is provided, ask for the ticket or document before proceedin
 ## Process
 
 1. Read the source material.
-2. For Linear, if the local server is available, call `POST /api/linear/import` with the original input and the current working directory. This route auto-registers the repo and imports requested issues plus missing blockers.
-3. If the local server route is unavailable, resolve refs, URLs, ranges, and mixed lists into the full issue set before writing files.
-4. If a required Linear blocker is missing locally, import it as a draft dependency task in the same repo.
-5. Verify the source against the codebase and fix stale assumptions in the plan.
-6. Derive a kebab-case task slug from the source title for each imported task.
-7. Create `docs/tasks/<task-slug>/` if it does not exist.
-8. Write `docs/tasks/<task-slug>/task.md` with the extracted requirements and acceptance criteria.
-9. Write `docs/tasks/<task-slug>/plan.md` with the implementation checklist, context, and verification steps.
-10. Add numbered subtask files when the work needs multiple executable slices.
-11. Report which tasks came from the requested input and which were auto-imported as blockers.
-12. Ask whether the imported tasks should be started now.
-13. If the answer is yes, invoke `aop-task-ready` only for the imported tasks that should move to `READY`.
-14. Explain that some started tasks may remain `READY` until their dependency tasks are `DONE`.
-15. Present the task slug(s), written files, final status, and a short summary.
+2. For Linear, detect the local server URL from `AOP_LOCAL_SERVER_URL`; if it is unset, use `http://127.0.0.1:25150`.
+3. Probe `<local-server-url>/api/health` before doing anything else. If it responds, do not try to start another local server process.
+4. If the local server is available, call `POST /api/linear/import` with the original input and the current working directory. This route auto-registers the repo, imports requested issues plus missing blockers, and writes a non-placeholder `task.md`.
+5. If the local server route is unavailable, resolve refs, URLs, ranges, and mixed lists into the full issue set before writing files.
+6. If a required Linear blocker is missing locally, import it as a draft dependency task in the same repo.
+7. Use the imported `task.md` as the source of truth for the issue description and metadata. Do not read the token store or make ad hoc Linear API calls unless the local-server import path is unavailable.
+8. Verify the source against the codebase and fix stale assumptions in the plan.
+9. Derive a kebab-case task slug from the source title for each imported task.
+10. Create `docs/tasks/<task-slug>/` if it does not exist.
+11. Write `docs/tasks/<task-slug>/plan.md` with the implementation checklist, context, and verification steps.
+12. Add numbered subtask files when the work needs multiple executable slices.
+13. Report which tasks came from the requested input and which were auto-imported as blockers.
+14. Ask whether the imported tasks should be started now.
+15. If the answer is yes, invoke `aop-task-ready` only for the imported tasks that should move to `READY`.
+16. Explain that some started tasks may remain `READY` until their dependency tasks are `DONE`.
+17. Present the task slug(s), written files, final status, and a short summary.
 
 ## Guardrails
 

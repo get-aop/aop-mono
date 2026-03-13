@@ -17,6 +17,19 @@ interface LinearIssueSummary {
 
 interface LinearResolvedIssue extends LinearIssueSummary {
   blocks: LinearIssueSummary[];
+  description?: string | null;
+  priority?: number | null;
+  state?: {
+    name: string;
+    type: string;
+  } | null;
+  project?: {
+    name: string;
+  } | null;
+  team?: {
+    key: string;
+    name: string;
+  } | null;
 }
 
 interface ImporterModule {
@@ -67,6 +80,11 @@ const createIssue = (
   title,
   url: `https://linear.app/acme/issue/${ref}/${title.toLowerCase().replace(/\s+/g, "-")}`,
   blocks,
+  description: null,
+  priority: null,
+  state: null,
+  project: null,
+  team: null,
 });
 
 describe("integrations/linear/importer", () => {
@@ -125,6 +143,63 @@ describe("integrations/linear/importer", () => {
       external_ref: "ABC-123",
       title_snapshot: "Auth Flow",
     });
+  });
+
+  test("writes a useful task doc from Linear issue details instead of a placeholder stub", async () => {
+    const { createLinearImporter } = await loadImporterModule();
+    const importer = createLinearImporter({
+      repoRepository: ctx.repoRepository,
+      taskRepository: ctx.taskRepository,
+      linearStore: ctx.linearStore,
+      resolveIssuesByRefs: async () => [],
+    });
+
+    const result = await importer.importIssues({
+      repoId: "repo-1",
+      issues: [
+        {
+          ...createIssue("GET-41", "Dashboard Scroll"),
+          description:
+            "We can't scroll to bottom on dashboard; the image gets stuck and cut when the task view includes a screenshot.",
+          priority: 2,
+          state: {
+            name: "In Progress",
+            type: "started",
+          },
+          project: {
+            name: "AOP",
+          },
+          team: {
+            key: "GET",
+            name: "Get-aop",
+          },
+        },
+      ],
+    });
+
+    const imported = getImportedRecord(result, "GET-41");
+    const taskDocPath = join(repoPath, imported.changePath, "task.md");
+    const taskDoc = await parseTaskDoc(taskDocPath);
+    const rawTaskDoc = await Bun.file(taskDocPath).text();
+
+    expect(taskDoc.description).toContain("Imported from Linear `GET-41`.");
+    expect(taskDoc.description).toContain("We can't scroll to bottom on dashboard");
+    expect(taskDoc.requirements).toContain("Fix the requested behavior described in `GET-41`.");
+    expect(taskDoc.requirements).toContain(
+      "Review https://linear.app/acme/issue/GET-41/dashboard-scroll.",
+    );
+    expect(taskDoc.acceptanceCriteria).toEqual([
+      { text: "The implementation matches the behavior requested in GET-41.", checked: false },
+      { text: "Relevant verification for this change passes.", checked: false },
+    ]);
+    expect(rawTaskDoc).toContain("priority: high");
+    expect(rawTaskDoc).toContain("  - linear");
+    expect(rawTaskDoc).toContain("  - dashboard");
+    expect(rawTaskDoc).toContain("  - get");
+    expect(rawTaskDoc).toContain("  - aop");
+    expect(rawTaskDoc).toContain("- Team: Get-aop (GET)");
+    expect(rawTaskDoc).toContain("- Project: AOP");
+    expect(rawTaskDoc).toContain("- State: In Progress");
   });
 
   test("re-imports the same Linear issue without creating a duplicate folder and updates title snapshots", async () => {

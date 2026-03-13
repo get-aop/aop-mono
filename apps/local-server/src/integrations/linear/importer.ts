@@ -247,6 +247,8 @@ const writeImportedTask = async (params: {
     status: existingDoc?.status ?? TaskStatus.DRAFT,
     created: existingDoc?.createdAt ?? new Date().toISOString(),
     changePath,
+    priority: mapLinearPriority(params.issue.priority),
+    tags: buildIssueTags(params.issue),
     source: {
       provider: "linear",
       id: params.issue.id,
@@ -279,12 +281,76 @@ const buildImportedTaskBody = (issue: LinearResolvedIssue): string =>
   [
     "",
     "## Description",
-    `Imported from Linear ${issue.ref}`,
+    `Imported from Linear \`${issue.ref}\`.`,
+    "",
+    issue.description ?? "No additional Linear description was provided.",
+    "",
+    ...buildMetadataLines(issue),
     "",
     "## Requirements",
-    `- Review ${issue.url}`,
+    `- Fix the requested behavior described in \`${issue.ref}\`.`,
+    `- Review ${issue.url}.`,
+    ...buildBlockerRequirementLines(issue),
     "",
     "## Acceptance Criteria",
-    `- [ ] Match the intent of ${issue.ref}`,
+    `- [ ] The implementation matches the behavior requested in ${issue.ref}.`,
+    "- [ ] Relevant verification for this change passes.",
     "",
   ].join("\n");
+
+const buildMetadataLines = (issue: LinearResolvedIssue): string[] => {
+  const metadata = [
+    issue.team ? `- Team: ${issue.team.name} (${issue.team.key})` : null,
+    issue.project ? `- Project: ${issue.project.name}` : null,
+    issue.state ? `- State: ${issue.state.name}` : null,
+  ].filter((line): line is string => typeof line === "string");
+
+  return metadata.length > 0 ? ["", ...metadata] : [];
+};
+
+const buildBlockerRequirementLines = (issue: LinearResolvedIssue): string[] =>
+  issue.blocks.length > 0
+    ? [`- Keep the imported Linear blocker relationships for ${issue.ref} intact.`]
+    : [];
+
+const buildIssueTags = (issue: LinearResolvedIssue): string[] => {
+  const tags = new Set<string>(["linear"]);
+
+  if (issue.team?.key) {
+    tags.add(issue.team.key.toLowerCase());
+  }
+
+  if (issue.project?.name) {
+    tags.add(toTag(issue.project.name));
+  }
+
+  for (const token of `${issue.ref} ${issue.title}`.split(/[^A-Za-z0-9]+/)) {
+    const normalized = toTag(token);
+    if (normalized.length >= 3 && !normalized.startsWith("get-")) {
+      tags.add(normalized);
+    }
+  }
+
+  return [...tags];
+};
+
+const toTag = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-");
+
+const mapLinearPriority = (priority: number | null): string => {
+  switch (priority) {
+    case 1:
+      return "urgent";
+    case 2:
+      return "high";
+    case 3:
+      return "medium";
+    case 4:
+      return "low";
+    default:
+      return "medium";
+  }
+};

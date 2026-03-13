@@ -30,6 +30,27 @@ const normalizeIssue = (issue: LinearRawIssue): LinearResolvedIssue => ({
   id: issue.id,
   ref: normalizeRef(issue.identifier),
   title: issue.title,
+  description: normalizeText(issue.description),
+  priority: typeof issue.priority === "number" ? issue.priority : null,
+  state:
+    issue.state?.name && issue.state.type
+      ? {
+          name: issue.state.name,
+          type: issue.state.type,
+        }
+      : null,
+  project: issue.project?.name
+    ? {
+        name: issue.project.name,
+      }
+    : null,
+  team:
+    issue.team?.key && issue.team.name
+      ? {
+          key: issue.team.key,
+          name: issue.team.name,
+        }
+      : null,
   url: issue.url,
   blocks: (issue.relations?.nodes ?? []).reduce<LinearIssueSummary[]>((blocks, relation) => {
     if (normalizeRelationType(relation.type) !== "blocks" || !relation.relatedIssue) {
@@ -60,3 +81,8 @@ const normalizeRelationType = (type: string | null | undefined): string =>
   (type ?? "").toLowerCase();
 
 const normalizeRef = (value: string): string => value.toUpperCase();
+
+const normalizeText = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+};

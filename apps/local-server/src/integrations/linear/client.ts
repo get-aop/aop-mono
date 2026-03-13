@@ -77,7 +77,20 @@ const buildIssuesQuery = (refs: string[]): string => {
         id
         identifier
         title
+        description
         url
+        priority
+        state {
+          name
+          type
+        }
+        project {
+          name
+        }
+        team {
+          key
+          name
+        }
         relations {
           nodes {
             type

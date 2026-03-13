@@ -39,6 +39,19 @@ export interface LinearRawIssueRelation {
 }
 
 export interface LinearRawIssue extends LinearRawIssueSummary {
+  description?: string | null;
+  priority?: number | null;
+  state?: {
+    name?: string | null;
+    type?: string | null;
+  } | null;
+  project?: {
+    name?: string | null;
+  } | null;
+  team?: {
+    key?: string | null;
+    name?: string | null;
+  } | null;
   relations?: {
     nodes?: LinearRawIssueRelation[];
   } | null;
@@ -53,6 +66,19 @@ export interface LinearIssueSummary {
 
 export interface LinearResolvedIssue extends LinearIssueSummary {
   blocks: LinearIssueSummary[];
+  description: string | null;
+  priority: number | null;
+  state: {
+    name: string;
+    type: string;
+  } | null;
+  project: {
+    name: string;
+  } | null;
+  team: {
+    key: string;
+    name: string;
+  } | null;
 }
 
 export interface LinearOAuth {
