@@ -66,6 +66,12 @@ describe("integrations/linear/token-store", () => {
     await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
+  const createFallbackFilePath = async (): Promise<string> => {
+    const tempDir = await mkdtemp(join(tmpdir(), "aop-linear-token-store-"));
+    tempDirs.push(tempDir);
+    return join(tempDir, "linear-oauth.json");
+  };
+
   const exec = async (invocation: ExecInvocation): Promise<ExecResult> => {
     invocations.push(invocation);
     const next = responses.shift();
@@ -77,7 +83,11 @@ describe("integrations/linear/token-store", () => {
 
   test("stores tokens in macOS Keychain without passing the secret via argv", async () => {
     const { createLinearTokenStore } = await loadTokenStoreModule();
-    const store = createLinearTokenStore({ exec, platform: "darwin" });
+    const store = createLinearTokenStore({
+      exec,
+      fallbackFilePath: await createFallbackFilePath(),
+      platform: "darwin",
+    });
     responses.push({ exitCode: 0 });
 
     await store.save(TOKENS);
@@ -94,7 +104,11 @@ describe("integrations/linear/token-store", () => {
 
   test("stores tokens in Linux Secret Service via stdin", async () => {
     const { createLinearTokenStore } = await loadTokenStoreModule();
-    const store = createLinearTokenStore({ exec, platform: "linux" });
+    const store = createLinearTokenStore({
+      exec,
+      fallbackFilePath: await createFallbackFilePath(),
+      platform: "linux",
+    });
     responses.push({ exitCode: 0 });
 
     await store.save(TOKENS);
@@ -115,7 +129,11 @@ describe("integrations/linear/token-store", () => {
 
   test("starts locked when macOS credentials exist and unlock loads them into memory", async () => {
     const { createLinearTokenStore } = await loadTokenStoreModule();
-    const store = createLinearTokenStore({ exec, platform: "darwin" });
+    const store = createLinearTokenStore({
+      exec,
+      fallbackFilePath: await createFallbackFilePath(),
+      platform: "darwin",
+    });
     responses.push({ exitCode: 0, stdout: JSON.stringify(TOKENS) });
     responses.push({ exitCode: 0, stdout: JSON.stringify(TOKENS) });
 
@@ -128,7 +146,11 @@ describe("integrations/linear/token-store", () => {
 
   test("locks again after reading and deletes Linux credentials on disconnect", async () => {
     const { createLinearTokenStore } = await loadTokenStoreModule();
-    const store = createLinearTokenStore({ exec, platform: "linux" });
+    const store = createLinearTokenStore({
+      exec,
+      fallbackFilePath: await createFallbackFilePath(),
+      platform: "linux",
+    });
     responses.push({ exitCode: 0, stdout: JSON.stringify(TOKENS) });
     responses.push({ exitCode: 0 });
     responses.push({ exitCode: 1, stderr: "not found" });
@@ -148,7 +170,11 @@ describe("integrations/linear/token-store", () => {
 
   test("getStatus fails closed to disconnected when secure storage is unavailable", async () => {
     const { createLinearTokenStore } = await loadTokenStoreModule();
-    const store = createLinearTokenStore({ exec, platform: "linux" });
+    const store = createLinearTokenStore({
+      exec,
+      fallbackFilePath: await createFallbackFilePath(),
+      platform: "linux",
+    });
     responses.push({ exitCode: 127, stderr: "secret-tool: command not found" });
 
     expect(await store.getStatus()).toEqual({

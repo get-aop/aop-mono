@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { flushSync } from "react-dom";
-import { createRoot, type Root } from "react-dom/client";
+import type { ReactElement } from "react";
 import { setupDashboardDom } from "./test/setup-dom";
 
 setupDashboardDom();
+
+const renderToString = async (component: ReactElement): Promise<string> => {
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  return renderToStaticMarkup(component);
+};
+
+const refresh = () => {};
 
 mock.module("./hooks/useTaskEvents", () => ({
   useTaskEvents: () => ({
@@ -12,7 +18,7 @@ mock.module("./hooks/useTaskEvents", () => ({
     repos: [],
     connected: true,
     initialized: true,
-    refresh: () => {},
+    refresh,
   }),
 }));
 
@@ -26,38 +32,21 @@ beforeEach(() => {
 
 const { App } = await import("./App");
 
-let container: HTMLDivElement;
-let root: Root;
-
 afterEach(() => {
-  flushSync(() => root.unmount());
-  container.remove();
   globalThis.fetch = originalFetch;
 });
 
-const renderApp = () => {
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
-  flushSync(() => root.render(<App />));
-};
-
 describe("App shell scroll layout", () => {
-  test("content wrapper allows overflow scrolling", () => {
-    renderApp();
-    const shell = container.firstElementChild as HTMLElement;
-    const contentWrapper = shell?.children[0] as HTMLElement;
+  test("content wrapper allows overflow scrolling", async () => {
+    const html = await renderToString(<App />);
 
-    expect(contentWrapper.className).toContain("overflow-auto");
-    expect(contentWrapper.className).not.toContain("overflow-hidden");
+    expect(html).toContain("flex-1 overflow-auto");
+    expect(html).not.toContain("overflow-hidden");
   });
 
-  test("shell uses h-screen with flex column layout", () => {
-    renderApp();
-    const shell = container.firstElementChild as HTMLElement;
+  test("shell uses h-screen with flex column layout", async () => {
+    const html = await renderToString(<App />);
 
-    expect(shell.className).toContain("h-screen");
-    expect(shell.className).toContain("flex");
-    expect(shell.className).toContain("flex-col");
+    expect(html).toContain("flex h-screen flex-col");
   });
 });

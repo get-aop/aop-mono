@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { flushSync } from "react-dom";
-import { createRoot, type Root } from "react-dom/client";
+import type { ReactElement } from "react";
 import { setupDashboardDom } from "../test/setup-dom";
 
 setupDashboardDom();
+
+const renderToString = async (component: ReactElement): Promise<string> => {
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  return renderToStaticMarkup(component);
+};
 
 const mockUseTaskEvents = mock(() => ({
   tasks: [
@@ -42,8 +46,6 @@ mock.module("../hooks/useSSE", () => ({
 const { TaskDetail } = await import("./TaskDetail");
 
 const originalFetch = globalThis.fetch;
-let container: HTMLDivElement;
-let root: Root;
 
 beforeEach(() => {
   globalThis.fetch = mock(() =>
@@ -52,43 +54,30 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  flushSync(() => root.unmount());
-  container.remove();
   globalThis.fetch = originalFetch;
 });
 
 const renderDetail = (taskId = "task-1") => {
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
-  flushSync(() => root.render(<TaskDetail taskId={taskId} onClose={() => {}} />));
+  return renderToString(<TaskDetail taskId={taskId} onClose={() => {}} />);
 };
 
 describe("TaskDetail scroll layout", () => {
-  test("main content area allows overflow scrolling", () => {
-    renderDetail();
-    const detail = container.querySelector("[data-testid='task-detail']") as HTMLElement;
-    const main = detail.querySelector("main") as HTMLElement;
+  test("main content area allows overflow scrolling", async () => {
+    const html = await renderDetail();
 
-    expect(main).toBeTruthy();
-    expect(main.className).toContain("overflow-auto");
-    expect(main.className).not.toContain("overflow-hidden");
+    expect(html).toContain('data-testid="task-detail"');
+    expect(html).toContain("flex flex-1 flex-col overflow-auto px-6 py-3");
   });
 
-  test("detail view uses h-screen with flex column layout", () => {
-    renderDetail();
-    const detail = container.querySelector("[data-testid='task-detail']") as HTMLElement;
+  test("detail view uses h-screen with flex column layout", async () => {
+    const html = await renderDetail();
 
-    expect(detail.className).toContain("h-screen");
-    expect(detail.className).toContain("flex");
-    expect(detail.className).toContain("flex-col");
+    expect(html).toContain("flex h-screen flex-col bg-aop-black");
   });
 
-  test("main content area uses flex-1 to fill remaining space", () => {
-    renderDetail();
-    const detail = container.querySelector("[data-testid='task-detail']") as HTMLElement;
-    const main = detail.querySelector("main") as HTMLElement;
+  test("main content area uses flex-1 to fill remaining space", async () => {
+    const html = await renderDetail();
 
-    expect(main.className).toContain("flex-1");
+    expect(html).toContain("flex flex-1 flex-col overflow-auto px-6 py-3");
   });
 });
