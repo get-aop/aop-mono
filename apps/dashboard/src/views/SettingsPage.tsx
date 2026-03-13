@@ -6,6 +6,7 @@ import {
   disconnectLinear,
   getLinearStatus,
   getSettings,
+  getWorkflows,
   type LinearConnectionInfo,
   type LinearStatus,
   testLinearConnection,
@@ -40,6 +41,7 @@ interface LinearSectionState {
 interface SettingsFormProps {
   savedValues: Record<string, string>;
   editedValues: Record<string, string>;
+  workflowOptions: { value: string; label: string }[];
   onChange: (key: string, value: string) => void;
   onSaved: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   linearState: LinearSectionState;
@@ -53,7 +55,7 @@ const GROUPS: { label: string; keys: string[] }[] = [
   },
   {
     label: "AGENT CONFIGURATION",
-    keys: ["max_concurrent_tasks", "agent_timeout_secs"],
+    keys: ["default_workflow", "max_concurrent_tasks", "agent_timeout_secs"],
   },
   {
     label: "POLLING",
@@ -66,6 +68,12 @@ const GROUPS: { label: string; keys: string[] }[] = [
 ];
 
 const SETTING_META: Record<string, SettingMeta> = {
+  default_workflow: {
+    label: "Default Workflow",
+    description: "Workflow used when a task does not request a specific workflow",
+    type: "select",
+    options: [],
+  },
   linear_client_id: {
     label: "Linear Client ID",
     description: "OAuth client ID from your Linear app",
@@ -106,6 +114,7 @@ const SETTING_META: Record<string, SettingMeta> = {
 export const SettingsPage = ({ onNavigate }: SettingsPageProps) => {
   const [savedValues, setSavedValues] = useState<Record<string, string>>({});
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
+  const [workflowOptions, setWorkflowOptions] = useState<{ value: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [linearState, setLinearState] = useState<LinearSectionState>({
@@ -119,11 +128,17 @@ export const SettingsPage = ({ onNavigate }: SettingsPageProps) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getSettings();
+      const [data, workflows] = await Promise.all([getSettings(), getWorkflows()]);
       const values: Record<string, string> = {};
       for (const setting of data) {
         values[setting.key] = setting.value;
       }
+      setWorkflowOptions(
+        workflows.map((workflowName) => ({
+          value: workflowName,
+          label: workflowName,
+        })),
+      );
       setSavedValues(values);
       setEditedValues(values);
     } catch (err) {
@@ -179,6 +194,7 @@ export const SettingsPage = ({ onNavigate }: SettingsPageProps) => {
       <SettingsForm
         savedValues={savedValues}
         editedValues={editedValues}
+        workflowOptions={workflowOptions}
         onChange={handleChange}
         onSaved={setSavedValues}
         linearState={linearState}
@@ -204,6 +220,7 @@ export const SettingsPage = ({ onNavigate }: SettingsPageProps) => {
 const SettingsForm = ({
   savedValues,
   editedValues,
+  workflowOptions,
   onChange,
   onSaved,
   linearState,
@@ -272,6 +289,7 @@ const SettingsForm = ({
                   key={key}
                   settingKey={key}
                   value={editedValues[key] ?? ""}
+                  options={key === "default_workflow" ? workflowOptions : undefined}
                   onChange={onChange}
                   isLast={index === groupKeys.length - 1}
                 />
@@ -685,12 +703,17 @@ const ConnectionField = ({ label, value }: { label: string; value: string }) => 
 interface SettingRowProps {
   settingKey: string;
   value: string;
+  options?: { value: string; label: string }[];
   onChange: (key: string, value: string) => void;
   isLast: boolean;
 }
 
-const SettingRow = ({ settingKey, value, onChange, isLast }: SettingRowProps) => {
-  const meta = SETTING_META[settingKey] ?? { label: settingKey, description: "", type: "text" };
+const SettingRow = ({ settingKey, value, options, onChange, isLast }: SettingRowProps) => {
+  const baseMeta = SETTING_META[settingKey] ?? { label: settingKey, description: "", type: "text" };
+  const meta =
+    baseMeta.type === "select"
+      ? { ...baseMeta, options: options ?? baseMeta.options ?? [] }
+      : baseMeta;
   const inputId = `setting-${settingKey}`;
 
   return (

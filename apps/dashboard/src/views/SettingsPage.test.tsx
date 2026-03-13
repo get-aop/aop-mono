@@ -8,6 +8,7 @@ const mockConnectLinear = mock();
 const mockDisconnectLinear = mock();
 const mockGetLinearStatus = mock();
 const mockGetSettings = mock();
+const mockGetWorkflows = mock();
 const mockTestLinearConnection = mock();
 const mockUnlockLinear = mock();
 const mockUpdateSettings = mock();
@@ -20,6 +21,7 @@ mock.module("../api/client", () => ({
   disconnectLinear: mockDisconnectLinear,
   getLinearStatus: mockGetLinearStatus,
   getSettings: mockGetSettings,
+  getWorkflows: mockGetWorkflows,
   testLinearConnection: mockTestLinearConnection,
   unlockLinear: mockUnlockLinear,
   updateSettings: mockUpdateSettings,
@@ -67,12 +69,14 @@ beforeEach(() => {
   mockDisconnectLinear.mockReset();
   mockGetLinearStatus.mockReset();
   mockGetSettings.mockReset();
+  mockGetWorkflows.mockReset();
   mockTestLinearConnection.mockReset();
   mockUnlockLinear.mockReset();
   mockUpdateSettings.mockReset();
   FakeBroadcastChannel.reset();
   globalThis.BroadcastChannel = FakeBroadcastChannel as typeof BroadcastChannel;
   globalThis.open = mock(() => null) as typeof globalThis.open;
+  mockGetWorkflows.mockResolvedValue(["aop-default", "simple"]);
 });
 
 afterEach(() => {
@@ -88,6 +92,7 @@ const primeSettingsLoad = (overrides?: { linearClientId?: string; linearCallback
       key: "linear_callback_url",
       value: overrides?.linearCallbackUrl ?? "",
     },
+    { key: "default_workflow", value: "aop-default" },
     { key: "max_concurrent_tasks", value: "3" },
     { key: "watcher_poll_interval_secs", value: "5" },
     { key: "agent_provider", value: "codex" },
@@ -134,6 +139,24 @@ describe("SettingsPage Linear section", () => {
       { key: "linear_client_id", value: "linear-client-id" },
       { key: "linear_callback_url", value: "http://127.0.0.1:4310/api/linear/callback" },
     ]);
+  });
+
+  test("renders and saves the default workflow setting", async () => {
+    primeSettingsLoad();
+    mockGetLinearStatus.mockResolvedValue({ connected: false, locked: false });
+    mockUpdateSettings.mockResolvedValue(undefined);
+
+    render(<SettingsPage />);
+
+    await waitFor(() => expect(screen.getByLabelText("Default Workflow")).toBeDefined());
+
+    fireEvent.change(screen.getByLabelText("Default Workflow"), {
+      target: { value: "simple" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mockUpdateSettings).toHaveBeenCalled());
+    expect(mockUpdateSettings).toHaveBeenCalledWith([{ key: "default_workflow", value: "simple" }]);
   });
 
   test("opens the returned authorization URL after connect", async () => {

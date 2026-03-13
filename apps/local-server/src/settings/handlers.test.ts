@@ -26,6 +26,16 @@ describe("settings/handlers", () => {
   });
 
   describe("getAllSettings", () => {
+    test("includes the default workflow setting", async () => {
+      const result = await getAllSettings(ctx);
+      const workflowSetting = result.settings.find((setting) => setting.key === "default_workflow");
+
+      expect(workflowSetting).toEqual({
+        key: "default_workflow",
+        value: "aop-default",
+      });
+    });
+
     test("normalizes the legacy Linear callback url for source installs", async () => {
       await ctx.settingsRepository.set(
         "linear_callback_url",
@@ -150,6 +160,23 @@ describe("settings/handlers", () => {
       expect(result.success).toBe(true);
       if (!result.success) return;
       expect(result.value).toBe("codex");
+    });
+
+    test("accepts a valid default workflow value", async () => {
+      const result = await setSetting(ctx, "default_workflow", "simple");
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.value).toBe("simple");
+    });
+
+    test("rejects an unknown default workflow value", async () => {
+      const result = await setSetting(ctx, "default_workflow", "missing-workflow");
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.code).toBe("INVALID_VALUE");
+      expect(result.error.key).toBe("default_workflow");
     });
 
     test("accepts an empty Linear callback URL to clear the override", async () => {

@@ -63,6 +63,20 @@ describe("LocalWorkflowService", () => {
     );
   });
 
+  test("starts the configured default workflow when task has no preferred workflow", async () => {
+    await ctx.settingsRepository.set("default_workflow", "simple");
+    const task = await createRepoTask("task-default", null);
+
+    const result = await ctx.workflowService.startTask(task);
+
+    expect(result.status).toBe("WORKING");
+    expect(result.execution).toEqual({
+      id: expect.any(String),
+      workflowId: "simple",
+    });
+    expect(result.step?.stepId).toBe("implement");
+  });
+
   test("starts from retry_from_step using the previously visited path", async () => {
     const task = await createRepoTask("task-retry", "aop-default");
     await ctx.taskRepository.update(task.id, { retry_from_step: "full-review" });
@@ -277,7 +291,7 @@ describe("LocalWorkflowService", () => {
     );
   });
 
-  const createRepoTask = async (taskId: string, workflowName: string): Promise<Task> => {
+  const createRepoTask = async (taskId: string, workflowName: string | null): Promise<Task> => {
     await createTestRepo(db, `repo-${taskId}`, `/tmp/${taskId}`);
     await createTestTask(db, taskId, `repo-${taskId}`, `changes/${taskId}`, "READY");
     await ctx.taskRepository.update(taskId, { preferred_workflow: workflowName });

@@ -63,7 +63,24 @@ export const getAllSettings = async (ctx: LocalServerContext): Promise<GetAllSet
   return { success: true, settings };
 };
 
-const validateSettingValue = (key: SettingKey, value: string): SetSettingError | null => {
+const validateSettingValue = async (
+  ctx: LocalServerContext,
+  key: SettingKey,
+  value: string,
+): Promise<SetSettingError | null> => {
+  if (key === SettingKey.DEFAULT_WORKFLOW) {
+    const validValues = await ctx.workflowService.listWorkflows();
+    if (!validValues.includes(value)) {
+      return {
+        code: "INVALID_VALUE",
+        key,
+        value,
+        validValues,
+      };
+    }
+    return null;
+  }
+
   if (key === SettingKey.AGENT_PROVIDER && !isValidProviderValue(value)) {
     return { code: "INVALID_VALUE", key, value, validValues: VALID_PROVIDER_VALUES };
   }
@@ -107,7 +124,7 @@ export const setSetting = async (
     };
   }
 
-  const valueError = validateSettingValue(key, value);
+  const valueError = await validateSettingValue(ctx, key, value);
   if (valueError) {
     return { success: false, error: valueError };
   }
@@ -131,7 +148,7 @@ export const setAllSettings = async (
         error: { code: "INVALID_KEY", key: entry.key, validKeys: VALID_KEYS },
       };
     }
-    const valueError = validateSettingValue(entry.key, entry.value);
+    const valueError = await validateSettingValue(ctx, entry.key, entry.value);
     if (valueError) {
       return { success: false, error: valueError };
     }

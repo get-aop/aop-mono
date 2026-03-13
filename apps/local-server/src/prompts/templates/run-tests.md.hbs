@@ -4,12 +4,32 @@ You are running tests for an implementation in a software project.
 
 ## Instructions
 
-Run tests for the implementation at {{worktree.path}}.
+Run the required local non-E2E verification for the implementation at {{worktree.path}}.
 
-1. Identify the test command for this project
-2. Run the relevant tests
-3. Analyze any failures and report results clearly
+1. Read `.github/workflows/aop-ci.yml` and match the local non-E2E verification bar it defines
+2. Inspect the current worktree diff to determine the smallest command set that still covers the changed code
+3. Run the commands and record exact results in `agent-review-report.md` under `{{task.changePath}}`
 
-Do NOT fix failing tests — only report the results. Fixes happen in a separate step.
+### Verification Rules
+
+- When shared infrastructure or multiple workspaces changed, run:
+  - `bun run build`
+  - `bun run test:ci`
+- When changes are isolated to one workspace or package, you may use the smallest workspace-scoped commands that still cover the touched code instead of the full repo commands
+- If any required command fails, report the failure clearly and emit `TESTS_FAIL`
+- Do not claim success unless you ran the commands you list
+- Do NOT fix failing tests in this step. Fixes happen in a separate step.
+
+### Output Requirements
+
+Update `agent-review-report.md` with:
+
+1. Commands run
+2. Pass or fail for each command
+3. Whether the chosen command set matches the local non-E2E CI bar
+4. Any gap you could not validate locally
+
+If all required local verification passed, emit `TESTS_PASS`.
+If any required local verification failed or could not be completed, emit `TESTS_FAIL`.
 
 {{> output-signals}}

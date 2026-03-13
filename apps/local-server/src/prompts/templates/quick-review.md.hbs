@@ -13,7 +13,7 @@ This is not another full review. Focus on the existing findings, the files chang
 1. Read `agent-review-report.md` from the change directory (`{{task.changePath}}`)
 2. Inspect the current worktree state, including staged, unstaged, and untracked changes
 3. Verify each reported issue is fixed
-4. Run the smallest relevant verification commands for the touched code
+4. Record the exact commands you ran and use the smallest relevant verification commands for the touched code
 5. Record any remaining or newly introduced issues only if they are clear and important
 
 Do not require fixes to be committed to `HEAD` during review. In AOP execution, automatic handoff performs the final commit/branch handoff after the task reaches `DONE`.
@@ -33,5 +33,7 @@ Update `agent-review-report.md` in the change directory (`{{task.changePath}}`) 
 2. Which prior issues were fixed
 3. Any remaining issues or important new regressions
 4. Overall assessment for this iteration
+
+Do not emit `REVIEW_PASSED` unless the report includes the commands you ran and those required local checks are green.
 
 {{> output-signals}}

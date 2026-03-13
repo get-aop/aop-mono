@@ -22,27 +22,29 @@ steps:
       - condition: __none__
         target: iterate
       - condition: ALL_TASKS_DONE
-        target: cleanup-review
+        target: run-tests
       - condition: failure
         target: __blocked__
 
-  cleanup-review:
-    id: cleanup-review
-    type: review
-    promptTemplate: cleanup-review.md.hbs
+  run-tests:
+    id: run-tests
+    type: test
+    promptTemplate: run-tests.md.hbs
     maxAttempts: 1
     agent:
       provider: openai
       model: gpt-5.4
       reasoning: medium
     signals:
-      - name: CLEANUP_COMPLETE
-        description: low-signal cleanup and simplification pass is done
+      - name: TESTS_PASS
+        description: required local verification passed
+      - name: TESTS_FAIL
+        description: required local verification failed
     transitions:
-      - condition: CLEANUP_COMPLETE
+      - condition: TESTS_PASS
         target: full-review
-      - condition: __none__
-        target: full-review
+      - condition: TESTS_FAIL
+        target: fix-issues
       - condition: failure
         target: __blocked__
 
