@@ -19,6 +19,7 @@ export const buildComparisonLines = (
   return [
     `Scenario: ${comparison.scenario}`,
     `- AOP success: ${aopResult.success ? "yes" : "no"}`,
+    `- AOP workflow: ${aopResult.workflow ?? "n/a"}`,
     `- Pure Codex success: ${pureResult.success ? "yes" : "no"}`,
     `- AOP missing required outputs: ${
       aopResult.missingRequiredChangedFiles.length === 0

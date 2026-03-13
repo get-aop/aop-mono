@@ -166,6 +166,7 @@ const buildPureBenchmarkResult = async (params: {
     mode: "pure-codex",
     provider: "codex",
     model: process.env.AOP_CODEX_MODEL ?? null,
+    workflow: null,
     reasoningEffort: process.env.AOP_CODEX_REASONING_EFFORT ?? null,
     success:
       runResult.exitCode === 0 &&

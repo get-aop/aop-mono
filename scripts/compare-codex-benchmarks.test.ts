@@ -11,6 +11,7 @@ const createResult = (
   mode,
   provider: "codex",
   model: null,
+  workflow: mode === "aop-codex" ? "aop-default" : null,
   reasoningEffort: null,
   success: true,
   metrics: {
@@ -75,6 +76,7 @@ describe("compare-codex-benchmarks", () => {
     const lines = buildComparisonLines(aop, pure);
 
     expect(lines).toContain("- AOP success: no");
+    expect(lines).toContain("- AOP workflow: aop-default");
     expect(lines).toContain("- Pure Codex success: yes");
     expect(lines).toContain("- AOP missing required outputs: src/cli.ts, tests/cli.test.ts");
     expect(lines).toContain("- Pure Codex missing required outputs: none");

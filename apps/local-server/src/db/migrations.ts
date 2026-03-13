@@ -8,9 +8,12 @@ export const runMigrations = async (db: Kysely<Database>): Promise<void> => {
   await insertDefaultSettings(db);
   await createWorkflowsTable(db);
   await createReposTable(db);
+  await createTasksTable(db);
   await createTaskSourcesTable(db);
   await createTaskDependenciesTable(db);
-  await dropLegacyTaskTables(db);
+  await createExecutionsTable(db);
+  await createStepExecutionsTable(db);
+  await createStepLogsTable(db);
   await createInteractiveSessionsTable(db);
   await createSessionMessagesTable(db);
 };
@@ -77,6 +80,34 @@ const createReposTable = async (db: Kysely<Database>): Promise<void> => {
     .execute();
 };
 
+const createTasksTable = async (db: Kysely<Database>): Promise<void> => {
+  await db.schema
+    .createTable("tasks")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("repo_id", "text", (col) => col.notNull().references("repos.id").onDelete("cascade"))
+    .addColumn("change_path", "text", (col) => col.notNull())
+    .addColumn("worktree_path", "text")
+    .addColumn("status", "text", (col) => col.notNull())
+    .addColumn("ready_at", "text")
+    .addColumn("preferred_workflow", "text")
+    .addColumn("base_branch", "text")
+    .addColumn("preferred_provider", "text")
+    .addColumn("retry_from_step", "text")
+    .addColumn("resume_input", "text")
+    .addColumn("created_at", "text", (col) => col.notNull())
+    .addColumn("updated_at", "text", (col) => col.notNull())
+    .execute();
+
+  await db.schema
+    .createIndex("idx_tasks_repo_change_path")
+    .ifNotExists()
+    .on("tasks")
+    .columns(["repo_id", "change_path"])
+    .unique()
+    .execute();
+};
+
 const createTaskSourcesTable = async (db: Kysely<Database>): Promise<void> => {
   await db.schema
     .createTable("task_sources")
@@ -136,12 +167,78 @@ const createTaskDependenciesTable = async (db: Kysely<Database>): Promise<void> 
     .execute();
 };
 
-const dropLegacyTaskTables = async (db: Kysely<Database>): Promise<void> => {
-  await sql`DROP TABLE IF EXISTS step_logs`.execute(db);
-  await sql`DROP TABLE IF EXISTS execution_logs`.execute(db);
-  await sql`DROP TABLE IF EXISTS step_executions`.execute(db);
-  await sql`DROP TABLE IF EXISTS executions`.execute(db);
-  await sql`DROP TABLE IF EXISTS tasks`.execute(db);
+const createExecutionsTable = async (db: Kysely<Database>): Promise<void> => {
+  await db.schema
+    .createTable("executions")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("task_id", "text", (col) => col.notNull())
+    .addColumn("workflow_id", "text", (col) => col.notNull().defaultTo("aop-default"))
+    .addColumn("status", "text", (col) => col.notNull())
+    .addColumn("visited_steps", "text", (col) => col.notNull().defaultTo("[]"))
+    .addColumn("iteration", "integer", (col) => col.notNull().defaultTo(0))
+    .addColumn("started_at", "text", (col) => col.notNull())
+    .addColumn("completed_at", "text")
+    .execute();
+
+  await db.schema
+    .createIndex("idx_executions_task_id")
+    .ifNotExists()
+    .on("executions")
+    .column("task_id")
+    .execute();
+};
+
+const createStepExecutionsTable = async (db: Kysely<Database>): Promise<void> => {
+  await db.schema
+    .createTable("step_executions")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("execution_id", "text", (col) =>
+      col.notNull().references("executions.id").onDelete("cascade"),
+    )
+    .addColumn("step_id", "text")
+    .addColumn("step_type", "text")
+    .addColumn("agent_pid", "integer")
+    .addColumn("session_id", "text")
+    .addColumn("status", "text", (col) => col.notNull())
+    .addColumn("exit_code", "integer")
+    .addColumn("signal", "text")
+    .addColumn("pause_context", "text")
+    .addColumn("error", "text")
+    .addColumn("attempt", "integer")
+    .addColumn("iteration", "integer")
+    .addColumn("signals_json", "text")
+    .addColumn("started_at", "text", (col) => col.notNull())
+    .addColumn("ended_at", "text")
+    .execute();
+
+  await db.schema
+    .createIndex("idx_step_executions_execution_id")
+    .ifNotExists()
+    .on("step_executions")
+    .column("execution_id")
+    .execute();
+};
+
+const createStepLogsTable = async (db: Kysely<Database>): Promise<void> => {
+  await db.schema
+    .createTable("step_logs")
+    .ifNotExists()
+    .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+    .addColumn("step_execution_id", "text", (col) =>
+      col.notNull().references("step_executions.id").onDelete("cascade"),
+    )
+    .addColumn("content", "text", (col) => col.notNull())
+    .addColumn("created_at", "text", (col) => col.notNull())
+    .execute();
+
+  await db.schema
+    .createIndex("idx_step_logs_step_execution_id")
+    .ifNotExists()
+    .on("step_logs")
+    .column("step_execution_id")
+    .execute();
 };
 
 const createInteractiveSessionsTable = async (db: Kysely<Database>): Promise<void> => {

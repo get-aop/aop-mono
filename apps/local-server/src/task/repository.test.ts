@@ -1,21 +1,26 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Kysely } from "kysely";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
 import type { TaskEvent, TaskEventEmitter } from "../events/task-events.ts";
 import { createLinearStore, type LinearStore } from "../integrations/linear/store.ts";
+import { updateTaskDocStatus } from "../task-docs/task.ts";
 import { createTaskRepository, type TaskRepository } from "./repository.ts";
 
 describe("task/repository", () => {
   let db: Kysely<Database>;
   let repo: TaskRepository;
   let linearStore: LinearStore;
+  let repoPath: string;
 
   beforeEach(async () => {
     db = await createTestDb();
     repo = createTaskRepository(db);
     linearStore = createLinearStore(db);
-    await createTestRepo(db, "repo-1", "/test/repo");
+    repoPath = join(tmpdir(), `aop-task-repository-${Date.now()}`);
+    await createTestRepo(db, "repo-1", repoPath);
   });
 
   afterEach(async () => {
@@ -189,6 +194,23 @@ describe("task/repository", () => {
 
       expect(updated?.status).toBe("WORKING");
       expect(updated?.worktree_path).toBe("/path/to/worktree");
+    });
+
+    test("preserves runtime state across repository recreation when task docs drift", async () => {
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "READY");
+
+      await repo.update("task-1", {
+        status: "WORKING",
+        worktree_path: "/tmp/aop/worktrees/task-1",
+      });
+      await updateTaskDocStatus(join(repoPath, "docs/tasks/feat-1/task.md"), "DONE");
+
+      repo = createTaskRepository(db);
+
+      const task = await repo.get("task-1");
+
+      expect(task?.status).toBe("WORKING");
+      expect(task?.worktree_path).toBe("/tmp/aop/worktrees/task-1");
     });
   });
 
@@ -584,6 +606,30 @@ describe("task/repository", () => {
       const dependencyState = await repo.getDependencyState("task-blocked");
 
       expect(task?.id).toBe("task-unrelated");
+      expect(dependencyState).toEqual({
+        dependencyState: "waiting",
+        blockedByTaskIds: ["task-upstream"],
+        blockedByRefs: [],
+      });
+    });
+
+    test("keeps dependent tasks waiting after repository recreation while upstream runtime is still working", async () => {
+      await createTestTask(db, "task-upstream", "repo-1", "changes/upstream", "READY");
+      await createTestTask(db, "task-blocked", "repo-1", "changes/blocked", "READY");
+      await linearStore.replaceTaskDependencies("task-blocked", ["task-upstream"]);
+      await repo.update("task-upstream", {
+        status: "WORKING",
+        worktree_path: "/tmp/aop/worktrees/task-upstream",
+      });
+      await updateTaskDocStatus(
+        join(repoPath, "docs/tasks/upstream/task.md"),
+        "DONE",
+      );
+
+      repo = createTaskRepository(db);
+
+      const dependencyState = await repo.getDependencyState("task-blocked");
+
       expect(dependencyState).toEqual({
         dependencyState: "waiting",
         blockedByTaskIds: ["task-upstream"],

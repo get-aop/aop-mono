@@ -1,5 +1,5 @@
 import type { LLMProvider, RunOptions, RunResult } from "../types";
-import { createWatchdog, getFileMtime, type Watchdog } from "./claude-code";
+import { createFileActivityTracker, createWatchdog, type Watchdog } from "./claude-code";
 import { buildSpawnEnv } from "./spawn-env";
 
 export class CursorCliProvider implements LLMProvider {
@@ -46,9 +46,10 @@ export class CursorCliProvider implements LLMProvider {
 
     const logPath = options.logFilePath;
     if (options.inactivityTimeoutMs && logPath) {
+      const getLastActivity = createFileActivityTracker(logPath);
       watchdog = createWatchdog(
         options.inactivityTimeoutMs,
-        () => getFileMtime(logPath),
+        getLastActivity,
         () => {
           timedOut = true;
           proc.kill();

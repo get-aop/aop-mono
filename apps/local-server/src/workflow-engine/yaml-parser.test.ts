@@ -497,7 +497,7 @@ describe("aop-default workflow integration", () => {
     expect(failTransition?.onMaxIterations).toBeUndefined();
     expect(step?.agent).toEqual({
       provider: "openai",
-      model: "gpt-5.3-codex",
+      model: "gpt-5.4",
       reasoning: "extra-high",
     });
   });
@@ -683,5 +683,81 @@ describe("aop-default workflow integration", () => {
       ctx,
     );
     expect(result.type).toBe("blocked");
+  });
+});
+
+describe("aop-codex-fast workflow integration", () => {
+  test("parses aop-codex-fast workflow from file", async () => {
+    const workflow = await loadOfficialWorkflow("aop-codex-fast");
+
+    expect(workflow.name).toBe("aop-codex-fast");
+    expect(workflow.initialStep).toBe("iterate");
+    expect(Object.keys(workflow.steps).sort()).toEqual([
+      "debug-failures",
+      "fix-issues",
+      "full-review",
+      "iterate",
+      "quick-review",
+      "run-tests",
+    ]);
+    expect(workflow.terminalStates).toEqual(["__done__", "__blocked__"]);
+  });
+
+  test("iterate step uses medium reasoning for faster implementation loops", async () => {
+    const workflow = await loadOfficialWorkflow("aop-codex-fast");
+    const step = workflow.steps.iterate;
+
+    expect(step?.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoning: "medium",
+    });
+    expect(step?.transitions).toContainEqual({ condition: "CHUNK_DONE", target: "iterate" });
+    expect(step?.transitions).toContainEqual({
+      condition: "ALL_TASKS_DONE",
+      target: "run-tests",
+    });
+  });
+
+  test("run-tests routes directly to full-review in the fast workflow", async () => {
+    const workflow = await loadOfficialWorkflow("aop-codex-fast");
+    const step = workflow.steps["run-tests"];
+
+    expect(step?.transitions).toContainEqual({
+      condition: "TESTS_PASS",
+      target: "full-review",
+    });
+    expect(step?.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoning: "low",
+    });
+  });
+
+  test("fast workflow keeps a bounded fix loop after review", async () => {
+    const workflow = await loadOfficialWorkflow("aop-codex-fast");
+    const fullReview = workflow.steps["full-review"];
+    const quickReview = workflow.steps["quick-review"];
+
+    expect(fullReview?.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoning: "medium",
+    });
+    expect(fullReview?.transitions).toContainEqual({
+      condition: "REVIEW_FAILED",
+      target: "fix-issues",
+    });
+    expect(quickReview?.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoning: "low",
+    });
+    expect(quickReview?.transitions).toContainEqual({
+      condition: "REVIEW_FAILED",
+      target: "fix-issues",
+      maxIterations: 2,
+      onMaxIterations: "__blocked__",
+    });
   });
 });

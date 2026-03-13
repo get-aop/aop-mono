@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { LLMProvider } from "../types";
-import { ClaudeCodeProvider, createWatchdog } from "./claude-code";
+import { ClaudeCodeProvider, createFileActivityTracker, createWatchdog } from "./claude-code";
 
 const createMockReadableStream = (chunks: string[]): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder();
@@ -228,6 +228,25 @@ describe("createWatchdog", () => {
     watchdog.stop();
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(onTimeoutCalled).toBe(false);
+  });
+});
+
+describe("createFileActivityTracker", () => {
+  test("preserves the last observed activity when the log file disappears", () => {
+    const readMtime = mock<number, [string]>();
+    readMtime
+      .mockReturnValueOnce(Number.NaN)
+      .mockReturnValueOnce(250)
+      .mockReturnValueOnce(Number.NaN);
+
+    const getLastActivity = createFileActivityTracker("/tmp/provider-log.jsonl", {
+      getNow: () => 100,
+      readMtime,
+    });
+
+    expect(getLastActivity()).toBe(100);
+    expect(getLastActivity()).toBe(250);
+    expect(getLastActivity()).toBe(250);
   });
 });
 

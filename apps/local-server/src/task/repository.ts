@@ -66,26 +66,6 @@ interface DependencyRow {
   externalRef: string | null;
 }
 
-interface RuntimeTaskState {
-  worktree_path: string | null;
-  ready_at: string | null;
-  preferred_workflow: string | null;
-  base_branch: string | null;
-  preferred_provider: string | null;
-  retry_from_step: string | null;
-  resume_input: string | null;
-}
-
-const DEFAULT_RUNTIME_STATE: RuntimeTaskState = {
-  worktree_path: null,
-  ready_at: null,
-  preferred_workflow: null,
-  base_branch: null,
-  preferred_provider: null,
-  retry_from_step: null,
-  resume_input: null,
-};
-
 const TASK_DIR = aopPaths.relativeTaskDocs();
 
 const taskIdFor = (repoId: string, changePath: string): string =>
@@ -132,28 +112,6 @@ const getTaskUpdateValue = <T>(updates: TaskUpdate, key: keyof TaskUpdate, curre
 
   return (updates[key] ?? null) as T;
 };
-
-const buildRuntimeStateFromTask = (task: NewTask): RuntimeTaskState => ({
-  ...DEFAULT_RUNTIME_STATE,
-  worktree_path: task.worktree_path ?? null,
-  ready_at: task.ready_at ?? null,
-  preferred_workflow: task.preferred_workflow ?? null,
-  base_branch: task.base_branch ?? null,
-  preferred_provider: task.preferred_provider ?? null,
-  retry_from_step: task.retry_from_step ?? null,
-  resume_input: task.resume_input ?? null,
-});
-
-const mergeRuntimeState = (state: RuntimeTaskState, updates: TaskUpdate): RuntimeTaskState => ({
-  ...state,
-  worktree_path: getTaskUpdateValue(updates, "worktree_path", state.worktree_path),
-  ready_at: getTaskUpdateValue(updates, "ready_at", state.ready_at),
-  preferred_workflow: getTaskUpdateValue(updates, "preferred_workflow", state.preferred_workflow),
-  base_branch: getTaskUpdateValue(updates, "base_branch", state.base_branch),
-  preferred_provider: getTaskUpdateValue(updates, "preferred_provider", state.preferred_provider),
-  retry_from_step: getTaskUpdateValue(updates, "retry_from_step", state.retry_from_step),
-  resume_input: getTaskUpdateValue(updates, "resume_input", state.resume_input),
-});
 
 const matchesFilters = (task: Task, filters?: ListFilters): boolean => {
   if (filters?.status && task.status !== filters.status) return false;
@@ -253,21 +211,45 @@ const canRunTask = async (
   return isTaskExecutable(task);
 };
 
+const isRuntimeAuthoritativeTask = (task: Pick<Task, "status" | "worktree_path"> | null): boolean =>
+  task !== null &&
+  (task.worktree_path !== null ||
+    task.status === TaskStatus.WORKING ||
+    task.status === TaskStatus.RESUMING ||
+    task.status === TaskStatus.PAUSED);
+
 export const createTaskRepository = (
   db: Kysely<Database>,
   options: TaskRepositoryOptions = {},
 ): TaskRepository => {
   const { eventEmitter } = options;
   const repoRepository = createRepoRepository(db);
-  const runtime = new Map<string, RuntimeTaskState>();
   const cache = new Map<string, Task>();
 
-  const getRuntimeState = (taskId: string): RuntimeTaskState => {
-    const existing = runtime.get(taskId);
-    if (existing) return existing;
-    const next = { ...DEFAULT_RUNTIME_STATE };
-    runtime.set(taskId, next);
-    return next;
+  const getPersistedTask = async (id: string): Promise<Task | null> =>
+    (await db.selectFrom("tasks").selectAll().where("id", "=", id).executeTakeFirst()) ?? null;
+
+  const upsertTask = async (task: Task): Promise<void> => {
+    await db
+      .insertInto("tasks")
+      .values(task)
+      .onConflict((oc) =>
+        oc.column("id").doUpdateSet({
+          repo_id: task.repo_id,
+          change_path: task.change_path,
+          worktree_path: task.worktree_path,
+          status: task.status,
+          ready_at: task.ready_at,
+          preferred_workflow: task.preferred_workflow,
+          base_branch: task.base_branch,
+          preferred_provider: task.preferred_provider,
+          retry_from_step: task.retry_from_step,
+          resume_input: task.resume_input,
+          created_at: task.created_at,
+          updated_at: task.updated_at,
+        }),
+      )
+      .execute();
   };
 
   const mapTaskFromDisk = async (
@@ -279,24 +261,43 @@ export const createTaskRepository = (
     const taskFilePath = join(repoPath, normalizedChangePath, "task.md");
     const doc = await parseTaskDoc(taskFilePath);
     const id = doc.id ?? taskIdFor(repoId, normalizedChangePath);
-    const state = getRuntimeState(id);
     const taskChangePath = doc.changePath ?? normalizedChangePath;
-
-    return {
+    const persisted = await getPersistedTask(id);
+    const nextTask: Task = {
       id,
       repo_id: repoId,
       change_path: taskChangePath,
-      worktree_path: state.worktree_path,
-      status: doc.status,
-      ready_at: state.ready_at,
-      preferred_workflow: state.preferred_workflow,
-      base_branch: state.base_branch ?? doc.branch,
-      preferred_provider: state.preferred_provider,
-      retry_from_step: state.retry_from_step,
-      resume_input: state.resume_input,
-      created_at: doc.createdAt,
-      updated_at: doc.updatedAt,
+      worktree_path: persisted?.worktree_path ?? null,
+      status: isRuntimeAuthoritativeTask(persisted) ? persisted.status : doc.status,
+      ready_at: persisted?.ready_at ?? null,
+      preferred_workflow: persisted?.preferred_workflow ?? null,
+      base_branch: persisted?.base_branch ?? doc.branch,
+      preferred_provider: persisted?.preferred_provider ?? null,
+      retry_from_step: persisted?.retry_from_step ?? null,
+      resume_input: persisted?.resume_input ?? null,
+      created_at: persisted?.created_at ?? doc.createdAt,
+      updated_at: isRuntimeAuthoritativeTask(persisted) ? persisted.updated_at : doc.updatedAt,
     };
+
+    if (
+      !persisted ||
+      persisted.repo_id !== nextTask.repo_id ||
+      persisted.change_path !== nextTask.change_path ||
+      persisted.status !== nextTask.status ||
+      persisted.worktree_path !== nextTask.worktree_path ||
+      persisted.ready_at !== nextTask.ready_at ||
+      persisted.preferred_workflow !== nextTask.preferred_workflow ||
+      persisted.base_branch !== nextTask.base_branch ||
+      persisted.preferred_provider !== nextTask.preferred_provider ||
+      persisted.retry_from_step !== nextTask.retry_from_step ||
+      persisted.resume_input !== nextTask.resume_input ||
+      persisted.created_at !== nextTask.created_at ||
+      persisted.updated_at !== nextTask.updated_at
+    ) {
+      await upsertTask(nextTask);
+    }
+
+    return nextTask;
   };
 
   const emitCreated = (task: Task): void => {
@@ -363,8 +364,6 @@ export const createTaskRepository = (
   const emitRemovedSnapshotTasks = (next: Map<string, Task>): void => {
     for (const [taskId, previous] of cache.entries()) {
       if (next.has(taskId)) continue;
-
-      runtime.delete(taskId);
       emitRemoved(previous);
     }
   };
@@ -522,7 +521,21 @@ export const createTaskRepository = (
     const frontmatter = buildTaskFrontmatter(task, title);
 
     await writeTaskDoc(join(taskDir, "task.md"), frontmatter, buildTaskBody(title));
-    runtime.set(taskId, buildRuntimeStateFromTask(task));
+    await upsertTask({
+      id: task.id,
+      repo_id: task.repo_id,
+      change_path: task.change_path,
+      worktree_path: task.worktree_path ?? null,
+      status: task.status ?? TaskStatus.DRAFT,
+      ready_at: task.ready_at ?? null,
+      preferred_workflow: task.preferred_workflow ?? null,
+      base_branch: task.base_branch ?? null,
+      preferred_provider: task.preferred_provider ?? null,
+      retry_from_step: task.retry_from_step ?? null,
+      resume_input: task.resume_input ?? null,
+      created_at: task.created_at ?? new Date().toISOString(),
+      updated_at: task.updated_at ?? new Date().toISOString(),
+    });
     return getTaskOrRefreshFallback(taskId, task.repo_id, repo.path, changePath);
   };
 
@@ -540,7 +553,27 @@ export const createTaskRepository = (
     const existing = cache.get(id);
     if (!existing) return null;
 
-    runtime.set(id, mergeRuntimeState(getRuntimeState(id), updates));
+    const updated: Task = {
+      ...existing,
+      worktree_path: getTaskUpdateValue(updates, "worktree_path", existing.worktree_path),
+      status: getTaskUpdateValue(updates, "status", existing.status),
+      ready_at: getTaskUpdateValue(updates, "ready_at", existing.ready_at),
+      preferred_workflow: getTaskUpdateValue(
+        updates,
+        "preferred_workflow",
+        existing.preferred_workflow,
+      ),
+      base_branch: getTaskUpdateValue(updates, "base_branch", existing.base_branch),
+      preferred_provider: getTaskUpdateValue(
+        updates,
+        "preferred_provider",
+        existing.preferred_provider,
+      ),
+      retry_from_step: getTaskUpdateValue(updates, "retry_from_step", existing.retry_from_step),
+      resume_input: getTaskUpdateValue(updates, "resume_input", existing.resume_input),
+      updated_at: new Date().toISOString(),
+    };
+    await upsertTask(updated);
     await syncTaskStatusToDisk(existing, updates.status);
 
     await refreshCache();
