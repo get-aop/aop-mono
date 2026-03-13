@@ -289,7 +289,7 @@ export const TaskDetail = ({ taskId, onClose, onNavigate }: TaskDetailProps) => 
     <div className="flex h-screen flex-col bg-aop-black" data-testid="task-detail">
       <Header onClose={onClose} onNavigate={onNavigate} />
 
-      <main className="flex flex-1 flex-col overflow-hidden px-6 py-3">
+      <main className="flex flex-1 flex-col overflow-auto px-6 py-3">
         <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-3 min-h-0">
           <TaskInfoCard
             task={task}

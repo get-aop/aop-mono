@@ -80,7 +80,7 @@ export const App = () => {
 
   return (
     <div className="flex h-screen flex-col">
-      <div className="flex-1 overflow-hidden">{renderContent()}</div>
+      <div className="flex-1 overflow-auto">{renderContent()}</div>
     </div>
   );
 };
