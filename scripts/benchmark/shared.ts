@@ -45,6 +45,7 @@ export interface BenchmarkResult {
   mode: BenchmarkMode;
   provider: string;
   model: string | null;
+  workflow: string | null;
   reasoningEffort: string | null;
   success: boolean;
   metrics: BenchmarkMetrics;
@@ -303,6 +304,7 @@ export const loadBenchmarkResult = async (resultPath: string): Promise<Benchmark
 export const buildBenchmarkSummaryLines = (result: BenchmarkResult): string[] => [
   `${result.mode} benchmark: ${result.scenario}`,
   `- Success: ${result.success ? "yes" : "no"}`,
+  `- Workflow: ${result.workflow ?? "n/a"}`,
   `- Total duration: ${result.metrics.totalDurationMs}ms`,
   `- First task completed: ${
     result.metrics.firstTaskCompletedMs === null

@@ -33,8 +33,28 @@ export const getFileMtime = (path: string): number => {
   try {
     return statSync(path).mtimeMs;
   } catch {
-    return Date.now();
+    return Number.NaN;
   }
+};
+
+export const createFileActivityTracker = (
+  path: string,
+  options: {
+    getNow?: () => number;
+    readMtime?: (path: string) => number;
+  } = {},
+): (() => number) => {
+  const getNow = options.getNow ?? Date.now;
+  const readMtime = options.readMtime ?? getFileMtime;
+  let lastActivity = getNow();
+
+  return () => {
+    const mtime = readMtime(path);
+    if (!Number.isNaN(mtime)) {
+      lastActivity = mtime;
+    }
+    return lastActivity;
+  };
 };
 
 export class ClaudeCodeProvider implements LLMProvider {
@@ -114,9 +134,10 @@ export class ClaudeCodeProvider implements LLMProvider {
     let watchdog: Watchdog | undefined;
 
     if (options.inactivityTimeoutMs) {
+      const getLastActivity = createFileActivityTracker(logFilePath);
       watchdog = createWatchdog(
         options.inactivityTimeoutMs,
-        () => getFileMtime(logFilePath),
+        getLastActivity,
         () => {
           timedOut = true;
           proc.kill();

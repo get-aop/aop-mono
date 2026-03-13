@@ -2,7 +2,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { LLMProvider, RunOptions, RunResult } from "../types";
-import { createWatchdog, getFileMtime, type Watchdog } from "./claude-code";
+import { createFileActivityTracker, createWatchdog, type Watchdog } from "./claude-code";
 import { buildSpawnEnv } from "./spawn-env";
 
 const CODEX_MODEL_ENV = "AOP_CODEX_MODEL";
@@ -61,9 +61,10 @@ export class CodexProvider implements LLMProvider {
 
     const logPath = options.logFilePath;
     if (options.inactivityTimeoutMs && logPath) {
+      const getLastActivity = createFileActivityTracker(logPath);
       watchdog = createWatchdog(
         options.inactivityTimeoutMs,
-        () => getFileMtime(logPath),
+        getLastActivity,
         () => {
           timedOut = true;
           proc.kill();

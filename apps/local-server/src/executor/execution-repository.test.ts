@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Kysely } from "kysely";
 import type { Database } from "../db/schema.ts";
 import { createTestDb, createTestRepo, createTestTask } from "../db/test-utils.ts";
@@ -7,11 +9,13 @@ import { createExecutionRepository } from "./execution-repository.ts";
 describe("ExecutionRepository", () => {
   let db: Kysely<Database>;
   let repo: ReturnType<typeof createExecutionRepository>;
+  let repoPath: string;
 
   beforeEach(async () => {
     db = await createTestDb();
     repo = createExecutionRepository(db);
-    await createTestRepo(db, "repo-1", "/path/to/repo");
+    repoPath = join(tmpdir(), `aop-execution-repository-${Date.now()}`);
+    await createTestRepo(db, "repo-1", repoPath);
     await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
   });
 
@@ -33,6 +37,22 @@ describe("ExecutionRepository", () => {
       expect(execution.status).toBe("running");
       expect(execution.started_at).toBe("2024-01-01T00:00:00Z");
       expect(execution.completed_at).toBeNull();
+    });
+
+    test("persists executions across repository recreation", async () => {
+      await repo.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+
+      repo = createExecutionRepository(db);
+
+      const execution = await repo.getExecution("exec-1");
+
+      expect(execution).not.toBeNull();
+      expect(execution?.status).toBe("running");
     });
   });
 
@@ -137,6 +157,28 @@ describe("ExecutionRepository", () => {
       expect(step.status).toBe("running");
       expect(step.agent_pid).toBe(12345);
       expect(step.session_id).toBe("session-1");
+    });
+
+    test("persists step executions across repository recreation", async () => {
+      await repo.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+      await repo.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: "running",
+        started_at: "2024-01-01T00:00:00Z",
+      });
+
+      repo = createExecutionRepository(db);
+
+      const step = await repo.getStepExecution("step-1");
+
+      expect(step).not.toBeNull();
+      expect(step?.status).toBe("running");
     });
   });
 

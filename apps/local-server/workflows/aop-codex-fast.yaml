@@ -1,5 +1,5 @@
 version: 1
-name: aop-default
+name: aop-codex-fast
 initialStep: iterate
 steps:
   iterate:
@@ -10,7 +10,7 @@ steps:
     agent:
       provider: openai
       model: gpt-5.4
-      reasoning: high
+      reasoning: medium
     signals:
       - name: CHUNK_DONE
         description: completed a chunk, more tasks remain
@@ -34,7 +34,7 @@ steps:
     agent:
       provider: openai
       model: gpt-5.4
-      reasoning: medium
+      reasoning: low
     signals:
       - name: TESTS_PASS
         description: required local verification passed
@@ -42,7 +42,7 @@ steps:
         description: required local verification failed
     transitions:
       - condition: TESTS_PASS
-        target: cleanup-review
+        target: full-review
       - condition: TESTS_FAIL
         target: debug-failures
       - condition: failure
@@ -56,31 +56,13 @@ steps:
     agent:
       provider: openai
       model: gpt-5.4
-      reasoning: high
+      reasoning: medium
     signals:
       - name: FIX_COMPLETE
         description: root cause fixed and verified locally
     transitions:
       - condition: FIX_COMPLETE
         target: run-tests
-      - condition: failure
-        target: __blocked__
-
-  cleanup-review:
-    id: cleanup-review
-    type: review
-    promptTemplate: cleanup-review.md.hbs
-    maxAttempts: 1
-    agent:
-      provider: openai
-      model: gpt-5.4
-      reasoning: medium
-    signals:
-      - name: CLEANUP_COMPLETE
-        description: cleanup and simplification pass completed
-    transitions:
-      - condition: CLEANUP_COMPLETE
-        target: full-review
       - condition: failure
         target: __blocked__
 
@@ -92,7 +74,7 @@ steps:
     agent:
       provider: openai
       model: gpt-5.4
-      reasoning: extra-high
+      reasoning: medium
     signals:
       - name: REVIEW_PASSED
         description: all checks pass, no issues found
@@ -114,7 +96,7 @@ steps:
     agent:
       provider: openai
       model: gpt-5.4
-      reasoning: high
+      reasoning: medium
     signals:
       - name: FIX_COMPLETE
         description: all review issues have been addressed
@@ -132,7 +114,7 @@ steps:
     agent:
       provider: openai
       model: gpt-5.4
-      reasoning: medium
+      reasoning: low
     signals:
       - name: REVIEW_PASSED
         description: fixes verified, all checks pass

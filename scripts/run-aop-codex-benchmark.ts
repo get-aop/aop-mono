@@ -34,12 +34,28 @@ import {
 } from "./benchmark/shared.ts";
 
 const DEFAULT_SCENARIO = "notes-cli";
+const DEFAULT_WORKFLOW = "aop-default";
 const POLL_INTERVAL_MS = 1_000;
-const MAX_DURATION_MS = 30 * 60 * 1_000;
+const DEFAULT_MAX_DURATION_MS = 45 * 60 * 1_000;
+
+const parseMaxDurationMs = (): number => {
+  const raw = process.env.AOP_BENCHMARK_MAX_DURATION_MS;
+  if (!raw) {
+    return DEFAULT_MAX_DURATION_MS;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_DURATION_MS;
+};
 
 export const parseScenarioArg = (argv: string[]): string => {
   const explicit = argv.find((arg) => arg.startsWith("--scenario="));
   return explicit?.split("=")[1]?.trim() || process.env.AOP_BENCHMARK_SCENARIO || DEFAULT_SCENARIO;
+};
+
+export const parseBenchmarkWorkflowName = (argv: string[]): string => {
+  const explicit = argv.find((arg) => arg.startsWith("--workflow="));
+  return explicit?.split("=")[1]?.trim() || process.env.AOP_BENCHMARK_WORKFLOW || DEFAULT_WORKFLOW;
 };
 
 const assertCodexAvailable = async (): Promise<void> => {
@@ -70,7 +86,10 @@ const buildAopEnv = (params: {
   AOP_DASHBOARD_URL: `http://127.0.0.1:${params.dashboardPort}`,
 });
 
-const configureAopBenchmark = async (env: Record<string, string>): Promise<void> => {
+const configureAopBenchmark = async (
+  env: Record<string, string>,
+  workflowName: string,
+): Promise<void> => {
   const setProvider = await runAopCommand(
     ["config:set", "agent_provider", "codex"],
     undefined,
@@ -81,12 +100,12 @@ const configureAopBenchmark = async (env: Record<string, string>): Promise<void>
   }
 
   const setWorkflow = await runAopCommand(
-    ["config:set", "default_workflow", "aop-default"],
+    ["config:set", "default_workflow", workflowName],
     undefined,
     env,
   );
   if (setWorkflow.exitCode !== 0) {
-    throw new Error(`Failed to set default_workflow=aop-default: ${setWorkflow.stderr}`);
+    throw new Error(`Failed to set default_workflow=${workflowName}: ${setWorkflow.stderr}`);
   }
 };
 
@@ -126,9 +145,10 @@ const initializeAopBenchmark = async (
   scenario: BenchmarkScenario,
   repoPath: string,
   expectedTaskCount: number,
+  workflowName: string,
   env: Record<string, string>,
 ): Promise<TaskInfo[]> => {
-  await configureAopBenchmark(env);
+  await configureAopBenchmark(env, workflowName);
   const initRepo = await runAopCommand(["repo:init", repoPath], undefined, env);
   if (initRepo.exitCode !== 0) {
     throw new Error(`Failed to register benchmark repo: ${initRepo.stderr}`);
@@ -240,12 +260,21 @@ const buildAopBenchmarkResult = async (params: {
   runDir: string;
   repoPath: string;
   baseRef: string;
+  workflowName: string;
   startTime: number;
   maxConcurrentWorkingTasks: number;
   timings: Map<string, BenchmarkTaskTiming>;
 }): Promise<BenchmarkResult> => {
-  const { scenario, runDir, repoPath, baseRef, startTime, maxConcurrentWorkingTasks, timings } =
-    params;
+  const {
+    scenario,
+    runDir,
+    repoPath,
+    baseRef,
+    workflowName,
+    startTime,
+    maxConcurrentWorkingTasks,
+    timings,
+  } = params;
   const verification = await runCommand(scenario.verificationCommand, repoPath, process.env);
   const changedFiles = await collectChangedFiles(repoPath, baseRef);
   const unexpectedFilesChanged = computeUnexpectedChangedFiles(
@@ -267,6 +296,7 @@ const buildAopBenchmarkResult = async (params: {
     mode: "aop-codex",
     provider: "codex",
     model: process.env.AOP_CODEX_MODEL ?? null,
+    workflow: workflowName,
     reasoningEffort: process.env.AOP_CODEX_REASONING_EFFORT ?? null,
     success:
       verification.exitCode === 0 &&
@@ -296,6 +326,8 @@ const buildAopBenchmarkResult = async (params: {
 
 export const runAopCodexBenchmark = async (scenarioId: string): Promise<BenchmarkResult> => {
   const scenario = resolveBenchmarkScenario(scenarioId);
+  const workflowName = parseBenchmarkWorkflowName(process.argv.slice(2));
+  const maxDurationMs = parseMaxDurationMs();
   await assertBenchmarkFixtureIsWorkflowCompatible(scenario);
   await assertCodexAvailable();
 
@@ -321,6 +353,7 @@ export const runAopCodexBenchmark = async (scenarioId: string): Promise<Benchmar
       scenario,
       repoPath,
       scenario.expectedTaskDirs.length,
+      workflowName,
       env,
     );
     const taskIdByDir = buildTaskRefMap(discoveredTasks);
@@ -330,7 +363,7 @@ export const runAopCodexBenchmark = async (scenarioId: string): Promise<Benchmar
     const startTime = Date.now();
     let maxConcurrentWorkingTasks = 0;
 
-    while (Date.now() - startTime < MAX_DURATION_MS) {
+    while (Date.now() - startTime < maxDurationMs) {
       const status = await getFullStatus(env);
       if (!status) {
         await Bun.sleep(POLL_INTERVAL_MS);
@@ -351,6 +384,7 @@ export const runAopCodexBenchmark = async (scenarioId: string): Promise<Benchmar
           runDir,
           repoPath,
           baseRef,
+          workflowName,
           startTime,
           maxConcurrentWorkingTasks,
           timings,
@@ -363,14 +397,15 @@ export const runAopCodexBenchmark = async (scenarioId: string): Promise<Benchmar
       await Bun.sleep(POLL_INTERVAL_MS);
     }
 
-    throw new Error(`Benchmark timed out after ${MAX_DURATION_MS / 1000}s`);
+    throw new Error(`Benchmark timed out after ${maxDurationMs / 1000}s`);
   } finally {
     await stopLocalServer(localServer);
   }
 };
 
 const run = async (): Promise<void> => {
-  const scenarioId = parseScenarioArg(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const scenarioId = parseScenarioArg(argv);
   const result = await runAopCodexBenchmark(scenarioId);
   process.stdout.write(`${buildBenchmarkSummaryLines(result).join("\n")}\n`);
 };
