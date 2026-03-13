@@ -1,9 +1,10 @@
 import type { LocalServerContext } from "../../context.ts";
 import { initRepo } from "../../repo/handlers.ts";
 import { getLinearAccessToken } from "./access-token.ts";
-import { createLinearClient } from "./client.ts";
+import type { createLinearClient } from "./client.ts";
 import { createLinearImporter } from "./importer.ts";
 import { createLinearIssueResolver } from "./issue-resolver.ts";
+import { createRuntimeLinearClient } from "./runtime-client.ts";
 
 interface CreateLinearImportServiceOptions {
   ctx: LocalServerContext;
@@ -18,7 +19,8 @@ export const createLinearImportService = (options: CreateLinearImportServiceOpti
       throw new Error(`Not a git repository: ${params.cwd}`);
     }
 
-    const client = (options.createClient ?? createLinearClient)({
+    const clientFactory = options.createClient ?? createRuntimeLinearClient;
+    const client = clientFactory({
       apiKey: options.apiKey ?? process.env.LINEAR_API_KEY,
       getAccessToken: async () => getLinearAccessToken(options.ctx),
     });

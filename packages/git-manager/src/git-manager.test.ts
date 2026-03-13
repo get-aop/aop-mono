@@ -325,7 +325,7 @@ describe("GitManager", () => {
       expect(show).toContain("feature.txt");
 
       const currentBranch = await Bun.$`git branch --show-current`.cwd(repoPath).text();
-      expect(currentBranch.trim()).toBe("feat-auth");
+      expect(currentBranch.trim()).toBe("main");
 
       const featureFile = await Bun.file(`${repoPath}/feature.txt`).text();
       expect(featureFile.trim()).toBe("feature");
@@ -345,14 +345,61 @@ describe("GitManager", () => {
 
       expect(await Bun.file(`${repoPath}/.git/HEAD`).exists()).toBe(true);
       expect(await Bun.file(`${repoPath}/README.md`).exists()).toBe(true);
+      expect(await Bun.file(`${repoPath}/feature-one.txt`).exists()).toBe(true);
 
-      const siblingStatus = await Bun.$`git status --short`
-        .cwd(worktree2.path)
-        .quiet()
-        .nothrow();
+      const siblingStatus = await Bun.$`git status --short`.cwd(worktree2.path).quiet().nothrow();
 
       expect(siblingStatus.exitCode).toBe(0);
       expect(siblingStatus.stdout.toString()).toContain("feature-two.txt");
+    });
+
+    test("accumulates handed off commits from parallel worktrees on the current branch", async () => {
+      const manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });
+      await manager.init();
+
+      const worktree1 = await manager.createWorktree("task_alpha", "main", "feat-alpha");
+      const worktree2 = await manager.createWorktree("task_bravo", "main", "feat-bravo");
+
+      await Bun.$`echo "alpha" > alpha.txt`.cwd(worktree1.path).quiet();
+      await Bun.$`git add alpha.txt`.cwd(worktree1.path).quiet();
+      await Bun.$`git commit -m "Add alpha"`.cwd(worktree1.path).quiet();
+
+      await Bun.$`echo "bravo" > bravo.txt`.cwd(worktree2.path).quiet();
+      await Bun.$`git add bravo.txt`.cwd(worktree2.path).quiet();
+      await Bun.$`git commit -m "Add bravo"`.cwd(worktree2.path).quiet();
+
+      await manager.handoffWorktree("task_alpha", "Complete feat-alpha");
+      await manager.handoffWorktree("task_bravo", "Complete feat-bravo");
+
+      expect((await Bun.file(`${repoPath}/alpha.txt`).text()).trim()).toBe("alpha");
+      expect((await Bun.file(`${repoPath}/bravo.txt`).text()).trim()).toBe("bravo");
+
+      const currentBranch = await Bun.$`git branch --show-current`.cwd(repoPath).text();
+      expect(currentBranch.trim()).toBe("main");
+
+      const alphaBranch = await Bun.$`git branch --list feat-alpha`.cwd(repoPath).text();
+      const bravoBranch = await Bun.$`git branch --list feat-bravo`.cwd(repoPath).text();
+      expect(alphaBranch.trim()).toContain("feat-alpha");
+      expect(bravoBranch.trim()).toContain("feat-bravo");
+    });
+
+    test("applies a handed off commit even when task docs leave the repo working tree dirty", async () => {
+      const manager = new GitManager({ repoPath, repoId: TEST_REPO_ID });
+      await manager.init();
+
+      await Bun.$`mkdir -p docs/tasks/demo`.cwd(repoPath).quiet();
+      await Bun.write(`${repoPath}/docs/tasks/demo/task.md`, "---\nstatus: DRAFT\n---\n");
+
+      const worktree = await manager.createWorktree("task_dirty_docs", "main", "feat-dirty-docs");
+      await Bun.$`echo "from worktree" > hello.txt`.cwd(worktree.path).quiet();
+      await Bun.$`git add hello.txt`.cwd(worktree.path).quiet();
+      await Bun.$`git commit -m "Add hello"`.cwd(worktree.path).quiet();
+
+      await manager.handoffWorktree("task_dirty_docs", "Complete feat-dirty-docs");
+
+      expect((await Bun.file(`${repoPath}/hello.txt`).text()).trim()).toBe("from worktree");
+      const currentBranch = await Bun.$`git branch --show-current`.cwd(repoPath).text();
+      expect(currentBranch.trim()).toBe("main");
     });
   });
 });

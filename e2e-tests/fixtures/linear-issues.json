@@ -1,0 +1,68 @@
+{
+  "projects": [
+    { "id": "project-aop", "name": "AOP" }
+  ],
+  "users": [
+    {
+      "id": "user-me",
+      "name": "Marcelo Mendes",
+      "displayName": "Marcelo",
+      "email": "marcelo@example.com",
+      "isMe": true,
+      "active": true
+    }
+  ],
+  "issues": [
+    {
+      "id": "lin_get_201",
+      "identifier": "GET-201",
+      "title": "Create alpha output",
+      "description": "Create `alpha.txt` in the repository root with content `Alpha from Linear 201!`.",
+      "url": "https://linear.app/get-aop/issue/GET-201/create-alpha-output",
+      "priority": 3,
+      "state": { "name": "Todo", "type": "unstarted" },
+      "project": { "id": "project-aop", "name": "AOP" },
+      "assignee": { "id": "user-me", "name": "Marcelo Mendes", "displayName": "Marcelo" },
+      "team": { "key": "GET", "name": "Get-aop" },
+      "relations": { "nodes": [] }
+    },
+    {
+      "id": "lin_get_202",
+      "identifier": "GET-202",
+      "title": "Create blocker output",
+      "description": "Create `bravo.txt` in the repository root with content `Bravo from Linear 202!`.",
+      "url": "https://linear.app/get-aop/issue/GET-202/create-blocker-output",
+      "priority": 2,
+      "state": { "name": "Todo", "type": "unstarted" },
+      "project": { "id": "project-aop", "name": "AOP" },
+      "assignee": { "id": "user-me", "name": "Marcelo Mendes", "displayName": "Marcelo" },
+      "team": { "key": "GET", "name": "Get-aop" },
+      "relations": { "nodes": [] }
+    },
+    {
+      "id": "lin_get_203",
+      "identifier": "GET-203",
+      "title": "Create dependent output",
+      "description": "Create `charlie.txt` in the repository root with content `Charlie from Linear 203!`.",
+      "url": "https://linear.app/get-aop/issue/GET-203/create-dependent-output",
+      "priority": 3,
+      "state": { "name": "Todo", "type": "unstarted" },
+      "project": { "id": "project-aop", "name": "AOP" },
+      "assignee": { "id": "user-me", "name": "Marcelo Mendes", "displayName": "Marcelo" },
+      "team": { "key": "GET", "name": "Get-aop" },
+      "relations": {
+        "nodes": [
+          {
+            "type": "blocks",
+            "relatedIssue": {
+              "id": "lin_get_202",
+              "identifier": "GET-202",
+              "title": "Create blocker output",
+              "url": "https://linear.app/get-aop/issue/GET-202/create-blocker-output"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

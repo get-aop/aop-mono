@@ -86,7 +86,9 @@ const resolveProviderForStep = async (
   fallbackProvider?: LLMProvider,
 ): Promise<ResolvedStepProvider> => {
   const stepAgent = stepCommand.agent;
-  if (!stepAgent) {
+  const shouldBypassStepAgent = fallbackProvider?.name === "e2e-fixture";
+
+  if (!stepAgent || shouldBypassStepAgent) {
     return {
       provider: fallbackProvider ?? (await getProvider(ctx)),
     };

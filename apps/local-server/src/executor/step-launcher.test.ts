@@ -383,6 +383,83 @@ describe("step-launcher", () => {
 
       spawnSpy.mockRestore();
     });
+
+    test("keeps the e2e fixture provider even when the workflow step pins a live agent", async () => {
+      await createTestRepo(db, "repo-1", "/test/repo");
+      await createTestTask(db, "task-1", "repo-1", "changes/feat-1", "WORKING");
+
+      await ctx.executionRepository.createExecution({
+        id: "exec-1",
+        task_id: "task-1",
+        status: "running",
+        started_at: new Date().toISOString(),
+      });
+      await ctx.executionRepository.createStepExecution({
+        id: "step-1",
+        execution_id: "exec-1",
+        status: StepExecutionStatus.RUNNING,
+        started_at: new Date().toISOString(),
+      });
+
+      let fixtureUsed = false;
+      const fixtureProvider: LLMProvider = createMockProvider({ exitCode: 0 }, () => {
+        fixtureUsed = true;
+      });
+      fixtureProvider.name = "e2e-fixture";
+
+      const spawnSpy = spyOn(Bun, "spawn");
+      const onCompletion = mock(() => Promise.resolve());
+
+      const executorCtx: ExecutorContext = {
+        task: createMockTask(),
+        repoId: "repo-1",
+        repoPath: "/test/repo",
+        changePath: "/test/repo/changes/feat-1",
+        worktreePath: "/test/worktree",
+        logsDir: testLogsDir,
+        timeoutSecs: 300,
+        fastMode: false,
+      };
+
+      await spawnAgentWithReaper(
+        {
+          ctx,
+          executorCtx,
+          worktreeInfo: {
+            path: "/test/worktree",
+            branch: "task-1",
+            baseBranch: "main",
+            baseCommit: "abc",
+          },
+          prompt: "run the deterministic fixture",
+          stepId: "step-1",
+          executionId: "exec-1",
+          stepCommand: {
+            id: "step-1",
+            type: "review",
+            promptTemplate: "",
+            signals: [],
+            attempt: 1,
+            iteration: 1,
+            agent: {
+              provider: "openai",
+              model: "gpt-5.4",
+              reasoning: "medium",
+            },
+          },
+          executionInfo: { id: "exec-1", workflowId: "wf-1" },
+          taskId: "task-1",
+          repoId: "repo-1",
+          provider: fixtureProvider,
+        },
+        onCompletion,
+      );
+
+      expect(fixtureUsed).toBe(true);
+      expect(spawnSpy).not.toHaveBeenCalled();
+
+      spawnSpy.mockRestore();
+    });
   });
 
   describe("reattachToRunningAgent", () => {

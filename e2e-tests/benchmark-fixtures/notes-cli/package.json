@@ -1,0 +1,8 @@
+{
+  "name": "aop-benchmark-notes-cli",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  }
+}

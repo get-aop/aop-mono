@@ -1,10 +1,11 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import type { LLMProvider, RunOptions, RunResult } from "../types";
 
 const TASK_PATH_REGEX = /- \*\*Task Path\*\*: ([^\n]+)/;
 const SIGNAL_PRIORITY = [
   "ALL_TASKS_DONE",
+  "TESTS_PASS",
   "CLEANUP_COMPLETE",
   "REVIEW_PASSED",
   "FIX_COMPLETE",
@@ -20,6 +21,8 @@ export class E2EFixtureProvider implements LLMProvider {
   readonly name = "e2e-fixture";
 
   async run(options: RunOptions): Promise<RunResult> {
+    await maybeDelay();
+
     const signal = pickSignal(options.prompt);
     const taskDir = extractTaskDir(options.prompt);
 
@@ -51,18 +54,22 @@ const pickSignal = (prompt: string): string => {
 };
 
 const applyFixtureChanges = async (taskDir: string, worktreePath: string): Promise<void> => {
-  const taskText = await loadTaskText(taskDir);
+  const resolvedTaskDir = resolveTaskDir(taskDir, worktreePath);
+  const taskText = await loadTaskText(resolvedTaskDir);
   const fileInstruction = extractFileInstruction(taskText);
   if (!fileInstruction) {
-    await markTaskDocsDone(taskDir);
+    await markTaskDocsDone(resolvedTaskDir);
     return;
   }
 
   const targetPath = join(worktreePath, fileInstruction.path);
   await mkdir(dirname(targetPath), { recursive: true });
   await writeFile(targetPath, `${fileInstruction.content}\n`);
-  await markTaskDocsDone(taskDir);
+  await markTaskDocsDone(resolvedTaskDir);
 };
+
+const resolveTaskDir = (taskDir: string, worktreePath: string): string =>
+  isAbsolute(taskDir) ? taskDir : join(worktreePath, taskDir);
 
 const loadTaskText = async (taskDir: string): Promise<string> => {
   const files = ["tasks.md", "task.md", "proposal.md"];
@@ -185,4 +192,18 @@ const writeFixtureLog = async (logFilePath: string, signal: string): Promise<voi
 
   await mkdir(dirname(logFilePath), { recursive: true });
   await writeFile(logFilePath, `${events.map((event) => JSON.stringify(event)).join("\n")}\n`);
+};
+
+const maybeDelay = async (): Promise<void> => {
+  const rawDelay = process.env.AOP_E2E_FIXTURE_DELAY_MS?.trim();
+  if (!rawDelay) {
+    return;
+  }
+
+  const delayMs = Number.parseInt(rawDelay, 10);
+  if (Number.isNaN(delayMs) || delayMs <= 0) {
+    return;
+  }
+
+  await Bun.sleep(delayMs);
 };

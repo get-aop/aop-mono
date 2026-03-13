@@ -1,11 +1,21 @@
 # @aop/e2e-tests
 
-End-to-end tests for the AOP CLI. These tests exercise the full system with real AI agents.
+End-to-end tests for the AOP CLI.
+
+There are three benchmark/testing lanes:
+- `bun run test:e2e`: deterministic orchestration coverage using the `e2e-fixture` provider
+- `bun run test:e2e:codex-benchmark`: live AOP+Codex benchmark coverage on the benchmark fixture repo
+- `bun run benchmark:codex:pure`: the same benchmark fixture run by a single Codex session without AOP orchestration
 
 ## Test Cases
 
 ### Task Execution
 - **automatic-handoff.e2e.ts**: Tests the orchestrator-owned flow from `task:ready` through automatic DONE handoff into the main repo branch
+- **real-concurrency.e2e.ts**: Tests three real repo tasks where two independent tasks run in parallel while a dependent task waits
+- **linear-import.e2e.ts**: Tests multi-ticket Linear import with dependency-aware parallel execution and automatic handoff
+
+### Live Benchmark
+- **benchmark-fixtures/notes-cli/**: Small Bun/TypeScript CLI repo with three benchmark tasks: two independent library tasks and one dependent integration task
 
 ### Local Server Lifecycle
 - **local-server.e2e.ts**: Tests local server start/stop lifecycle, health checks, graceful shutdown
@@ -20,9 +30,24 @@ End-to-end tests for the AOP CLI. These tests exercise the full system with real
 # From repository root
 bun run test:e2e
 
+# Live AOP+Codex benchmark on the benchmark fixture repo
+bun run test:e2e:codex-benchmark
+
+# Pure Codex baseline on the same benchmark fixture repo
+bun run benchmark:codex:pure
+
+# Compare the latest AOP vs pure Codex benchmark results
+bun run benchmark:codex:compare
+
 # Specific test
 bun test ./src/local-server.e2e.ts
 ```
+
+The live Codex benchmark commands require:
+- `codex` in `PATH`
+- `~/.codex/auth.json` present
+
+When a live benchmark succeeds it writes the run artifacts and JSON result to `~/.aop/benchmarks/`.
 
 ## Logging
 
@@ -42,6 +67,9 @@ Located in `fixtures/`, these provide sample task document artifacts for testing
 | `backlog-test/` | Basic task for backlog flow testing |
 | `concurrency-test-1/` | First repo for concurrency limit testing |
 | `concurrency-test-2/` | Second repo for concurrency limit testing |
+| `concurrency-test-3/` | Third repo fixture used as a dependent task in the real concurrency benchmark |
+| `benchmark-fixtures/notes-cli/` | Live benchmark repo for AOP vs pure Codex comparisons |
+| `linear-issues.json` | Deterministic Linear fixture data for multi-ticket import coverage |
 
 ## Test Utilities
 
@@ -65,8 +93,8 @@ Tests use isolated environments via:
 
 ## Notes
 
-- E2E tests use **real agents** - they are not mocked
+- The default `test:e2e` suite does **not** use a live model; it uses the deterministic `e2e-fixture` provider so orchestration stays stable and repeatable.
+- The dedicated Codex benchmark command uses a live model and is intended for benchmarking real end-to-end behavior.
 - Tests create temporary git repositories in `/tmp/aop-e2e-test/`
 - Timeout is 5-10 minutes per test to allow for agent execution
 - Cleanup happens automatically after tests complete
-- Tests are skipped in CI unless Claude CLI is available

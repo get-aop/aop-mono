@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { LLMProvider } from "../types";
 import { CodexProvider } from "./codex";
 
@@ -32,7 +35,9 @@ describe("buildCommand", () => {
   test("adds model when provided through env override", () => {
     const provider = new CodexProvider();
 
-    expect(provider.buildCommand({ prompt: "test", env: { AOP_CODEX_MODEL: "gpt-5-codex" } })).toEqual([
+    expect(
+      provider.buildCommand({ prompt: "test", env: { AOP_CODEX_MODEL: "gpt-5-codex" } }),
+    ).toEqual([
       "codex",
       "exec",
       "--json",
@@ -151,5 +156,33 @@ describe("run", () => {
     const spawnArgs = spawnSpy.mock.calls[0]?.[0] as Record<string, unknown>;
     const env = spawnArgs.env as Record<string, string>;
     expect(env.CODEX_HOME).toBe("/tmp/custom-codex-home");
+  });
+
+  test("seeds user Codex skills into the isolated CODEX_HOME when available", async () => {
+    const mockProc = {
+      pid: 31337,
+      exited: Promise.resolve(0),
+      kill: mock(() => {}),
+      unref: mock(() => {}),
+    };
+
+    spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      mockProc as unknown as ReturnType<typeof Bun.spawn>,
+    );
+
+    const provider = new CodexProvider();
+    const aopHome = `/tmp/aop-home-${Date.now()}`;
+    await provider.run({
+      prompt: "test",
+      logFilePath: "/tmp/log.txt",
+      env: { AOP_HOME: aopHome },
+    });
+
+    const sourceSkillsDir = join(homedir(), ".codex", "skills");
+    if (!existsSync(sourceSkillsDir)) {
+      return;
+    }
+
+    expect(existsSync(join(aopHome, "codex-home", "skills"))).toBe(true);
   });
 });

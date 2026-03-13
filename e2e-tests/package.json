@@ -6,6 +6,10 @@
   "license": "MIT",
   "scripts": {
     "test:e2e": "bun test --concurrency 1 ./src/*.e2e.ts",
+    "test:e2e:codex-benchmark": "bun run ../scripts/run-codex-e2e-benchmark.ts",
+    "benchmark:codex:aop": "bun run ../scripts/run-aop-codex-benchmark.ts",
+    "benchmark:codex:pure": "bun run ../scripts/run-pure-codex-benchmark.ts",
+    "benchmark:codex:compare": "bun run ../scripts/compare-codex-benchmarks.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

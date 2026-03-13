@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_LOCAL_SERVER_PORT, DEFAULT_LOCAL_SERVER_URL } from "./constants";
 import { findFreePort, resolveE2EAgentProvider } from "./test-context";
+
+describe("E2E constants", () => {
+  test("provide stable local defaults without requiring process env", () => {
+    expect(DEFAULT_LOCAL_SERVER_PORT).toBe(25150);
+    expect(DEFAULT_LOCAL_SERVER_URL).toBe("http://localhost:25150");
+  });
+});
 
 describe("findFreePort", () => {
   test("finds a free port within the given range", async () => {

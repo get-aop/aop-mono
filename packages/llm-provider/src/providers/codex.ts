@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { LLMProvider, RunOptions, RunResult } from "../types";
@@ -9,6 +9,7 @@ const CODEX_MODEL_ENV = "AOP_CODEX_MODEL";
 const CODEX_REASONING_EFFORT_ENV = "AOP_CODEX_REASONING_EFFORT";
 const USER_CODEX_HOME = join(homedir(), ".codex");
 const SEEDED_CODEX_FILES = ["auth.json", "config.toml"] as const;
+const SEEDED_CODEX_DIRS = ["skills"] as const;
 const SEEDED_HOME_FILES = [".gitconfig"] as const;
 
 export class CodexProvider implements LLMProvider {
@@ -105,6 +106,18 @@ const seedCodexHome = (codexHome: string): void => {
     }
 
     copyFileSync(sourcePath, join(codexHome, fileName));
+  }
+
+  for (const dirName of SEEDED_CODEX_DIRS) {
+    const sourcePath = join(USER_CODEX_HOME, dirName);
+    if (!existsSync(sourcePath)) {
+      continue;
+    }
+
+    cpSync(sourcePath, join(codexHome, dirName), {
+      recursive: true,
+      force: true,
+    });
   }
 };
 

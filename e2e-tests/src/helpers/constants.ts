@@ -1,7 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { AOP_PORTS, AOP_URLS } from "@aop/common";
 
 export const E2E_TEST_BASE_DIR = resolve(dirname(import.meta.path), "../../tmp/aop-e2e-test");
 export const WORKTREES_DIR = resolve(dirname(import.meta.path), "../../../.worktrees");
@@ -13,8 +12,8 @@ export const LOCAL_SERVER_BIN = resolve(
 );
 export const TEST_REPO_PREFIX = "test-e2e";
 
-export const DEFAULT_LOCAL_SERVER_PORT = AOP_PORTS.LOCAL_SERVER;
-export const DEFAULT_LOCAL_SERVER_URL = AOP_URLS.LOCAL_SERVER;
+export const DEFAULT_LOCAL_SERVER_PORT = 25150;
+export const DEFAULT_LOCAL_SERVER_URL = "http://localhost:25150";
 export const DEFAULT_PID_FILE = join(homedir(), ".aop", "aop.pid");
 
 export const E2E_TEST_HOME_DIR = join(homedir(), ".aop", "e2e-tests");

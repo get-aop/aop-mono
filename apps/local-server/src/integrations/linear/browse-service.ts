@@ -1,6 +1,7 @@
 import type { LocalServerContext } from "../../context.ts";
 import { getLinearAccessToken } from "./access-token.ts";
-import { createLinearClient } from "./client.ts";
+import type { createLinearClient } from "./client.ts";
+import { createRuntimeLinearClient } from "./runtime-client.ts";
 
 interface CreateLinearBrowseServiceOptions {
   ctx: LocalServerContext;
@@ -54,7 +55,7 @@ export const createLinearBrowseService = (options: CreateLinearBrowseServiceOpti
 });
 
 const createBrowseClient = (options: CreateLinearBrowseServiceOptions) =>
-  (options.createClient ?? createLinearClient)({
+  (options.createClient ?? createRuntimeLinearClient)({
     apiKey: options.apiKey ?? process.env.LINEAR_API_KEY,
     getAccessToken: async () => getLinearAccessToken(options.ctx),
   });

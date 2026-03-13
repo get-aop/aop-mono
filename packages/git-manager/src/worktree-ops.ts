@@ -3,11 +3,12 @@ import type { BranchOps } from "./branch-ops.ts";
 import {
   BranchNotFoundError,
   DirtyWorktreeError,
+  GitConflictError,
   WorktreeExistsError,
   WorktreeNotFoundError,
 } from "./errors.ts";
 import type { GitExecutor } from "./git-executor.ts";
-import type { MetadataStore } from "./metadata.ts";
+import type { MetadataStore, WorktreeMetadata } from "./metadata.ts";
 import type { WorktreeInfo } from "./types.ts";
 import { validateTaskId } from "./validation.ts";
 
@@ -85,7 +86,10 @@ export class WorktreeOps {
     logger.info("Force-removed worktree {taskId}", { taskId });
   }
 
-  async handoff(taskId: string, commitMessage: string): Promise<{ branch: string; commitSha: string | null }> {
+  async handoff(
+    taskId: string,
+    commitMessage: string,
+  ): Promise<{ branch: string; commitSha: string | null }> {
     validateTaskId(taskId);
 
     if (!(await this.exists(taskId))) {
@@ -94,10 +98,11 @@ export class WorktreeOps {
 
     const worktreePath = `${this.worktreesDir}/${taskId}`;
     const metadata = await this.metadata.get(taskId);
-    const commitSha = await this.commitPendingChanges(worktreePath, commitMessage);
+    await this.commitPendingChanges(worktreePath, commitMessage);
+    const commitSha = await this.resolveHandoffCommit(metadata);
 
     await this.removeHandedOffWorktree(worktreePath);
-    await this.checkoutHandedOffBranch(metadata.branch);
+    await this.applyHandedOffCommit(metadata, commitSha);
     await this.metadata.delete(taskId);
 
     logger.info("Handed off worktree {taskId} as branch {branch}", {
@@ -158,10 +163,44 @@ export class WorktreeOps {
     }
   }
 
-  private async checkoutHandedOffBranch(branch: string): Promise<void> {
-    const result = await this.executor.execRaw(["checkout", branch]);
-    if (result.exitCode !== 0) {
-      throw new Error(`git checkout ${branch} failed: ${result.stderr}`);
+  private async applyHandedOffCommit(
+    metadata: WorktreeMetadata,
+    commitSha: string | null,
+  ): Promise<void> {
+    if (!commitSha) {
+      return;
     }
+
+    const result = await this.executor.execRaw([
+      "cherry-pick",
+      `${metadata.baseCommit}..${metadata.branch}`,
+    ]);
+    if (result.exitCode !== 0) {
+      const conflictingFiles = await this.getConflictingFiles();
+      await this.executor.execRaw(["cherry-pick", "--abort"]);
+
+      if (conflictingFiles.length > 0) {
+        throw new GitConflictError(conflictingFiles);
+      }
+
+      throw new Error(`git cherry-pick ${commitSha} failed: ${result.stderr}`);
+    }
+  }
+
+  private async resolveHandoffCommit(metadata: WorktreeMetadata): Promise<string | null> {
+    const headCommit = await this.branchOps.getCommit(metadata.branch);
+    return headCommit === metadata.baseCommit ? null : headCommit;
+  }
+
+  private async getConflictingFiles(): Promise<string[]> {
+    const result = await this.executor.execRaw(["diff", "--name-only", "--diff-filter=U"]);
+    if (result.exitCode !== 0 || !result.stdout.trim()) {
+      return [];
+    }
+
+    return result.stdout
+      .split("\n")
+      .map((file) => file.trim())
+      .filter(Boolean);
   }
 }
