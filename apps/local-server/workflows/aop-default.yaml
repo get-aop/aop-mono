@@ -7,6 +7,10 @@ steps:
     type: iterate
     promptTemplate: implement.md.hbs
     maxAttempts: 1
+    agent:
+      provider: openai
+      model: gpt-5.4
+      reasoning: high
     signals:
       - name: CHUNK_DONE
         description: completed a chunk, more tasks remain
@@ -27,6 +31,10 @@ steps:
     type: review
     promptTemplate: cleanup-review.md.hbs
     maxAttempts: 1
+    agent:
+      provider: openai
+      model: gpt-5.4
+      reasoning: medium
     signals:
       - name: CLEANUP_COMPLETE
         description: low-signal cleanup and simplification pass is done
@@ -43,6 +51,10 @@ steps:
     type: review
     promptTemplate: full-review.md.hbs
     maxAttempts: 1
+    agent:
+      provider: openai
+      model: gpt-5.3-codex
+      reasoning: extra-high
     signals:
       - name: REVIEW_PASSED
         description: all checks pass, no issues found
@@ -61,6 +73,10 @@ steps:
     type: implement
     promptTemplate: fix-issues.md.hbs
     maxAttempts: 1
+    agent:
+      provider: openai
+      model: gpt-5.4
+      reasoning: high
     signals:
       - name: FIX_COMPLETE
         description: all review issues have been addressed
@@ -75,6 +91,10 @@ steps:
     type: review
     promptTemplate: quick-review.md.hbs
     maxAttempts: 1
+    agent:
+      provider: openai
+      model: gpt-5.4
+      reasoning: medium
     signals:
       - name: REVIEW_PASSED
         description: fixes verified, all checks pass

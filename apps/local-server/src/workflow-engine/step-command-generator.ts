@@ -48,6 +48,7 @@ export const createStepCommandGenerator = (
       attempt,
       signals: enrichSignals(step),
       iteration,
+      agent: step.agent,
     };
   },
 });

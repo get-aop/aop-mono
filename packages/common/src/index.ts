@@ -2,6 +2,7 @@ export { AOP_PORTS, AOP_URLS } from "./env.ts";
 export type {
   AuthRequest,
   AuthResponse,
+  StepAgent,
   StepCommand,
   StepCompleteRequest,
   StepCompleteResponse,
@@ -13,6 +14,7 @@ export type {
 export {
   AuthRequestSchema,
   AuthResponseSchema,
+  StepAgentSchema,
   StepCommandSchema,
   StepCompleteRequestSchema,
   StepCompleteResponseSchema,

@@ -91,6 +91,14 @@ export const SignalDefinitionSchema = z.object({
 
 export type SignalDefinition = z.infer<typeof SignalDefinitionSchema>;
 
+export const StepAgentSchema = z.object({
+  provider: z.enum(["openai", "anthropic"]),
+  model: z.string(),
+  reasoning: z.enum(["low", "medium", "high", "extra-high"]),
+});
+
+export type StepAgent = z.infer<typeof StepAgentSchema>;
+
 export const StepCommandSchema = z.object({
   id: z.string(),
   type: z.string(),
@@ -100,6 +108,7 @@ export const StepCommandSchema = z.object({
   signals: z.array(SignalDefinitionSchema).optional(),
   iteration: z.number().int().nonnegative(),
   input: z.string().optional(),
+  agent: StepAgentSchema.optional(),
 });
 
 export type StepCommand = z.infer<typeof StepCommandSchema>;

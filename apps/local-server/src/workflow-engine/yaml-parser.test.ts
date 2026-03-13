@@ -197,6 +197,64 @@ terminalStates:
     expect(fixTransitions[0]?.thenTarget).toBe("full-review");
   });
 
+  test("parses a step agent block", () => {
+    const yaml = `
+version: 1
+name: agent-config-test
+initialStep: review
+steps:
+  review:
+    id: review
+    type: review
+    promptTemplate: review.md.hbs
+    maxAttempts: 1
+    agent:
+      provider: openai
+      model: gpt-5.4
+      reasoning: medium
+    transitions:
+      - condition: REVIEW_PASSED
+        target: __done__
+terminalStates:
+  - __done__
+  - __blocked__
+`;
+
+    const result = parseWorkflowYaml(yaml);
+
+    expect(result.steps.review?.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoning: "medium",
+    });
+  });
+
+  test("rejects a model that does not belong to the selected provider", () => {
+    const yaml = `
+version: 1
+name: invalid-agent-config
+initialStep: review
+steps:
+  review:
+    id: review
+    type: review
+    promptTemplate: review.md.hbs
+    maxAttempts: 1
+    agent:
+      provider: anthropic
+      model: gpt-5.4
+      reasoning: medium
+    transitions:
+      - condition: REVIEW_PASSED
+        target: __done__
+terminalStates:
+  - __done__
+  - __blocked__
+`;
+
+    expect(() => parseWorkflowYaml(yaml)).toThrow(WorkflowParseError);
+  });
+
   test("throws error for onMaxIterations referencing unknown step", () => {
     const yaml = `
 version: 1
@@ -353,6 +411,11 @@ describe("aop-default workflow integration", () => {
       condition: "ALL_TASKS_DONE",
       target: "cleanup-review",
     });
+    expect(step?.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoning: "high",
+    });
   });
 
   test("cleanup-review step routes directly to full-review", async () => {
@@ -373,6 +436,11 @@ describe("aop-default workflow integration", () => {
       condition: "__none__",
       target: "full-review",
     });
+    expect(step?.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoning: "medium",
+    });
   });
 
   test("full-review step routes directly to fix-issues without its own loop cap", async () => {
@@ -385,6 +453,11 @@ describe("aop-default workflow integration", () => {
     expect(failTransition?.target).toBe("fix-issues");
     expect(failTransition?.maxIterations).toBeUndefined();
     expect(failTransition?.onMaxIterations).toBeUndefined();
+    expect(step?.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.3-codex",
+      reasoning: "extra-high",
+    });
   });
 
   test("fix-issues step always returns to quick-review", async () => {
@@ -397,6 +470,11 @@ describe("aop-default workflow integration", () => {
     expect(fixTransition?.target).toBe("quick-review");
     expect(fixTransition?.afterIteration).toBeUndefined();
     expect(fixTransition?.thenTarget).toBeUndefined();
+    expect(step?.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoning: "high",
+    });
   });
 
   test("quick-review failure transition owns the review loop cap", async () => {
@@ -409,6 +487,11 @@ describe("aop-default workflow integration", () => {
     expect(failTransition?.target).toBe("fix-issues");
     expect(failTransition?.maxIterations).toBe(2);
     expect(failTransition?.onMaxIterations).toBe("__blocked__");
+    expect(step?.agent).toEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoning: "medium",
+    });
   });
 
   test("complete workflow execution flow: happy path", async () => {

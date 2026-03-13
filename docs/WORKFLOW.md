@@ -23,6 +23,8 @@ A workflow is a YAML document with:
 - `steps`: map of step ID to step configuration
 - `terminalStates`: states that end the workflow
 
+Each step can also declare an optional `agent` block when that step should run on a specific model and reasoning level instead of the global default.
+
 ### Step Types
 
 | Type | Purpose |
@@ -33,6 +35,39 @@ A workflow is a YAML document with:
 | `debug` | Investigate failures |
 | `iterate` | Refine existing work |
 | `research` | Gather information before implementation |
+
+### Step Agent Overrides
+
+Use the optional `agent` block to pin a specific provider, model, and reasoning level for a step:
+
+```yaml
+steps:
+  full-review:
+    id: full-review
+    type: review
+    promptTemplate: full-review.md.hbs
+    agent:
+      provider: openai
+      model: gpt-5.3-codex
+      reasoning: extra-high
+```
+
+Current curated workflow models:
+
+- OpenAI: `gpt-5.4`, `gpt-5.3-codex`
+- Anthropic: `claude-opus-4-6`, `claude-sonnet-4-6`
+
+Workflow reasoning values are normalized across providers:
+
+- `low`
+- `medium`
+- `high`
+- `extra-high`
+
+At runtime AOP maps them to provider-specific flags:
+
+- Codex: `extra-high` -> `xhigh`
+- Claude Code: `extra-high` -> `max`
 
 ### Transitions
 
@@ -63,7 +98,7 @@ Targets can be:
 
 ### Step Command Generator
 
-`apps/local-server/src/workflow-engine/step-command-generator.ts` turns a workflow step into the command payload the executor will run.
+`apps/local-server/src/workflow-engine/step-command-generator.ts` turns a workflow step into the command payload the executor will run, including any per-step `agent` override.
 
 ### Template Loader
 
@@ -89,7 +124,7 @@ When a task is marked `READY`:
 3. The state machine resolves the initial step.
 4. A step command is generated from the step definition and template.
 5. Local execution and step records are created.
-6. The executor launches the agent in the task worktree.
+6. The executor launches the agent in the task worktree, using either the step-level agent override or the default configured provider.
 
 ### Completing a Step
 
