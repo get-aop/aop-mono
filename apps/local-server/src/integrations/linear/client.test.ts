@@ -302,6 +302,9 @@ describe("integrations/linear/client", () => {
     };
 
     expect(requestBody.query).toContain("issues(filter:");
+    expect(requestBody.query).toContain(
+      "query LinearTodoIssues($projectId: ID!, $assigneeId: ID!)",
+    );
     expect(requestBody.variables).toEqual({
       projectId: "project-1",
       assigneeId: "user-1",

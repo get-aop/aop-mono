@@ -200,8 +200,8 @@ const buildImportOptionsQuery = (): string => `query LinearImportOptions {
 
 const buildTodoIssuesQuery = (hasAssigneeFilter: boolean): string => {
   const variableDefinitions = hasAssigneeFilter
-    ? "($projectId: String!, $assigneeId: String!)"
-    : "($projectId: String!)";
+    ? "($projectId: ID!, $assigneeId: ID!)"
+    : "($projectId: ID!)";
   const assigneeFilter = hasAssigneeFilter ? "\n      assignee: { id: { eq: $assigneeId } }," : "";
 
   return `query LinearTodoIssues${variableDefinitions} {
