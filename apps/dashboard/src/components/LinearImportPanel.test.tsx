@@ -1,0 +1,122 @@
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { setupDashboardDom } from "../test/setup-dom";
+
+setupDashboardDom();
+
+const mockGetLinearImportOptions = mock();
+const mockGetLinearTodoIssues = mock();
+const mockImportLinearIssue = mock();
+const actualClientModule = await import("../api/client");
+
+mock.module("../api/client", () => ({
+  ...actualClientModule,
+  getLinearImportOptions: mockGetLinearImportOptions,
+  getLinearTodoIssues: mockGetLinearTodoIssues,
+  importLinearIssue: mockImportLinearIssue,
+}));
+
+const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+const { LinearImportPanel } = await import("./LinearImportPanel");
+
+describe("LinearImportPanel", () => {
+  beforeEach(() => {
+    mockGetLinearImportOptions.mockReset();
+    mockGetLinearTodoIssues.mockReset();
+    mockImportLinearIssue.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  test("asks for a repository before allowing an import", async () => {
+    render(<LinearImportPanel repo={null} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create from Linear" }));
+
+    expect(
+      screen.getByText("Select a repository in the header to import a Linear issue."),
+    ).toBeDefined();
+    expect(mockGetLinearImportOptions).not.toHaveBeenCalled();
+  });
+
+  test("filters TODO issues and imports the selected Linear issue", async () => {
+    const onRefresh = mock(async () => {});
+    mockGetLinearImportOptions.mockResolvedValue({
+      projects: [{ id: "project-1", name: "Dashboard" }],
+      users: [
+        {
+          id: "user-1",
+          name: "Jane Doe",
+          displayName: "Jane",
+          email: "jane@example.com",
+          isMe: true,
+        },
+      ],
+    });
+    mockGetLinearTodoIssues.mockResolvedValue([
+      {
+        id: "lin_125",
+        identifier: "ABC-125",
+        title: "Unstarted issue",
+        url: "https://linear.app/acme/issue/ABC-125/unstarted-issue",
+        projectName: "Dashboard",
+        assigneeName: "Jane Doe",
+        stateName: "Todo",
+      },
+    ]);
+    mockImportLinearIssue.mockResolvedValue({
+      ok: true,
+      repoId: "repo-1",
+      alreadyExists: true,
+      imported: [
+        {
+          taskId: "task-1",
+          ref: "ABC-125",
+          changePath: "docs/tasks/abc-125-unstarted-issue",
+          requested: true,
+          dependencyImported: false,
+        },
+      ],
+      failures: [],
+    });
+
+    render(
+      <LinearImportPanel
+        repo={{ id: "repo-1", name: "aop-mono", path: "/repos/aop-mono" }}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Create from Linear" }));
+
+    await waitFor(() => expect(mockGetLinearImportOptions).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText("Linear project"), {
+      target: { value: "project-1" },
+    });
+    fireEvent.change(screen.getByLabelText("Linear user"), {
+      target: { value: "user-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Show TODO issues" }));
+
+    await waitFor(() =>
+      expect(mockGetLinearTodoIssues).toHaveBeenCalledWith({
+        projectId: "project-1",
+        assigneeId: "user-1",
+      }),
+    );
+
+    fireEvent.click(screen.getByLabelText("ABC-125 Unstarted issue"));
+    fireEvent.click(screen.getByRole("button", { name: "Import selected issue" }));
+
+    await waitFor(() =>
+      expect(mockImportLinearIssue).toHaveBeenCalledWith({
+        cwd: "/repos/aop-mono",
+        issueIdentifier: "ABC-125",
+      }),
+    );
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+    expect(screen.getByText("Imported ABC-125 into aop-mono.")).toBeDefined();
+  });
+});

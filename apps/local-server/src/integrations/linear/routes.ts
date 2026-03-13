@@ -49,6 +49,40 @@ export const createLinearRoutes = (deps: LinearRoutesDeps) => {
     }
   });
 
+  app.get("/import-options", async (c) => {
+    if (!deps.getImportOptions) {
+      return c.json({ error: "Linear import browsing is unavailable" }, 503);
+    }
+
+    try {
+      return c.json(await deps.getImportOptions());
+    } catch (error) {
+      return toErrorResponse(c, error);
+    }
+  });
+
+  app.get("/todo-issues", async (c) => {
+    if (!deps.getTodoIssues) {
+      return c.json({ error: "Linear issue browsing is unavailable" }, 503);
+    }
+
+    const projectId = c.req.query("projectId");
+    if (!projectId) {
+      return c.json({ error: "Missing required query parameter: projectId" }, 400);
+    }
+
+    try {
+      return c.json(
+        await deps.getTodoIssues({
+          projectId,
+          assigneeId: c.req.query("assigneeId") ?? undefined,
+        }),
+      );
+    } catch (error) {
+      return toErrorResponse(c, error);
+    }
+  });
+
   app.post("/import", async (c) => {
     if (!deps.importFromInput) {
       return c.json({ error: "Linear import is unavailable" }, 503);

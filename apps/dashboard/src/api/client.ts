@@ -195,6 +195,50 @@ export interface LinearConnectionInfo {
   userEmail: string;
 }
 
+export interface LinearImportProject {
+  id: string;
+  name: string;
+}
+
+export interface LinearImportUser {
+  id: string;
+  name: string;
+  displayName: string | null;
+  email: string | null;
+  isMe: boolean;
+}
+
+export interface LinearTodoIssue {
+  id: string;
+  identifier: string;
+  title: string;
+  url: string;
+  projectName: string | null;
+  assigneeName: string | null;
+  stateName: string | null;
+}
+
+export interface LinearImportRecord {
+  taskId: string;
+  ref: string;
+  changePath: string;
+  requested: boolean;
+  dependencyImported: boolean;
+}
+
+export interface LinearImportFailure {
+  ref: string;
+  error: string;
+}
+
+export interface LinearImportResponse {
+  ok: boolean;
+  repoId: string;
+  alreadyExists: boolean;
+  imported: LinearImportRecord[];
+  failures: LinearImportFailure[];
+}
+
 export const getSettings = async (): Promise<SettingEntry[]> => {
   const data = await request<{ settings: SettingEntry[] }>("/settings");
   return data.settings;
@@ -241,6 +285,44 @@ export const testLinearConnection = async (): Promise<LinearConnectionInfo> => {
 export const disconnectLinear = async (): Promise<void> => {
   await request("/linear/disconnect", {
     method: "POST",
+  });
+};
+
+export const getLinearImportOptions = async (): Promise<{
+  projects: LinearImportProject[];
+  users: LinearImportUser[];
+}> => {
+  return request<{
+    projects: LinearImportProject[];
+    users: LinearImportUser[];
+  }>("/linear/import-options");
+};
+
+export const getLinearTodoIssues = async (params: {
+  projectId: string;
+  assigneeId?: string;
+}): Promise<LinearTodoIssue[]> => {
+  const query = new URLSearchParams({
+    projectId: params.projectId,
+  });
+  if (params.assigneeId) {
+    query.set("assigneeId", params.assigneeId);
+  }
+
+  const data = await request<{ issues: LinearTodoIssue[] }>(`/linear/todo-issues?${query}`);
+  return data.issues;
+};
+
+export const importLinearIssue = async (params: {
+  cwd: string;
+  issueIdentifier: string;
+}): Promise<LinearImportResponse> => {
+  return request<LinearImportResponse>("/linear/import", {
+    method: "POST",
+    body: JSON.stringify({
+      cwd: params.cwd,
+      input: params.issueIdentifier,
+    }),
   });
 };
 

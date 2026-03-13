@@ -46,7 +46,13 @@ export interface LinearRawIssue extends LinearRawIssueSummary {
     type?: string | null;
   } | null;
   project?: {
+    id?: string | null;
     name?: string | null;
+  } | null;
+  assignee?: {
+    id?: string | null;
+    name?: string | null;
+    displayName?: string | null;
   } | null;
   team?: {
     key?: string | null;
@@ -62,6 +68,29 @@ export interface LinearIssueSummary {
   ref: string;
   title: string;
   url: string;
+}
+
+export interface LinearImportProject {
+  id: string;
+  name: string;
+}
+
+export interface LinearImportUser {
+  id: string;
+  name: string;
+  displayName: string | null;
+  email: string | null;
+  isMe: boolean;
+}
+
+export interface LinearTodoIssueSummary {
+  id: string;
+  identifier: string;
+  title: string;
+  url: string;
+  projectName: string | null;
+  assigneeName: string | null;
+  stateName: string | null;
 }
 
 export interface LinearResolvedIssue extends LinearIssueSummary {
@@ -98,6 +127,15 @@ export interface LinearTokenStore {
 
 export interface LinearIssueClient {
   getIssuesByRefs(refs: string[]): Promise<LinearRawIssue[]>;
+  getImportOptions(): Promise<{
+    projects: LinearImportProject[];
+    users: Array<
+      LinearImportUser & {
+        active?: boolean | null;
+      }
+    >;
+  }>;
+  getTodoIssues(params: { projectId: string; assigneeId?: string }): Promise<LinearRawIssue[]>;
 }
 
 export interface LinearRoutesDeps {
@@ -130,5 +168,12 @@ export interface LinearRoutesDeps {
       ref: string;
       error: string;
     }>;
+  }>;
+  getImportOptions?(): Promise<{
+    projects: LinearImportProject[];
+    users: LinearImportUser[];
+  }>;
+  getTodoIssues?(params: { projectId: string; assigneeId?: string }): Promise<{
+    issues: LinearTodoIssueSummary[];
   }>;
 }
