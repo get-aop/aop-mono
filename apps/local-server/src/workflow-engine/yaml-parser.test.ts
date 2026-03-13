@@ -389,11 +389,11 @@ describe("aop-default workflow integration", () => {
     expect(workflow.name).toBe("aop-default");
     expect(workflow.initialStep).toBe("iterate");
     expect(Object.keys(workflow.steps).sort()).toEqual([
-      "cleanup-review",
       "fix-issues",
       "full-review",
       "iterate",
       "quick-review",
+      "run-tests",
     ]);
     expect(workflow.terminalStates).toEqual(["__done__", "__blocked__"]);
   });
@@ -409,7 +409,7 @@ describe("aop-default workflow integration", () => {
     expect(step?.transitions).toContainEqual({ condition: "CHUNK_DONE", target: "iterate" });
     expect(step?.transitions).toContainEqual({
       condition: "ALL_TASKS_DONE",
-      target: "cleanup-review",
+      target: "run-tests",
     });
     expect(step?.agent).toEqual({
       provider: "openai",
@@ -418,23 +418,24 @@ describe("aop-default workflow integration", () => {
     });
   });
 
-  test("cleanup-review step routes directly to full-review", async () => {
+  test("run-tests step routes passing checks to full-review and failures to fix-issues", async () => {
     const workflow = await loadOfficialWorkflow("aop-default");
-    const step = workflow.steps["cleanup-review"];
+    const step = workflow.steps["run-tests"];
 
     expect(step?.signals).toEqual([
       {
-        name: "CLEANUP_COMPLETE",
-        description: "low-signal cleanup and simplification pass is done",
+        name: "TESTS_PASS",
+        description: "required local verification passed",
       },
+      { name: "TESTS_FAIL", description: "required local verification failed" },
     ]);
     expect(step?.transitions).toContainEqual({
-      condition: "CLEANUP_COMPLETE",
+      condition: "TESTS_PASS",
       target: "full-review",
     });
     expect(step?.transitions).toContainEqual({
-      condition: "__none__",
-      target: "full-review",
+      condition: "TESTS_FAIL",
+      target: "fix-issues",
     });
     expect(step?.agent).toEqual({
       provider: "openai",
@@ -515,15 +516,15 @@ describe("aop-default workflow integration", () => {
         signal: "ALL_TASKS_DONE",
       }),
     );
-    expect(afterAllTasks.stepId).toBe("cleanup-review");
+    expect(afterAllTasks.stepId).toBe("run-tests");
 
-    const afterCleanup = asStepResult(
-      sm.evaluateTransition("cleanup-review", {
+    const afterTests = asStepResult(
+      sm.evaluateTransition("run-tests", {
         status: "success",
-        signal: "CLEANUP_COMPLETE",
+        signal: "TESTS_PASS",
       }),
     );
-    expect(afterCleanup.stepId).toBe("full-review");
+    expect(afterTests.stepId).toBe("full-review");
 
     const afterReviewPass = sm.evaluateTransition("full-review", {
       status: "success",
@@ -535,16 +536,12 @@ describe("aop-default workflow integration", () => {
   test("workflow flow: review fails then fix then quick-review passes", async () => {
     const workflow = await loadOfficialWorkflow("aop-default");
     const sm = createWorkflowStateMachine(workflow);
-    const ctx = { iteration: 0, visitedSteps: ["iterate", "cleanup-review", "full-review"] };
+    const ctx = { iteration: 0, visitedSteps: ["iterate", "run-tests", "full-review"] };
 
-    const afterCleanup = asStepResult(
-      sm.evaluateTransition(
-        "cleanup-review",
-        { status: "success", signal: "CLEANUP_COMPLETE" },
-        ctx,
-      ),
+    const afterTests = asStepResult(
+      sm.evaluateTransition("run-tests", { status: "success", signal: "TESTS_PASS" }, ctx),
     );
-    expect(afterCleanup.stepId).toBe("full-review");
+    expect(afterTests.stepId).toBe("full-review");
 
     const afterReviewFail = asStepResult(
       sm.evaluateTransition("full-review", { status: "success", signal: "REVIEW_FAILED" }, ctx),
@@ -571,7 +568,7 @@ describe("aop-default workflow integration", () => {
     const sm = createWorkflowStateMachine(workflow);
     const ctx = {
       iteration: 1,
-      visitedSteps: ["iterate", "cleanup-review", "full-review", "fix-issues", "quick-review"],
+      visitedSteps: ["iterate", "run-tests", "full-review", "fix-issues", "quick-review"],
     };
 
     const afterFix = asStepResult(
@@ -586,7 +583,7 @@ describe("aop-default workflow integration", () => {
     const sm = createWorkflowStateMachine(workflow);
     const ctx = {
       iteration: 2,
-      visitedSteps: ["iterate", "cleanup-review", "full-review", "fix-issues", "quick-review"],
+      visitedSteps: ["iterate", "run-tests", "full-review", "fix-issues", "quick-review"],
     };
 
     const result = sm.evaluateTransition(

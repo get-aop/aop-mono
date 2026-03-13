@@ -138,6 +138,17 @@ When the agent exits:
    - `BLOCKED` when retries are exhausted or the workflow reaches `__blocked__`
    - `WORKING` with a new step when another step should run
 
+The default AOP workflow uses an explicit local verification step before final review. That test step is responsible for matching the local non-E2E CI bar with the smallest command set that still covers the changed code.
+
+## Default Workflow Setting
+
+The local settings table also stores a configurable fallback workflow:
+
+- Setting key: `default_workflow`
+- Default value: `aop-default`
+
+When a task has no `preferred_workflow`, the local workflow service starts the workflow named by `default_workflow`.
+
 ## Storage Model
 
 Task content and progress live in repository documents under `docs/tasks/<task-slug>/`.

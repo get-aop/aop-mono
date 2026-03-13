@@ -244,6 +244,11 @@ export const getSettings = async (): Promise<SettingEntry[]> => {
   return data.settings;
 };
 
+export const getWorkflows = async (): Promise<string[]> => {
+  const data = await request<{ workflows: string[] }>("/workflows");
+  return data.workflows;
+};
+
 export const updateSettings = async (settings: SettingEntry[]): Promise<void> => {
   await request("/settings", {
     method: "PUT",

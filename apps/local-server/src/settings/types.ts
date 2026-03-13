@@ -3,6 +3,7 @@ import type { Setting } from "../db/schema.ts";
 export type { Setting };
 
 export const SettingKey = {
+  DEFAULT_WORKFLOW: "default_workflow",
   MAX_CONCURRENT_TASKS: "max_concurrent_tasks",
   WATCHER_POLL_INTERVAL_SECS: "watcher_poll_interval_secs",
   QUEUE_POLL_INTERVAL_SECS: "queue_poll_interval_secs",
@@ -16,6 +17,7 @@ export const SettingKey = {
 export type SettingKey = (typeof SettingKey)[keyof typeof SettingKey];
 
 export const DEFAULT_SETTINGS: Record<SettingKey, string> = {
+  [SettingKey.DEFAULT_WORKFLOW]: "aop-default",
   [SettingKey.MAX_CONCURRENT_TASKS]: "3",
   [SettingKey.WATCHER_POLL_INTERVAL_SECS]: "30",
   [SettingKey.QUEUE_POLL_INTERVAL_SECS]: "1",

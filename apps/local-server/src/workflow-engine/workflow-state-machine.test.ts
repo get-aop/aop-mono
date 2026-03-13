@@ -415,34 +415,34 @@ describe("WorkflowStateMachine", () => {
       expect(result.type).toBe("blocked");
     });
 
-    test("happy path: iterate → cleanup-review → full-review(PASSED) → done", () => {
+    test("happy path: iterate → run-tests → full-review(PASSED) → done", () => {
       const sm = createWorkflowStateMachine(aopDefault);
 
       const trace = simulateExecutionServiceFlow(sm, [
         { status: "success", signal: "ALL_TASKS_DONE" },
-        { status: "success", signal: "CLEANUP_COMPLETE" },
+        { status: "success", signal: "TESTS_PASS" },
         { status: "success", signal: "REVIEW_PASSED" },
       ]);
 
       expect(trace).toHaveLength(3);
-      expect(trace[0]?.nextStepId).toBe("cleanup-review");
+      expect(trace[0]?.nextStepId).toBe("run-tests");
       expect(trace[1]?.nextStepId).toBe("full-review");
       expect(trace[2]?.resultType).toBe("done");
     });
 
-    test("one review cycle: iterate → cleanup-review → review(FAILED) → fix → quick-review(PASSED) → done", () => {
+    test("one review cycle: iterate → run-tests → review(FAILED) → fix → quick-review(PASSED) → done", () => {
       const sm = createWorkflowStateMachine(aopDefault);
 
       const trace = simulateExecutionServiceFlow(sm, [
         { status: "success", signal: "ALL_TASKS_DONE" },
-        { status: "success", signal: "CLEANUP_COMPLETE" },
+        { status: "success", signal: "TESTS_PASS" },
         { status: "success", signal: "REVIEW_FAILED" },
         { status: "success", signal: "FIX_COMPLETE" },
         { status: "success", signal: "REVIEW_PASSED" },
       ]);
 
       expect(trace).toHaveLength(5);
-      expect(trace[0]?.nextStepId).toBe("cleanup-review");
+      expect(trace[0]?.nextStepId).toBe("run-tests");
       expect(trace[1]?.nextStepId).toBe("full-review");
       expect(trace[2]?.nextStepId).toBe("fix-issues");
       expect(trace[3]?.nextStepId).toBe("quick-review");
@@ -453,8 +453,8 @@ describe("WorkflowStateMachine", () => {
       const sm = createWorkflowStateMachine(aopDefault);
 
       const trace = simulateExecutionServiceFlow(sm, [
-        { status: "success", signal: "ALL_TASKS_DONE" }, // iterate → cleanup-review
-        { status: "success", signal: "CLEANUP_COMPLETE" }, // cleanup-review → full-review
+        { status: "success", signal: "ALL_TASKS_DONE" }, // iterate → run-tests
+        { status: "success", signal: "TESTS_PASS" }, // run-tests → full-review
         { status: "success", signal: "REVIEW_FAILED" }, // full-review → fix-issues
         { status: "success", signal: "FIX_COMPLETE" }, // fix-issues → quick-review
         { status: "success", signal: "REVIEW_FAILED" }, // quick-review → fix-issues
@@ -464,13 +464,13 @@ describe("WorkflowStateMachine", () => {
 
       expect(trace).toHaveLength(7);
 
-      // Step 1: iterate(ALL_TASKS_DONE) → cleanup-review
+      // Step 1: iterate(ALL_TASKS_DONE) → run-tests
       expect(trace[0]?.resolvedCurrentStepId).toBe("iterate");
-      expect(trace[0]?.nextStepId).toBe("cleanup-review");
+      expect(trace[0]?.nextStepId).toBe("run-tests");
       expect(trace[0]?.iteration).toBe(0);
 
-      // Step 2: cleanup-review(CLEANUP_COMPLETE) → full-review
-      expect(trace[1]?.resolvedCurrentStepId).toBe("cleanup-review");
+      // Step 2: run-tests(TESTS_PASS) → full-review
+      expect(trace[1]?.resolvedCurrentStepId).toBe("run-tests");
       expect(trace[1]?.nextStepId).toBe("full-review");
       expect(trace[1]?.iteration).toBe(0);
 
@@ -504,8 +504,8 @@ describe("WorkflowStateMachine", () => {
       const sm = createWorkflowStateMachine(aopDefault);
 
       const trace = simulateExecutionServiceFlow(sm, [
-        { status: "success", signal: "ALL_TASKS_DONE" }, // iterate → cleanup-review
-        { status: "success", signal: "CLEANUP_COMPLETE" }, // cleanup-review → full-review
+        { status: "success", signal: "ALL_TASKS_DONE" }, // iterate → run-tests
+        { status: "success", signal: "TESTS_PASS" }, // run-tests → full-review
         { status: "success", signal: "REVIEW_FAILED" }, // full-review → fix-issues
         { status: "success", signal: "FIX_COMPLETE" }, // fix-issues → quick-review
         { status: "success", signal: "REVIEW_FAILED" }, // quick-review → fix-issues, iteration 1

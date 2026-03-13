@@ -267,40 +267,16 @@ describe("end-to-end template resolution", () => {
 
     const result = resolveTemplate(template, context);
 
-    const expected = `You are running tests for an implementation in a software project.
-
-## Task Details
-
-- **Task Path**: changes/add-auth
-- Read the full task folder for context: \`task.md\`, \`plan.md\` when present, and any numbered subtask files like \`001-*.md\`.
-
-## Worktree Information
-
-You are working on the following git worktree:
-- **Path**: /repo/.worktrees/task-42
-- **Branch**: aop/task-42
-
-
-## Instructions
-
-Run tests for the implementation at /repo/.worktrees/task-42.
-
-1. Identify the test command for this project
-2. Run the relevant tests
-3. Analyze any failures and report results clearly
-
-Do NOT fix failing tests — only report the results. Fixes happen in a separate step.
-
-## Signals (REQUIRED)
-
-When done, output ONE of:
-- \`<aop>TESTS_PASS</aop>\` — all tests pass
-- \`<aop>TESTS_FAIL</aop>\` — one or more tests failed
-
-DO NOT FINISH THE SESSION WITHOUT SIGNALING.
-`;
-
-    expect(result).toBe(expected);
+    expect(result).toContain(
+      "Run the required local non-E2E verification for the implementation at /repo/.worktrees/task-42.",
+    );
+    expect(result).toContain("Read `.github/workflows/aop-ci.yml`");
+    expect(result).toContain("bun run build");
+    expect(result).toContain("bun run test:ci");
+    expect(result).toContain("Do not claim success unless you ran the commands you list");
+    expect(result).toContain("Update `agent-review-report.md`");
+    expect(result).toContain("`<aop>TESTS_PASS</aop>` — all tests pass");
+    expect(result).toContain("`<aop>TESTS_FAIL</aop>` — one or more tests failed");
   });
 
   test("resolves run-tests template without signals omits signals section", async () => {
@@ -317,33 +293,11 @@ DO NOT FINISH THE SESSION WITHOUT SIGNALING.
 
     const result = resolveTemplate(template, context);
 
-    const expected = `You are running tests for an implementation in a software project.
-
-## Task Details
-
-- **Task Path**: changes/refactor
-- Read the full task folder for context: \`task.md\`, \`plan.md\` when present, and any numbered subtask files like \`001-*.md\`.
-
-## Worktree Information
-
-You are working on the following git worktree:
-- **Path**: /repo/.worktrees/task-7
-- **Branch**: aop/task-7
-
-
-## Instructions
-
-Run tests for the implementation at /repo/.worktrees/task-7.
-
-1. Identify the test command for this project
-2. Run the relevant tests
-3. Analyze any failures and report results clearly
-
-Do NOT fix failing tests — only report the results. Fixes happen in a separate step.
-
-`;
-
-    expect(result).toBe(expected);
+    expect(result).toContain(
+      "Run the required local non-E2E verification for the implementation at /repo/.worktrees/task-7.",
+    );
+    expect(result).toContain("smallest workspace-scoped commands");
+    expect(result).not.toContain("## Signals (REQUIRED)");
   });
 
   test("resolves run-tests template with input section", async () => {
@@ -362,49 +316,11 @@ Do NOT fix failing tests — only report the results. Fixes happen in a separate
 
     const result = resolveTemplate(template, contextWithInput);
 
-    const expected = `You are running tests for an implementation in a software project.
-
-## Task Details
-
-- **Task Path**: changes/bugfix
-- Read the full task folder for context: \`task.md\`, \`plan.md\` when present, and any numbered subtask files like \`001-*.md\`.
-
-## Worktree Information
-
-You are working on the following git worktree:
-- **Path**: /repo/.worktrees/task-10
-- **Branch**: aop/task-10
-
-
-## Resumed with User Input
-
-This step was previously paused and the user has responded:
-
-> Focus on auth module tests only
-
-Determine the user's intent from their input:
-- **Approved/accepted** your previous output → signal accordingly and do NOT redo work
-- **Requested changes** or gave feedback → address their feedback, then re-signal accordingly
-- **Answered a question** you asked → use their answer to proceed with the task
-
-## Instructions
-
-Run tests for the implementation at /repo/.worktrees/task-10.
-
-1. Identify the test command for this project
-2. Run the relevant tests
-3. Analyze any failures and report results clearly
-
-Do NOT fix failing tests — only report the results. Fixes happen in a separate step.
-
-## Signals (REQUIRED)
-
-When done, output ONE of:
-- \`<aop>TESTS_PASS</aop>\` — all tests pass
-
-DO NOT FINISH THE SESSION WITHOUT SIGNALING.
-`;
-
-    expect(result).toBe(expected);
+    expect(result).toContain("Focus on auth module tests only");
+    expect(result).toContain(
+      "Run the required local non-E2E verification for the implementation at /repo/.worktrees/task-10.",
+    );
+    expect(result).toContain("Update `agent-review-report.md`");
+    expect(result).toContain("`<aop>TESTS_PASS</aop>` — all tests pass");
   });
 });

@@ -16,6 +16,7 @@ const {
   getPauseContext,
   getSettings,
   getStatus,
+  getWorkflows,
   importLinearIssue,
   listDirectories,
   markReady,
@@ -459,6 +460,17 @@ describe("getSettings", () => {
 
     expect(result).toEqual(settings);
     expect(mockFetch).toHaveBeenCalledWith("/api/settings", expect.any(Object));
+  });
+});
+
+describe("getWorkflows", () => {
+  test("fetches available workflows", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ workflows: ["aop-default", "simple"] }));
+
+    const result = await getWorkflows();
+
+    expect(result).toEqual(["aop-default", "simple"]);
+    expect(mockFetch).toHaveBeenCalledWith("/api/workflows", expect.any(Object));
   });
 });
 

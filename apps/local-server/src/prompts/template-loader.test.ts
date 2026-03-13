@@ -112,6 +112,27 @@ describe("TemplateLoader", () => {
       expect(template).not.toContain("remove-ai-slop");
     });
 
+    test("run-tests template requires CI-aligned local verification commands", async () => {
+      const template = await loader.load("run-tests.md.hbs");
+
+      expect(template).toContain("Read `.github/workflows/aop-ci.yml`");
+      expect(template).toContain("bun run build");
+      expect(template).toContain("bun run test:ci");
+      expect(template).toContain("smallest workspace-scoped commands");
+      expect(template).toContain("Do not claim success unless you ran the commands you list");
+    });
+
+    test("review templates require explicit verification evidence before pass signals", async () => {
+      const fullReview = await loader.load("full-review.md.hbs");
+      const quickReview = await loader.load("quick-review.md.hbs");
+
+      expect(fullReview).toContain("commands run");
+      expect(fullReview).toContain("Do not write `PASS` or emit `REVIEW_PASSED`");
+      expect(fullReview).toContain("GitHub CI");
+      expect(quickReview).toContain("Record the exact commands you ran");
+      expect(quickReview).toContain("Do not emit `REVIEW_PASSED`");
+    });
+
     test("implement template supports numbered subtasks and legacy tasks.md checklists", async () => {
       const template = await loader.load("implement.md.hbs");
 

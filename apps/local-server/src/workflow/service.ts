@@ -91,6 +91,11 @@ export const createLocalWorkflowService = (ctx: LocalServerContext): LocalWorkfl
     return ctx.workflowRepository.listNames();
   };
 
+  const getDefaultWorkflowName = async (): Promise<string> => {
+    const configured = await ctx.settingsRepository.get("default_workflow");
+    return configured || DEFAULT_WORKFLOW_NAME;
+  };
+
   const getWorkflow = async (workflowName: string): Promise<WorkflowDefinition> => {
     await ensureWorkflowsSynced();
     const workflow = await ctx.workflowRepository.findByName(workflowName);
@@ -325,7 +330,7 @@ export const createLocalWorkflowService = (ctx: LocalServerContext): LocalWorkfl
     },
 
     startTask: async (task) => {
-      const workflowName = task.preferred_workflow ?? DEFAULT_WORKFLOW_NAME;
+      const workflowName = task.preferred_workflow ?? (await getDefaultWorkflowName());
       const workflow = await getWorkflow(workflowName);
       const stateMachine = createWorkflowStateMachine(workflow);
 
