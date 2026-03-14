@@ -5,7 +5,7 @@ import { TaskStatus } from "@aop/common";
 import { aopPaths } from "@aop/infra";
 import type { RepoRepository } from "../../repo/repository.ts";
 import type { TaskRepository } from "../../task/repository.ts";
-import { toTaskSlug } from "../../task-docs/scaffold.ts";
+import { ensureExecutionPlanArtifacts, toTaskSlug } from "../../task-docs/scaffold.ts";
 import { parseTaskDoc, writeTaskDoc } from "../../task-docs/task.ts";
 import type { TaskDocFrontmatter } from "../../task-docs/types.ts";
 import type { LinearStore } from "./store.ts";
@@ -264,6 +264,7 @@ const writeImportedTask = async (params: {
   };
 
   await writeTaskDoc(taskFilePath, frontmatter, buildImportedTaskBody(params.issue));
+  await ensureExecutionPlanArtifacts(join(params.repoPath, changePath));
 
   return {
     taskId,

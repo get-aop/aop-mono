@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Kysely } from "kysely";
@@ -124,5 +124,10 @@ describe("integrations/linear/import-service", () => {
       ref: "GET-41",
       url: "https://linear.app/get-aop/issue/GET-41/dashboard-scroll",
     });
+
+    const taskFiles = await readdir(join(repoPath, "docs/tasks/get-41-dashboard-scroll"));
+    expect(taskFiles).toContain("task.md");
+    expect(taskFiles).toContain("plan.md");
+    expect(taskFiles.some((file) => /^\d{3}-.*\.md$/.test(file))).toBe(true);
   });
 });

@@ -1,10 +1,17 @@
 import type { LinearTodoIssue } from "../api/client";
 
+interface LinearImportProgress {
+  progress: number;
+  stageLabel: string;
+  detail: string;
+}
+
 interface LinearImportIssuesCardProps {
   issues: LinearTodoIssue[];
   selectedIssueId: string;
   hasLoadedIssues: boolean;
   importing: boolean;
+  importProgress: LinearImportProgress | null;
   error: string | null;
   onSelectIssue: (issueId: string) => void;
   onImport: () => void;
@@ -15,6 +22,7 @@ export const LinearImportIssuesCard = ({
   selectedIssueId,
   hasLoadedIssues,
   importing,
+  importProgress,
   error,
   onSelectIssue,
   onImport,
@@ -34,10 +42,11 @@ export const LinearImportIssuesCard = ({
         disabled={!selectedIssueId || importing}
         className="cursor-pointer rounded-aop border border-aop-charcoal px-3 py-2 font-mono text-xs text-aop-cream transition-colors hover:border-aop-slate-dark hover:text-aop-amber disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {importing ? "Importing..." : "Import selected issue"}
+        {importing ? "Import running..." : "Import selected issue"}
       </button>
     </div>
 
+    {importProgress ? <ImportProgressCallout progress={importProgress} /> : null}
     {error ? <PanelMessage tone="error" message={error} /> : null}
 
     {error ? null : issues.length === 0 ? (
@@ -49,6 +58,7 @@ export const LinearImportIssuesCard = ({
             key={issue.id}
             issue={issue}
             selected={issue.id === selectedIssueId}
+            disabled={importing}
             onSelect={onSelectIssue}
           />
         ))}
@@ -72,22 +82,22 @@ export const PanelMessage = ({ tone, message }: { tone: "success" | "error"; mes
 interface LinearIssueOptionProps {
   issue: LinearTodoIssue;
   selected: boolean;
+  disabled: boolean;
   onSelect: (issueId: string) => void;
 }
 
-const LinearIssueOption = ({ issue, selected, onSelect }: LinearIssueOptionProps) => (
+const LinearIssueOption = ({ issue, selected, disabled, onSelect }: LinearIssueOptionProps) => (
   <label
-    className={`flex cursor-pointer gap-3 rounded-aop border px-3 py-3 transition-colors ${
-      selected
-        ? "border-aop-amber bg-aop-amber/10"
-        : "border-aop-charcoal bg-aop-dark/40 hover:border-aop-slate-dark"
-    }`}
+    className={`flex gap-3 rounded-aop border px-3 py-3 transition-colors ${
+      selected ? "border-aop-amber bg-aop-amber/10" : "border-aop-charcoal bg-aop-dark/40"
+    } ${disabled ? "cursor-wait opacity-60" : "cursor-pointer hover:border-aop-slate-dark"}`}
     aria-label={`${issue.identifier} ${issue.title}`}
   >
     <input
       type="radio"
       name="linear-issue"
       checked={selected}
+      disabled={disabled}
       onChange={() => onSelect(issue.id)}
       className="mt-1"
     />
@@ -98,6 +108,24 @@ const LinearIssueOption = ({ issue, selected, onSelect }: LinearIssueOptionProps
       <IssueMeta issue={issue} />
     </div>
   </label>
+);
+
+const ImportProgressCallout = ({ progress }: { progress: LinearImportProgress }) => (
+  <div className="mb-4 rounded-aop border border-aop-amber/30 bg-aop-amber/8 px-4 py-3">
+    <div className="flex items-center justify-between gap-3 font-mono text-[11px]">
+      <span className="text-aop-cream">{progress.stageLabel}</span>
+      <span className="text-aop-amber">{progress.progress}%</span>
+    </div>
+    <div className="mt-3 h-2 overflow-hidden rounded-full bg-aop-charcoal">
+      <div
+        className="h-full rounded-full bg-aop-amber transition-[width] duration-300 ease-out"
+        style={{ width: `${progress.progress}%` }}
+      />
+    </div>
+    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-aop-slate-light">
+      {progress.detail}
+    </p>
+  </div>
 );
 
 const IssueMeta = ({ issue }: { issue: LinearTodoIssue }) => {

@@ -202,6 +202,29 @@ describe("integrations/linear/importer", () => {
     expect(rawTaskDoc).toContain("- State: In Progress");
   });
 
+  test("backfills plan and numbered subtasks for imported Linear tasks", async () => {
+    const { createLinearImporter } = await loadImporterModule();
+    const importer = createLinearImporter({
+      repoRepository: ctx.repoRepository,
+      taskRepository: ctx.taskRepository,
+      linearStore: ctx.linearStore,
+      resolveIssuesByRefs: async () => [],
+    });
+
+    const result = await importer.importIssues({
+      repoId: "repo-1",
+      issues: [createIssue("GET-42", "Adopt T3code Orchestration Patterns")],
+    });
+
+    const imported = getImportedRecord(result, "GET-42");
+    const taskDir = join(repoPath, imported.changePath);
+    const files = await readdir(taskDir);
+
+    expect(files).toContain("task.md");
+    expect(files).toContain("plan.md");
+    expect(files.some((file) => /^\d{3}-.*\.md$/.test(file))).toBe(true);
+  });
+
   test("re-imports the same Linear issue without creating a duplicate folder and updates title snapshots", async () => {
     const { createLinearImporter } = await loadImporterModule();
     const importer = createLinearImporter({

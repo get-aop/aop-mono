@@ -1,8 +1,10 @@
-import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+import { type Dispatch, type SetStateAction, startTransition, useEffect, useState } from "react";
 import {
+  fetchChangeFiles,
   getLinearImportOptions,
   getLinearTodoIssues,
   importLinearIssue,
+  type LinearImportResponse,
   type LinearTodoIssue,
 } from "../api/client";
 import { LinearImportIssuesCard, PanelMessage } from "./LinearImportIssuesCard";
@@ -23,6 +25,16 @@ interface ImportOptionsState {
   projects: Array<{ id: string; name: string }>;
   users: Array<{ id: string; label: string }>;
 }
+
+interface ImportProgressState {
+  progress: number;
+  stageLabel: string;
+  detail: string;
+}
+
+const TASK_FILE_POLL_ATTEMPTS = 20;
+const TASK_FILE_POLL_INTERVAL_MS = 150;
+const NUMBERED_SUBTASK_FILE_REGEX = /^\d{3}-.*\.md$/;
 
 interface LinearImportPanelProps {
   repo: RepoOption | null;
@@ -45,6 +57,7 @@ export const LinearImportPanel = ({ repo, onRefresh }: LinearImportPanelProps) =
   const [loadingIssues, setLoadingIssues] = useState(false);
   const [hasLoadedIssues, setHasLoadedIssues] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -65,6 +78,9 @@ export const LinearImportPanel = ({ repo, onRefresh }: LinearImportPanelProps) =
   }, [open, optionsState.loading, optionsState.projects.length, repo]);
 
   const toggleOpen = () => {
+    if (importing) {
+      return;
+    }
     setOpen((prev) => !prev);
     setError(null);
     setFeedback(null);
@@ -106,21 +122,40 @@ export const LinearImportPanel = ({ repo, onRefresh }: LinearImportPanelProps) =
     }
 
     setImporting(true);
+    setImportProgress({
+      progress: 18,
+      stageLabel: "Importing Linear issue...",
+      detail: "Reading the issue and writing the repo-local task package.",
+    });
     setError(null);
     setFeedback(null);
 
     try {
-      await importLinearIssue({
+      const result = await importLinearIssue({
         cwd: repo.path,
         issueIdentifier: selectedIssue.identifier,
       });
+      setImportProgress({
+        progress: 68,
+        stageLabel: "Verifying task files...",
+        detail: "Draft task, plan, and numbered subtasks",
+      });
+      await waitForImportedTaskArtifacts(result, setImportProgress);
+      setImportProgress({
+        progress: 92,
+        stageLabel: "Syncing dashboard...",
+        detail: "Refreshing the draft column with the completed import.",
+      });
       await onRefresh?.();
-      setFeedback(`Imported ${selectedIssue.identifier} into ${repoLabel}.`);
-      setOpen(false);
-      resetIssueState();
+      startTransition(() => {
+        setFeedback(`Imported ${selectedIssue.identifier} into ${repoLabel}.`);
+        setOpen(false);
+        resetIssueState();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to import Linear issue");
     } finally {
+      setImportProgress(null);
       setImporting(false);
     }
   };
@@ -142,6 +177,7 @@ export const LinearImportPanel = ({ repo, onRefresh }: LinearImportPanelProps) =
             loadingIssues={loadingIssues}
             hasLoadedIssues={hasLoadedIssues}
             importing={importing}
+            importProgress={importProgress}
             error={error}
             onProjectChange={(value) => updateFilter("projectId", value)}
             onAssigneeChange={(value) => updateFilter("assigneeId", value)}
@@ -193,6 +229,7 @@ interface LinearImportBodyProps {
   loadingIssues: boolean;
   hasLoadedIssues: boolean;
   importing: boolean;
+  importProgress: ImportProgressState | null;
   error: string | null;
   onProjectChange: (value: string) => void;
   onAssigneeChange: (value: string) => void;
@@ -210,6 +247,7 @@ const LinearImportBody = ({
   loadingIssues,
   hasLoadedIssues,
   importing,
+  importProgress,
   error,
   onProjectChange,
   onAssigneeChange,
@@ -229,6 +267,7 @@ const LinearImportBody = ({
         users={optionsState.users}
         filters={filters}
         loadingIssues={loadingIssues}
+        importing={importing}
         onProjectChange={onProjectChange}
         onAssigneeChange={onAssigneeChange}
         onLoadIssues={onLoadIssues}
@@ -239,6 +278,7 @@ const LinearImportBody = ({
         selectedIssueId={selectedIssueId}
         hasLoadedIssues={hasLoadedIssues}
         importing={importing}
+        importProgress={importProgress}
         error={error}
         onSelectIssue={onSelectIssue}
         onImport={onImport}
@@ -253,6 +293,7 @@ interface LinearImportFiltersCardProps {
   users: Array<{ id: string; label: string }>;
   filters: ImportFilters;
   loadingIssues: boolean;
+  importing: boolean;
   onProjectChange: (value: string) => void;
   onAssigneeChange: (value: string) => void;
   onLoadIssues: () => void;
@@ -264,6 +305,7 @@ const LinearImportFiltersCard = ({
   users,
   filters,
   loadingIssues,
+  importing,
   onProjectChange,
   onAssigneeChange,
   onLoadIssues,
@@ -288,6 +330,7 @@ const LinearImportFiltersCard = ({
             value: project.id,
             label: project.name,
           }))}
+          disabled={importing}
           onChange={onProjectChange}
         />
 
@@ -299,13 +342,14 @@ const LinearImportFiltersCard = ({
             value: user.id,
             label: user.label,
           }))}
+          disabled={importing}
           onChange={onAssigneeChange}
         />
 
         <button
           type="button"
           onClick={onLoadIssues}
-          disabled={!filters.projectId || loadingIssues}
+          disabled={!filters.projectId || loadingIssues || importing}
           className="cursor-pointer rounded-aop border border-aop-charcoal px-3 py-2 font-mono text-xs text-aop-cream transition-colors hover:border-aop-slate-dark hover:text-aop-amber disabled:cursor-not-allowed disabled:opacity-40"
         >
           {loadingIssues ? "Loading TODO issues..." : "Show TODO issues"}
@@ -320,15 +364,24 @@ interface FilterSelectProps {
   value: string;
   placeholder: string;
   options: Array<{ value: string; label: string }>;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }
 
-const FilterSelect = ({ label, value, placeholder, options, onChange }: FilterSelectProps) => (
+const FilterSelect = ({
+  label,
+  value,
+  placeholder,
+  options,
+  disabled = false,
+  onChange,
+}: FilterSelectProps) => (
   <label className="flex flex-col gap-1 font-mono text-[11px] text-aop-slate-light">
     <span>{label}</span>
     <select
       aria-label={label}
       value={value}
+      disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       className="rounded-aop border border-aop-charcoal bg-aop-dark px-3 py-2 text-xs text-aop-cream focus:border-aop-amber focus:outline-none"
     >
@@ -376,3 +429,49 @@ const findIssue = (issues: LinearTodoIssue[], issueId: string): LinearTodoIssue 
 
 const getRepoLabel = (repo: RepoOption): string =>
   repo.name ?? repo.path.split("/").pop() ?? repo.path;
+
+const waitForImportedTaskArtifacts = async (
+  result: LinearImportResponse,
+  setImportProgress: Dispatch<SetStateAction<ImportProgressState | null>>,
+) => {
+  const total = result.imported.length;
+  if (total === 0) {
+    return;
+  }
+
+  let verifiedCount = 0;
+  for (const record of result.imported) {
+    await pollForTaskFiles(result.repoId, record.taskId, record.ref);
+    verifiedCount += 1;
+    const ratio = verifiedCount / total;
+    setImportProgress({
+      progress: Math.min(90, Math.round(68 + ratio * 22)),
+      stageLabel: "Verifying task files...",
+      detail: `${verifiedCount}/${total} imported task packages confirmed on disk.`,
+    });
+  }
+};
+
+const pollForTaskFiles = async (repoId: string, taskId: string, ref: string) => {
+  for (let attempt = 0; attempt < TASK_FILE_POLL_ATTEMPTS; attempt += 1) {
+    try {
+      const files = await fetchChangeFiles(repoId, taskId);
+      if (hasImportedTaskArtifacts(files)) {
+        return;
+      }
+    } catch {
+      // The task record can lag slightly behind the import response; retry briefly.
+    }
+
+    await delay(TASK_FILE_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(`Imported task ${ref} is still missing task planning files.`);
+};
+
+const hasImportedTaskArtifacts = (files: string[]): boolean =>
+  files.includes("task.md") &&
+  files.includes("plan.md") &&
+  files.some((file) => NUMBERED_SUBTASK_FILE_REGEX.test(file));
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
