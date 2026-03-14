@@ -1,7 +1,9 @@
+import type { LLMProvider } from "@aop/llm-provider";
 import type { LocalServerContext } from "../../context.ts";
 import { initRepo } from "../../repo/handlers.ts";
 import { getLinearAccessToken } from "./access-token.ts";
 import type { createLinearClient } from "./client.ts";
+import { createLinearImportPlanner } from "./import-planner.ts";
 import { createLinearImporter } from "./importer.ts";
 import { createLinearIssueResolver } from "./issue-resolver.ts";
 import { createRuntimeLinearClient } from "./runtime-client.ts";
@@ -9,6 +11,7 @@ import { createRuntimeLinearClient } from "./runtime-client.ts";
 interface CreateLinearImportServiceOptions {
   ctx: LocalServerContext;
   apiKey?: string;
+  planningProvider?: LLMProvider;
   createClient?: typeof createLinearClient;
 }
 
@@ -35,6 +38,13 @@ export const createLinearImportService = (options: CreateLinearImportServiceOpti
     const result = await importer.importIssues({
       repoId: repo.repoId,
       issues,
+    });
+    const planner = createLinearImportPlanner({
+      ctx: options.ctx,
+      provider: options.planningProvider,
+    });
+    await planner.planTasks({
+      taskIds: result.imported.filter((record) => record.requested).map((record) => record.taskId),
     });
 
     return {

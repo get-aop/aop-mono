@@ -213,6 +213,15 @@ export const createApp = (deps: AppDependencies) => {
 
       return c.notFound();
     });
+  } else {
+    app.get("*", async (c) => {
+      const pathname = new URL(c.req.url).pathname;
+      if (pathname.startsWith("/api/")) {
+        return c.notFound();
+      }
+
+      return c.html(renderDashboardUnavailablePage({ dashboardDevOrigin }), 503);
+    });
   }
 
   return app;
@@ -259,3 +268,66 @@ const serveSpaFallback = async (basePath: string): Promise<Response | null> => {
   }
   return null;
 };
+
+const renderDashboardUnavailablePage = (params: {
+  dashboardDevOrigin?: string;
+}): string => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard unavailable</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #0b0d12;
+        color: #f5f5f4;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      main {
+        width: min(42rem, calc(100vw - 2rem));
+        padding: 1.5rem;
+        border: 1px solid #262a33;
+        border-radius: 0.75rem;
+        background: #11141b;
+      }
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: 1rem;
+      }
+      p, li {
+        color: #b5bcc9;
+        line-height: 1.6;
+        font-size: 0.875rem;
+      }
+      code, a {
+        color: #f59e0b;
+      }
+      ul {
+        margin: 1rem 0 0;
+        padding-left: 1.25rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Dashboard unavailable on this server</h1>
+      <p>
+        The local server is running, but it was started without the bundled dashboard assets.
+        API routes are still available here, including <code>/api/health</code>.
+      </p>
+      <ul>
+        <li>Installed mode: restart the user service so the built dashboard is served from this origin.</li>
+        ${
+          params.dashboardDevOrigin
+            ? `<li>Dev mode: open <a href="${params.dashboardDevOrigin}">${params.dashboardDevOrigin}</a>.</li>`
+            : ""
+        }
+        <li>If you expected the dashboard on this port, check whether a manual API-only server replaced the installed service.</li>
+      </ul>
+    </main>
+  </body>
+</html>`;

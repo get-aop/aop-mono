@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LLMProvider, RunOptions, RunResult } from "@aop/llm-provider";
 import type { Kysely } from "kysely";
 import { createCommandContext, type LocalServerContext } from "../../context.ts";
 import type { Database } from "../../db/schema.ts";
@@ -81,6 +82,7 @@ describe("integrations/linear/import-service", () => {
     const { createLinearImportService } = await loadImportServiceModule();
     const service = createLinearImportService({
       ctx,
+      planningProvider: new FakePlanningProvider(),
       createClient: () => ({
         getIssuesByRefs: async (refs) =>
           refs.map((ref) => ({
@@ -128,6 +130,106 @@ describe("integrations/linear/import-service", () => {
     const taskFiles = await readdir(join(repoPath, "docs/tasks/get-41-dashboard-scroll"));
     expect(taskFiles).toContain("task.md");
     expect(taskFiles).toContain("plan.md");
-    expect(taskFiles.some((file) => /^\d{3}-.*\.md$/.test(file))).toBe(true);
+    expect(taskFiles).toContain("001-investigate-scroll-shell.md");
+
+    const planContent = await Bun.file(
+      join(repoPath, "docs/tasks/get-41-dashboard-scroll/plan.md"),
+    ).text();
+    const subtaskContent = await Bun.file(
+      join(repoPath, "docs/tasks/get-41-dashboard-scroll/001-investigate-scroll-shell.md"),
+    ).text();
+
+    expect(planContent).toContain("## Summary");
+    expect(planContent).toContain("## Verification");
+    expect(subtaskContent).toContain("### Context");
+    expect(subtaskContent).toContain("apps/dashboard/src/App.tsx");
   });
 });
+
+class FakePlanningProvider implements LLMProvider {
+  readonly name = "fake-planner";
+
+  async run(options: RunOptions): Promise<RunResult> {
+    const taskPath = extractTaskPath(options.prompt);
+    if (!taskPath) {
+      throw new Error("Expected task path in planning prompt");
+    }
+
+    await Bun.write(
+      join(taskPath, "plan.md"),
+      [
+        "---",
+        "status: INPROGRESS",
+        "task: get-41-dashboard-scroll",
+        "created: 2026-03-14T00:00:00.000Z",
+        "---",
+        "",
+        "## Summary",
+        "Plan the dashboard scroll fix and capture the verification path.",
+        "",
+        "## Context",
+        "- Imported from Linear GET-41.",
+        "- The app shell and detail view are the likely regression surfaces.",
+        "",
+        "## Subtasks",
+        "1. 001-investigate-scroll-shell (Investigate scroll shell)",
+        "",
+        "## Verification",
+        "- [ ] bun test apps/dashboard",
+        "",
+      ].join("\n"),
+    );
+    await Bun.write(
+      join(taskPath, "001-investigate-scroll-shell.md"),
+      [
+        "---",
+        "title: Investigate scroll shell",
+        "status: PENDING",
+        "dependencies: []",
+        "---",
+        "",
+        "### Description",
+        "Trace the shell elements that own vertical scrolling in the dashboard.",
+        "",
+        "### Context",
+        "- apps/dashboard/src/App.tsx",
+        "- apps/dashboard/src/views/TaskDetail.tsx",
+        "",
+        "### Result",
+        "",
+        "### Review",
+        "",
+        "### Blockers",
+        "",
+      ].join("\n"),
+    );
+
+    if (options.logFilePath) {
+      await Bun.write(
+        options.logFilePath,
+        [
+          JSON.stringify({ type: "thread.started", thread_id: "fake-planner" }),
+          JSON.stringify({
+            type: "item.completed",
+            item: {
+              type: "agent_message",
+              text: "Planning complete.\n<aop>PLAN_READY</aop>",
+            },
+          }),
+          JSON.stringify({
+            type: "turn.completed",
+            "last-assistant-message": "Planning complete.\n<aop>PLAN_READY</aop>",
+          }),
+          "",
+        ].join("\n"),
+      );
+    }
+
+    return { exitCode: 0 };
+  }
+}
+
+const extractTaskPath = (prompt: string): string | null => {
+  const match = prompt.match(/- \*\*Task Path\*\*: ([^\n]+)/);
+  return match?.[1]?.trim() ?? null;
+};

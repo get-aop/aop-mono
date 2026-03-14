@@ -365,6 +365,28 @@ describe("app - static file serving", () => {
 
     await db.destroy();
   });
+
+  test("serves a dashboard unavailable page when no static dashboard is attached", async () => {
+    const db = await createTestDb();
+    const ctx = createCommandContext(db);
+
+    const app = createApp({
+      ctx,
+      startTimeMs: Date.now(),
+      dashboardDevOrigin: "http://localhost:25160",
+    });
+
+    const res = await app.request("/");
+    const html = await res.text();
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Content-Type")).toContain("text/html");
+    expect(html).toContain("Dashboard unavailable on this server");
+    expect(html).toContain("http://localhost:25160");
+    expect(html).toContain("/api/health");
+
+    await db.destroy();
+  });
 });
 
 describe("app - local workflows", () => {

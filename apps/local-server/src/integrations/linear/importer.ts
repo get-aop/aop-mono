@@ -244,7 +244,7 @@ const writeImportedTask = async (params: {
   const frontmatter: TaskDocFrontmatter = {
     id: taskId,
     title: params.issue.title,
-    status: existingDoc?.status ?? TaskStatus.DRAFT,
+    status: getImportedTaskStatus(existingTask?.status, existingDoc?.status),
     created: existingDoc?.createdAt ?? new Date().toISOString(),
     changePath,
     priority: mapLinearPriority(params.issue.priority),
@@ -277,6 +277,17 @@ const writeImportedTask = async (params: {
 
 const buildLinearTaskId = (repoId: string, externalId: string): string =>
   `task_${createHash("sha1").update(`${repoId}:linear:${externalId}`).digest("hex").slice(0, 12)}`;
+
+const getImportedTaskStatus = (
+  existingTaskStatus: string | null | undefined,
+  existingDocStatus: TaskDocFrontmatter["status"] | undefined,
+): TaskDocFrontmatter["status"] => {
+  if (existingTaskStatus === TaskStatus.REMOVED || existingDocStatus === TaskStatus.REMOVED) {
+    return TaskStatus.DRAFT;
+  }
+
+  return existingDocStatus ?? TaskStatus.DRAFT;
+};
 
 const buildImportedTaskBody = (issue: LinearResolvedIssue): string =>
   [

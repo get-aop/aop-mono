@@ -260,6 +260,39 @@ describe("integrations/linear/importer", () => {
     });
   });
 
+  test("re-importing a removed Linear task reactivates it as DRAFT", async () => {
+    const { createLinearImporter } = await loadImporterModule();
+    const importer = createLinearImporter({
+      repoRepository: ctx.repoRepository,
+      taskRepository: ctx.taskRepository,
+      linearStore: ctx.linearStore,
+      resolveIssuesByRefs: async () => [],
+    });
+
+    const first = await importer.importIssues({
+      repoId: "repo-1",
+      issues: [createIssue("GET-42", "Adopt T3code Orchestration Patterns")],
+    });
+    const firstImported = getImportedRecord(first, "GET-42");
+
+    expect(await ctx.taskRepository.markRemoved(firstImported.taskId)).toBe(true);
+
+    const second = await importer.importIssues({
+      repoId: "repo-1",
+      issues: [createIssue("GET-42", "Adopt T3code Orchestration Patterns")],
+    });
+    const secondImported = getImportedRecord(second, "GET-42");
+
+    expect(secondImported.taskId).toBe(firstImported.taskId);
+    expect(secondImported.changePath).toBe(firstImported.changePath);
+
+    const taskDoc = await parseTaskDoc(join(repoPath, secondImported.changePath, "task.md"));
+    const task = await ctx.taskRepository.get(secondImported.taskId);
+
+    expect(taskDoc.status).toBe("DRAFT");
+    expect(task?.status).toBe("DRAFT");
+  });
+
   test("uses the Linear ref in the folder slug so same-title tickets do not collide", async () => {
     const { createLinearImporter } = await loadImporterModule();
     const importer = createLinearImporter({
